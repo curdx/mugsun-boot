@@ -1,0 +1,13 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: mugsun-boot
+  threads:
+    virtual:
+      enabled: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
