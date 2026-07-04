@@ -2,6 +2,7 @@ package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.mugsun.boot.datascope.DataScopeContext;
 import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.mapper.SysUserMapper;
 import com.mugsun.core.tool.api.R;
@@ -30,7 +31,17 @@ public class SysUserController {
 	@SaCheckPermission("sys:user:list")
 	public R<Page<SysUser>> page(@RequestParam(defaultValue = "1") long pageNum,
 								 @RequestParam(defaultValue = "10") long pageSize) {
-		Page<SysUser> page = userMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("id", false));
+		QueryWrapper query = QueryWrapper.create().orderBy("id", false);
+		// 行级数据权限：本部门 / 仅本人
+		DataScopeContext.Scope scope = DataScopeContext.get();
+		if (scope != null && scope.dataScope() != null) {
+			if (scope.dataScope() == 2 && scope.deptId() != null) {
+				query.and("dept_id = ?", scope.deptId());
+			} else if (scope.dataScope() == 3 && scope.userId() != null) {
+				query.and("id = ?", scope.userId());
+			}
+		}
+		Page<SysUser> page = userMapper.paginate(pageNum, pageSize, query);
 		// 密码脱敏
 		page.getRecords().forEach(u -> u.setPassword(null));
 		return R.data(page);

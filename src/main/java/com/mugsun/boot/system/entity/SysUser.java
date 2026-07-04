@@ -13,6 +13,8 @@ public class SysUser extends BaseEntity {
 	private String password;
 	private String nickname;
 	private Integer status;
+	private Long deptId;
+	private Long postId;
 
 	public String getUsername() {
 		return username;
@@ -44,5 +46,21 @@ public class SysUser extends BaseEntity {
 
 	public void setStatus(Integer status) {
 		this.status = status;
+	}
+
+	public Long getDeptId() {
+		return deptId;
+	}
+
+	public void setDeptId(Long deptId) {
+		this.deptId = deptId;
+	}
+
+	public Long getPostId() {
+		return postId;
+	}
+
+	public void setPostId(Long postId) {
+		this.postId = postId;
 	}
 }

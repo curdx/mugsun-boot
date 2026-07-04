@@ -12,6 +12,7 @@ public class SysRole extends BaseEntity {
 	private String roleName;
 	private String roleCode;
 	private Integer sort;
+	private Integer dataScope;
 
 	public String getRoleName() {
 		return roleName;
@@ -35,5 +36,13 @@ public class SysRole extends BaseEntity {
 
 	public void setSort(Integer sort) {
 		this.sort = sort;
+	}
+
+	public Integer getDataScope() {
+		return dataScope;
+	}
+
+	public void setDataScope(Integer dataScope) {
+		this.dataScope = dataScope;
 	}
 }
