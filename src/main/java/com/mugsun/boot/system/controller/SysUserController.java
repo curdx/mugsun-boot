@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.mapper.SysUserMapper;
 import com.mugsun.core.tool.api.R;
@@ -26,6 +27,7 @@ public class SysUserController {
 	}
 
 	@GetMapping("/page")
+	@SaCheckPermission("sys:user:list")
 	public R<Page<SysUser>> page(@RequestParam(defaultValue = "1") long pageNum,
 								 @RequestParam(defaultValue = "10") long pageSize) {
 		Page<SysUser> page = userMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("id", false));
