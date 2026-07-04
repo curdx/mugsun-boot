@@ -39,3 +39,23 @@ jetcache:
       keyConvertor: jackson
       limit: 500
       expireAfterWriteInMillis: 3600000
+dromara:
+  x-file-storage:
+    default-platform: local-plus-1
+    local-plus:
+      - platform: local-plus-1
+        enable-storage: true
+        enable-access: true
+        domain: http://127.0.0.1:8080/file/
+        base-path: mugsun/
+        path-patterns: /file/**
+        storage-path: /tmp/mugsun-files/
+sms:
+  config-type: yaml
+  blends:
+    default:
+      supplier: alibaba
+      access-key-id: placeholder
+      access-key-secret: placeholder
+      signature: mugsun
+      template-id: SMS_000000

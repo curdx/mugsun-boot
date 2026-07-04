@@ -56,6 +56,14 @@
 			<artifactId>jetcache-autoconfigure</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>org.dromara.x-file-storage</groupId>
+			<artifactId>x-file-storage-spring</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.dromara.sms4j</groupId>
+			<artifactId>sms4j-spring-boot-starter</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-core</artifactId>
 		</dependency>
