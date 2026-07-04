@@ -1,4 +1,4 @@
-package com.mugsun.controller;
+package com.mugsun.boot.controller;
 
 import com.mugsun.core.tool.api.R;
 import org.springframework.web.bind.annotation.GetMapping;

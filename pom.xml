@@ -37,11 +37,7 @@
 	<dependencies>
 		<dependency>
 			<groupId>com.mugsun</groupId>
-			<artifactId>mugsun-core-tool</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-web</artifactId>
+			<artifactId>mugsun-starter-web</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
