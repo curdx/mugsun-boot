@@ -29,6 +29,7 @@ sa-token:
 mybatis-flex:
   global-config:
     print-banner: false
+    tenant-column: tenant_id
 jetcache:
   statIntervalMinutes: 0
   areaInCacheName: false

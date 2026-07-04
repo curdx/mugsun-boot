@@ -7,6 +7,7 @@ import com.mugsun.boot.system.mapper.SysUserMapper;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.query.QueryWrapper;
+import com.mybatisflex.core.tenant.TenantManager;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,12 +33,15 @@ public class AuthController {
 	}
 
 	@PostMapping("/login")
-	public R<String> login(@RequestParam String username, @RequestParam String password) {
-		SysUser user = userMapper.selectOneByQuery(QueryWrapper.create().eq("username", username));
+	public R<String> login(@RequestParam(defaultValue = "000000") String tenantId,
+						   @RequestParam String username, @RequestParam String password) {
+		SysUser user = TenantManager.withoutTenantCondition(() ->
+			userMapper.selectOneByQuery(QueryWrapper.create().eq("tenant_id", tenantId).eq("username", username)));
 		if (user == null || !passwordEncoder.matches(password, user.getPassword())) {
 			throw new ServiceException("账号或密码错误");
 		}
 		StpUtil.login(user.getId());
+		StpUtil.getSession().set("tenantId", user.getTenantId());
 		return R.data(StpUtil.getTokenValue());
 	}
 

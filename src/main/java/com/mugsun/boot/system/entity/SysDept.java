@@ -16,6 +16,7 @@ public class SysDept extends BaseEntity implements INode<SysDept> {
 	private Long parentId;
 	private String deptName;
 	private Integer sort;
+	private String tenantId;
 
 	@Column(ignore = true)
 	private List<SysDept> children;
@@ -43,6 +44,14 @@ public class SysDept extends BaseEntity implements INode<SysDept> {
 
 	public void setSort(Integer sort) {
 		this.sort = sort;
+	}
+
+	public String getTenantId() {
+		return tenantId;
+	}
+
+	public void setTenantId(String tenantId) {
+		this.tenantId = tenantId;
 	}
 
 	@Override

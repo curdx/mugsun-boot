@@ -50,6 +50,7 @@ public class DataInitializer implements CommandLineRunner {
 		adminRole.setRoleCode("admin");
 		adminRole.setSort(1);
 		adminRole.setDataScope(1);
+		adminRole.setTenantId("000000");
 		roleMapper.insert(adminRole);
 		// 菜单：系统管理 > 用户管理
 		SysMenu systemMenu = new SysMenu();
@@ -73,6 +74,7 @@ public class DataInitializer implements CommandLineRunner {
 		admin.setPassword(passwordEncoder.encode("123456"));
 		admin.setNickname("超级管理员");
 		admin.setStatus(1);
+		admin.setTenantId("000000");
 		userMapper.insert(admin);
 		// 用户-角色
 		SysUserRole userRole = new SysUserRole();
