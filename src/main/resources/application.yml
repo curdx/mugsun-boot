@@ -59,3 +59,11 @@ sms:
       access-key-secret: placeholder
       signature: mugsun
       template-id: SMS_000000
+powerjob:
+  worker:
+    enabled: true
+    app-name: mugsun
+    server-address: 127.0.0.1:7700
+    protocol: http
+    store-strategy: disk
+    port: 27777
