@@ -1,0 +1,48 @@
+{
+  "flowCode": "leave",
+  "flowName": "请假流程",
+  "modelValue": "CLASSICS",
+  "version": "1",
+  "formCustom": "N",
+  "nodeList": [
+    {
+      "nodeType": 0,
+      "nodeCode": "start",
+      "nodeName": "开始",
+      "coordinate": "260,200|260,200",
+      "skipList": [
+        {
+          "nowNodeCode": "start",
+          "nextNodeCode": "approve",
+          "skipName": "提交",
+          "skipType": "PASS",
+          "coordinate": "280,200;370,200"
+        }
+      ]
+    },
+    {
+      "nodeType": 1,
+      "nodeCode": "approve",
+      "nodeName": "部门审批",
+      "permissionFlag": "1",
+      "nodeRatio": "0",
+      "coordinate": "420,200|420,200",
+      "skipList": [
+        {
+          "nowNodeCode": "approve",
+          "nextNodeCode": "end",
+          "skipName": "通过",
+          "skipType": "PASS",
+          "coordinate": "470,200;577,200"
+        }
+      ]
+    },
+    {
+      "nodeType": 2,
+      "nodeCode": "end",
+      "nodeName": "结束",
+      "coordinate": "597,200|597,200",
+      "skipList": []
+    }
+  ]
+}

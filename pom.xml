@@ -68,6 +68,14 @@
 			<artifactId>sms4j-spring-boot-starter</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>org.dromara.warm</groupId>
+			<artifactId>warm-flow-mybatis-sb3-starter</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.dromara.warm</groupId>
+			<artifactId>warm-flow-plugin-modes-sb</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-core</artifactId>
 		</dependency>
