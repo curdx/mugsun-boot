@@ -23,8 +23,12 @@ public class CodeGenerator {
 			.setBasePackage("com.mugsun.boot.gen");
 		config.getStrategyConfig()
 			.setGenerateTable("gen_product")
-			.setTablePrefix("gen_");
-		config.enableEntity();
+			.setTablePrefix("gen_")
+			.setIgnoreColumns("id", "create_time", "update_time", "is_deleted");
+		// 实体继承统一基类：主键雪花 flexId + 审计时间 + 逻辑删除，避免裸 @Id 导致新增缺主键
+		config.enableEntity()
+			.setSuperClass(com.mugsun.core.mybatis.base.BaseEntity.class)
+			.setOverwriteEnable(true);
 		config.enableMapper();
 		config.enableService();
 		config.enableServiceImpl();
