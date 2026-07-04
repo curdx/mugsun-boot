@@ -1,5 +1,6 @@
 package com.mugsun.boot;
 
+import com.alicp.jetcache.anno.config.EnableMethodCache;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -11,6 +12,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * 隔离，确保 starter 能力仅经自动装配（AutoConfiguration.imports）生效，而非依赖组件扫描。
  */
 @SpringBootApplication
+@EnableMethodCache(basePackages = "com.mugsun.boot")
 @MapperScan("com.mugsun.boot.**.mapper")
 public class MugsunApplication {
 

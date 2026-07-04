@@ -29,3 +29,12 @@ sa-token:
 mybatis-flex:
   global-config:
     print-banner: false
+jetcache:
+  statIntervalMinutes: 0
+  areaInCacheName: false
+  local:
+    default:
+      type: linkedhashmap
+      keyConvertor: jackson
+      limit: 500
+      expireAfterWriteInMillis: 3600000

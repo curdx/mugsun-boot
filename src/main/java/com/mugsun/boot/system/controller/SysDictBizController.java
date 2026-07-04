@@ -1,0 +1,59 @@
+package com.mugsun.boot.system.controller;
+
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import com.mugsun.boot.system.entity.SysDictBiz;
+import com.mugsun.boot.system.mapper.SysDictBizMapper;
+import com.mugsun.core.tool.api.R;
+import com.mugsun.core.tool.tree.TreeUtil;
+import com.mybatisflex.core.query.QueryWrapper;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * 业务字典管理（租户隔离于 G8 多租户阶段接入）
+ */
+@RestController
+@RequestMapping("/system/dict-biz")
+@SaCheckLogin
+public class SysDictBizController {
+
+	private final SysDictBizMapper dictBizMapper;
+
+	public SysDictBizController(SysDictBizMapper dictBizMapper) {
+		this.dictBizMapper = dictBizMapper;
+	}
+
+	@GetMapping("/tree")
+	public R<List<SysDictBiz>> tree() {
+		List<SysDictBiz> all = dictBizMapper.selectListByQuery(QueryWrapper.create().orderBy("sort", true));
+		return R.data(TreeUtil.build(all, 0L));
+	}
+
+	@GetMapping("/dictionary")
+	public R<List<SysDictBiz>> dictionary(@RequestParam String code) {
+		return R.data(dictBizMapper.selectListByQuery(QueryWrapper.create()
+			.eq("code", code).ne("parent_id", 0L).orderBy("sort", true)));
+	}
+
+	@GetMapping("/detail")
+	public R<SysDictBiz> detail(@RequestParam Long id) {
+		return R.data(dictBizMapper.selectOneById(id));
+	}
+
+	@PostMapping("/submit")
+	public R<Void> submit(@RequestBody SysDictBiz dict) {
+		if (dict.getId() == null) {
+			dictBizMapper.insertSelective(dict);
+		} else {
+			dictBizMapper.update(dict);
+		}
+		return R.success("操作成功");
+	}
+
+	@PostMapping("/remove")
+	public R<Void> remove(@RequestParam Long id) {
+		dictBizMapper.deleteById(id);
+		return R.success("删除成功");
+	}
+}

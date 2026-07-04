@@ -52,6 +52,10 @@
 			<artifactId>spring-security-crypto</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>com.alicp.jetcache</groupId>
+			<artifactId>jetcache-autoconfigure</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-core</artifactId>
 		</dependency>
