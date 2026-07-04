@@ -5,6 +5,7 @@ import org.dromara.x.file.storage.spring.EnableFileStorage;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 /**
  * Mugsun 单体版启动入口
@@ -13,6 +14,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * 隔离，确保 starter 能力仅经自动装配（AutoConfiguration.imports）生效，而非依赖组件扫描。
  */
 @SpringBootApplication
+@EnableAsync
 @EnableFileStorage
 @EnableMethodCache(basePackages = "com.mugsun.boot")
 @MapperScan("com.mugsun.boot.**.mapper")
