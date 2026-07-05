@@ -7,8 +7,12 @@ import com.mugsun.boot.datascope.DataScopeContext;
 import com.mugsun.boot.log.AuditService;
 import com.mugsun.boot.log.OperationLog;
 import com.mugsun.boot.system.entity.SysUser;
+import com.mugsun.boot.system.entity.SysUserRole;
 import com.mugsun.boot.system.excel.SysUserExcel;
 import com.mugsun.boot.system.mapper.SysUserMapper;
+import com.mugsun.boot.system.mapper.SysUserRoleMapper;
+import com.mugsun.boot.system.payload.StatusParam;
+import com.mugsun.boot.system.payload.UserGrantParam;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.web.excel.ExcelUtil;
 import com.mybatisflex.core.paginate.Page;
@@ -31,11 +35,14 @@ public class SysUserController {
 	private final SysUserMapper userMapper;
 	private final PasswordEncoder passwordEncoder;
 	private final AuditService auditService;
+	private final SysUserRoleMapper userRoleMapper;
 
-	public SysUserController(SysUserMapper userMapper, PasswordEncoder passwordEncoder, AuditService auditService) {
+	public SysUserController(SysUserMapper userMapper, PasswordEncoder passwordEncoder, AuditService auditService,
+							 SysUserRoleMapper userRoleMapper) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.auditService = auditService;
+		this.userRoleMapper = userRoleMapper;
 	}
 
 	@GetMapping("/page")
@@ -136,5 +143,56 @@ public class SysUserController {
 			inserted++;
 		}
 		return R.success("导入完成，新增 " + inserted + " 条");
+	}
+
+	/** 重置密码为默认 123456（批量） */
+	@PostMapping("/reset-password")
+	@OperationLog("重置密码")
+	public R<Void> resetPassword(@RequestBody List<Long> ids) {
+		for (Long id : ids) {
+			SysUser user = new SysUser();
+			user.setId(id);
+			user.setPassword(passwordEncoder.encode("123456"));
+			userMapper.update(user);
+		}
+		return R.success("密码已重置为 123456");
+	}
+
+	/** 启用 / 停用用户 */
+	@PostMapping("/status")
+	@OperationLog("变更用户状态")
+	public R<Void> status(@RequestBody StatusParam param) {
+		SysUser user = new SysUser();
+		user.setId(param.id());
+		user.setStatus(param.status());
+		userMapper.update(user);
+		return R.success("操作成功");
+	}
+
+	/** 查询用户已授权角色 id 集合（授权回显） */
+	@GetMapping("/role-ids")
+	public R<List<Long>> roleIds(@RequestParam Long userId) {
+		List<Long> ids = userRoleMapper
+			.selectListByQuery(QueryWrapper.create().eq("user_id", userId))
+			.stream()
+			.map(SysUserRole::getRoleId)
+			.toList();
+		return R.data(ids);
+	}
+
+	/** 用户授权角色 */
+	@PostMapping("/grant")
+	@OperationLog("用户授权")
+	public R<Void> grant(@RequestBody UserGrantParam param) {
+		userRoleMapper.deleteByQuery(QueryWrapper.create().eq("user_id", param.userId()));
+		if (param.roleIds() != null) {
+			for (Long roleId : param.roleIds()) {
+				SysUserRole userRole = new SysUserRole();
+				userRole.setUserId(param.userId());
+				userRole.setRoleId(roleId);
+				userRoleMapper.insert(userRole);
+			}
+		}
+		return R.success("授权成功");
 	}
 }
