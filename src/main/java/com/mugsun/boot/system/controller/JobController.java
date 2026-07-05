@@ -8,37 +8,110 @@ import tech.powerjob.common.enums.ExecuteType;
 import tech.powerjob.common.enums.ProcessorType;
 import tech.powerjob.common.enums.TimeExpressionType;
 import tech.powerjob.common.request.http.SaveJobInfoRequest;
+import tech.powerjob.common.request.query.InstancePageQuery;
+import tech.powerjob.common.response.InstanceInfoDTO;
+import tech.powerjob.common.response.JobInfoDTO;
+
+import java.util.List;
 
 /**
- * 任务调度：通过 PowerJob OpenAPI 新建任务并触发执行。
+ * 定时任务管理：代理 PowerJob OpenAPI，任务 CRUD / 触发 / 启停 / 执行日志。
+ * 处理器固定内置 DemoProcessor，任务以「名称 + 时间表达式」维度维护。
  */
 @RestController
 @RequestMapping("/system/job")
 @SaCheckLogin
 public class JobController {
 
+	private static final String PROCESSOR = "com.mugsun.boot.job.DemoProcessor";
+
+	private volatile PowerJobClient client;
+
 	private PowerJobClient client() {
-		return new PowerJobClient("127.0.0.1:7700", "mugsun", "mugsun");
+		if (client == null) {
+			synchronized (this) {
+				if (client == null) {
+					client = new PowerJobClient("127.0.0.1:7700", "mugsun", "mugsun");
+				}
+			}
+		}
+		return client;
 	}
 
-	/** 新建示例任务并立即触发一次，返回执行实例ID */
-	@PostMapping("/demo")
-	public R<Long> demo() {
-		PowerJobClient client = client();
+	/** 任务列表（过滤已删除 status=99） */
+	@GetMapping("/list")
+	public R<List<JobInfoDTO>> list() {
+		List<JobInfoDTO> jobs = client().fetchAllJob().getData();
+		return R.data(jobs == null ? List.of()
+			: jobs.stream().filter(j -> j.getStatus() == null || j.getStatus() != 99).toList());
+	}
+
+	/** 新建 / 更新任务 */
+	@PostMapping("/save")
+	public R<Long> save(@RequestBody JobParam param) {
 		SaveJobInfoRequest req = new SaveJobInfoRequest();
-		req.setJobName("mugsun-demo-job");
+		if (param.id() != null) {
+			req.setId(param.id());
+		}
+		req.setJobName(param.jobName());
+		req.setJobDescription(param.jobDescription());
 		req.setProcessorType(ProcessorType.BUILT_IN);
-		req.setProcessorInfo("com.mugsun.boot.job.DemoProcessor");
+		req.setProcessorInfo(PROCESSOR);
 		req.setExecuteType(ExecuteType.STANDALONE);
-		req.setTimeExpressionType(TimeExpressionType.API);
-		Long jobId = client.saveJob(req).getData();
-		Long instanceId = client.runJob(jobId, "mugsun 手动触发", 0L).getData();
-		return R.data(instanceId);
+		TimeExpressionType type = TimeExpressionType.valueOf(
+			param.timeExpressionType() == null || param.timeExpressionType().isBlank() ? "API" : param.timeExpressionType());
+		req.setTimeExpressionType(type);
+		if (type == TimeExpressionType.CRON) {
+			req.setTimeExpression(param.timeExpression());
+		}
+		return R.data(client().saveJob(req).getData());
 	}
 
-	/** 查询执行实例状态（PowerJob InstanceStatus：3 运行中 / 5 成功 / 4 失败） */
+	/** 立即执行一次，返回执行实例ID */
+	@PostMapping("/run/{jobId}")
+	public R<Long> run(@PathVariable Long jobId) {
+		return R.data(client().runJob(jobId, "手动触发", 0L).getData());
+	}
+
+	/** 启用任务 */
+	@PostMapping("/enable/{jobId}")
+	public R<Void> enable(@PathVariable Long jobId) {
+		client().enableJob(jobId);
+		return R.success("已启用");
+	}
+
+	/** 停用任务 */
+	@PostMapping("/disable/{jobId}")
+	public R<Void> disable(@PathVariable Long jobId) {
+		client().disableJob(jobId);
+		return R.success("已停用");
+	}
+
+	/** 删除任务 */
+	@PostMapping("/delete/{jobId}")
+	public R<Void> delete(@PathVariable Long jobId) {
+		client().deleteJob(jobId);
+		return R.success("删除成功");
+	}
+
+	/** 任务执行日志（最近实例） */
+	@GetMapping("/instances")
+	public R<List<InstanceInfoDTO>> instances(@RequestParam Long jobId) {
+		InstancePageQuery query = new InstancePageQuery();
+		query.setJobIdEq(jobId);
+		query.setIndex(0);
+		query.setPageSize(20);
+		return R.data(client().queryInstanceInfo(query).getData().getData());
+	}
+
+	/** 查询执行实例状态（3 运行中 / 5 成功 / 4 失败） */
 	@GetMapping("/status")
 	public R<Integer> status(@RequestParam Long instanceId) {
 		return R.data(client().fetchInstanceStatus(instanceId).getData());
+	}
+
+	/** 任务参数：id 为空则新建，时间表达式类型 API（手动）/ CRON（定时） */
+	public record JobParam(Long id, String jobName, String jobDescription,
+						   String timeExpressionType, String timeExpression) {
 	}
 }
