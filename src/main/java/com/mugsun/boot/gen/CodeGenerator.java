@@ -24,15 +24,16 @@ public class CodeGenerator {
 		config.getStrategyConfig()
 			.setGenerateTable("gen_product")
 			.setTablePrefix("gen_")
-			.setIgnoreColumns("id", "create_time", "update_time", "is_deleted");
-		// 实体继承统一基类：主键雪花 flexId + 审计时间 + 逻辑删除，避免裸 @Id 导致新增缺主键
-		config.enableEntity()
-			.setSuperClass(com.mugsun.core.mybatis.base.BaseEntity.class)
-			.setOverwriteEnable(true);
-		config.enableMapper();
-		config.enableService();
-		config.enableServiceImpl();
-		config.enableController();
+			.setColumnConfig("gen_product", com.mybatisflex.codegen.config.ColumnConfig.create()
+				.setColumnName("id")
+				.setKeyType(com.mybatisflex.annotation.KeyType.Generator)
+				.setKeyValue("flexId"));
+		// 保留主键列（否则模板取不到主键，controller 生成为空）；id 配雪花 flexId，常规 save 不传 id 自动生成
+		config.enableEntity().setOverwriteEnable(true);
+		config.enableMapper().setOverwriteEnable(true);
+		config.enableService().setOverwriteEnable(true);
+		config.enableServiceImpl().setOverwriteEnable(true);
+		config.enableController().setOverwriteEnable(true);
 
 		new Generator(dataSource, config).generate();
 		dataSource.close();
