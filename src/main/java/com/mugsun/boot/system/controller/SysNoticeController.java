@@ -55,8 +55,8 @@ public class SysNoticeController {
 	}
 
 	@PostMapping("/remove")
-	public R<Void> remove(@RequestParam Long id) {
-		noticeMapper.deleteById(id);
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		noticeMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
 	}
 }

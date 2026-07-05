@@ -7,6 +7,8 @@ import com.mugsun.core.tool.api.R;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.dromara.x.file.storage.core.FileInfo;
 import org.dromara.x.file.storage.core.FileStorageService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -19,6 +21,8 @@ import java.util.List;
 @RequestMapping("/system/file")
 @SaCheckLogin
 public class FileController {
+
+	private static final Logger log = LoggerFactory.getLogger(FileController.class);
 
 	private final FileStorageService fileStorageService;
 	private final SysAttachMapper attachMapper;
@@ -51,12 +55,25 @@ public class FileController {
 	}
 
 	@PostMapping("/remove")
-	public R<Void> remove(@RequestParam Long id) {
-		SysAttach attach = attachMapper.selectOneById(id);
-		if (attach != null && attach.getUrl() != null) {
-			fileStorageService.delete(attach.getUrl());
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		for (Long id : ids) {
+			SysAttach attach = attachMapper.selectOneById(id);
+			if (attach != null && attach.getPath() != null) {
+				// 物理删除尽力而为：未实现 FileRecorder 时按存储信息构造 FileInfo 删除，失败不阻塞登记删除
+				try {
+					FileInfo fileInfo = new FileInfo();
+					fileInfo.setPlatform(attach.getPlatform());
+					fileInfo.setBasePath("");
+					fileInfo.setPath(attach.getPath());
+					fileInfo.setFilename(attach.getFilename());
+					fileInfo.setUrl(attach.getUrl());
+					fileStorageService.delete(fileInfo);
+				} catch (Exception e) {
+					log.warn("附件物理删除失败（仅移除登记）id={}, url={}: {}", id, attach.getUrl(), e.getMessage());
+				}
+			}
+			attachMapper.deleteById(id);
 		}
-		attachMapper.deleteById(id);
 		return R.success("删除成功");
 	}
 }
