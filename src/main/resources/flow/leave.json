@@ -24,7 +24,7 @@
       "nodeType": 1,
       "nodeCode": "approve",
       "nodeName": "部门审批",
-      "permissionFlag": "1",
+      "permissionFlag": "admin",
       "nodeRatio": "0",
       "coordinate": "420,200|420,200",
       "skipList": [
