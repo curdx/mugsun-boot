@@ -26,16 +26,19 @@ public class FileController {
 
 	private final FileStorageService fileStorageService;
 	private final SysAttachMapper attachMapper;
+	private final com.mugsun.boot.system.service.OssService ossService;
 
-	public FileController(FileStorageService fileStorageService, SysAttachMapper attachMapper) {
+	public FileController(FileStorageService fileStorageService, SysAttachMapper attachMapper,
+						  com.mugsun.boot.system.service.OssService ossService) {
 		this.fileStorageService = fileStorageService;
 		this.attachMapper = attachMapper;
+		this.ossService = ossService;
 	}
 
-	/** 上传文件并登记附件 */
+	/** 上传文件并登记附件（落到当前启用的存储配置对应平台） */
 	@PostMapping("/upload")
 	public R<SysAttach> upload(@RequestParam("file") MultipartFile file) {
-		FileInfo info = fileStorageService.of(file).upload();
+		FileInfo info = fileStorageService.of(file).setPlatform(ossService.activePlatform()).upload();
 		SysAttach attach = new SysAttach();
 		attach.setName(info.getOriginalFilename());
 		attach.setUrl(info.getUrl());
