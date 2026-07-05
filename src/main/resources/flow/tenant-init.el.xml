@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<flow>
+	<!-- 租户初始化编排链：建角色 → 建部门 → 建管理员 -->
+	<chain name="tenantInitChain">
+		THEN(initRole, initDept, initAdmin);
+	</chain>
+</flow>

@@ -31,7 +31,7 @@ mybatis-flex:
     print-banner: false
     tenant-column: tenant_id
 jetcache:
-  statIntervalMinutes: 0
+  statIntervalMinutes: 1
   areaInCacheName: false
   local:
     default:
@@ -67,3 +67,5 @@ powerjob:
     protocol: http
     store-strategy: disk
     port: 27777
+liteflow:
+  rule-source: flow/*.el.xml
