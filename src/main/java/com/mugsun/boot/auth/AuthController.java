@@ -9,12 +9,9 @@ import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.tenant.TenantManager;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -33,16 +30,16 @@ public class AuthController {
 	}
 
 	@PostMapping("/login")
-	public R<String> login(@RequestParam(defaultValue = "000000") String tenantId,
-						   @RequestParam String username, @RequestParam String password) {
+	public R<Map<String, Object>> login(@RequestBody LoginDTO dto) {
+		String tenantId = (dto.getTenantId() == null || dto.getTenantId().isBlank()) ? "000000" : dto.getTenantId();
 		SysUser user = TenantManager.withoutTenantCondition(() ->
-			userMapper.selectOneByQuery(QueryWrapper.create().eq("tenant_id", tenantId).eq("username", username)));
-		if (user == null || !passwordEncoder.matches(password, user.getPassword())) {
+			userMapper.selectOneByQuery(QueryWrapper.create().eq("tenant_id", tenantId).eq("username", dto.getUsername())));
+		if (user == null || !passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
 			throw new ServiceException("账号或密码错误");
 		}
 		StpUtil.login(user.getId());
 		StpUtil.getSession().set("tenantId", user.getTenantId());
-		return R.data(StpUtil.getTokenValue());
+		return R.data(Map.of("token", StpUtil.getTokenValue()));
 	}
 
 	@PostMapping("/logout")
@@ -56,9 +53,11 @@ public class AuthController {
 	public R<Map<String, Object>> info() {
 		SysUser user = userMapper.selectOneById(StpUtil.getLoginIdAsLong());
 		return R.data(Map.of(
-			"id", user.getId(),
-			"username", user.getUsername(),
-			"nickname", user.getNickname()
+			"userId", user.getId(),
+			"userName", user.getUsername(),
+			"nickName", user.getNickname() == null ? user.getUsername() : user.getNickname(),
+			"roles", List.of("R_SUPER"),
+			"buttons", List.of("*")
 		));
 	}
 }

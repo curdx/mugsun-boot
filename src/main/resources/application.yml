@@ -22,7 +22,7 @@ management:
       exposure:
         include: health,info
 sa-token:
-  token-name: satoken
+  token-name: Authorization
   timeout: 2592000
   token-style: uuid
   is-log: false
