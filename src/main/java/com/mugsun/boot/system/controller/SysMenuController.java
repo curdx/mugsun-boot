@@ -46,8 +46,8 @@ public class SysMenuController {
 	}
 
 	@PostMapping("/remove")
-	public R<Void> remove(@RequestParam Long id) {
-		menuMapper.deleteById(id);
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		menuMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
 	}
 }

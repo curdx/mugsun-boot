@@ -68,9 +68,20 @@ public class SysRoleController {
 	}
 
 	@PostMapping("/remove")
-	public R<Void> remove(@RequestParam Long id) {
-		roleMapper.deleteById(id);
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		roleMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
+	}
+
+	/** 查询角色已授权的菜单 id 集合（授权树回显） */
+	@GetMapping("/menu-ids")
+	public R<List<Long>> menuIds(@RequestParam Long roleId) {
+		List<Long> ids = roleMenuMapper
+			.selectListByQuery(QueryWrapper.create().eq("role_id", roleId))
+			.stream()
+			.map(SysRoleMenu::getMenuId)
+			.toList();
+		return R.data(ids);
 	}
 
 	/** 角色授权菜单 */
