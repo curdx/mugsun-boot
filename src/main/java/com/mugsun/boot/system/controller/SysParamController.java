@@ -54,12 +54,14 @@ public class SysParamController {
 	}
 
 	@PostMapping("/remove")
-	public R<Void> remove(@RequestParam Long id) {
-		SysParam param = paramMapper.selectOneById(id);
-		paramMapper.deleteById(id);
-		if (param != null) {
-			paramService.evict(param.getParamKey());
-		}
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		ids.forEach(id -> {
+			SysParam param = paramMapper.selectOneById(id);
+			paramMapper.deleteById(id);
+			if (param != null) {
+				paramService.evict(param.getParamKey());
+			}
+		});
 		return R.success("删除成功");
 	}
 }

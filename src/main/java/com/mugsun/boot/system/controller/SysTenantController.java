@@ -43,8 +43,8 @@ public class SysTenantController {
 	}
 
 	@PostMapping("/remove")
-	public R<Void> remove(@RequestParam Long id) {
-		tenantMapper.deleteById(id);
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		tenantMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
 	}
 }

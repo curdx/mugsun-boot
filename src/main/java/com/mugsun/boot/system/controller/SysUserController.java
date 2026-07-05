@@ -14,6 +14,8 @@ import com.mybatisflex.core.query.QueryWrapper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /**
  * 用户管理
  */
@@ -89,8 +91,8 @@ public class SysUserController {
 	}
 
 	@PostMapping("/remove")
-	public R<Void> remove(@RequestParam Long id) {
-		userMapper.deleteById(id);
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		userMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
 	}
 }

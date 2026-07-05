@@ -52,8 +52,8 @@ public class SysDictBizController {
 	}
 
 	@PostMapping("/remove")
-	public R<Void> remove(@RequestParam Long id) {
-		dictBizMapper.deleteById(id);
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		dictBizMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
 	}
 }

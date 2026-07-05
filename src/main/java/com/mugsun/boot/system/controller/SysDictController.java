@@ -56,12 +56,14 @@ public class SysDictController {
 	}
 
 	@PostMapping("/remove")
-	public R<Void> remove(@RequestParam Long id) {
-		SysDict dict = dictMapper.selectOneById(id);
-		dictMapper.deleteById(id);
-		if (dict != null) {
-			dictService.evict(dict.getCode());
-		}
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		ids.forEach(id -> {
+			SysDict dict = dictMapper.selectOneById(id);
+			dictMapper.deleteById(id);
+			if (dict != null) {
+				dictService.evict(dict.getCode());
+			}
+		});
 		return R.success("删除成功");
 	}
 }
