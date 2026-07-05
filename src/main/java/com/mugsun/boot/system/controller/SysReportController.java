@@ -30,10 +30,24 @@ public class SysReportController {
 			+ "FROM sys_user WHERE is_deleted = 0 GROUP BY tenant_id"
 	);
 
+	/** 数据集展示名（供设计端下拉） */
+	private static final Map<String, String> DATASET_LABELS = Map.of(
+		"user_status", "用户状态分布",
+		"tenant_user", "租户用户数"
+	);
+
 	private final SysReportMapper reportMapper;
 
 	public SysReportController(SysReportMapper reportMapper) {
 		this.reportMapper = reportMapper;
+	}
+
+	/** 可选内置数据集列表 */
+	@GetMapping("/datasets")
+	public R<List<Map<String, String>>> datasets() {
+		return R.data(DATASET_LABELS.entrySet().stream()
+			.map(e -> Map.of("key", e.getKey(), "label", e.getValue()))
+			.toList());
 	}
 
 	@GetMapping("/list")
@@ -57,8 +71,8 @@ public class SysReportController {
 		return R.success("操作成功");
 	}
 
-	@PostMapping("/remove")
-	public R<Void> remove(@RequestParam Long id) {
+	@PostMapping("/remove/{id}")
+	public R<Void> remove(@PathVariable Long id) {
 		reportMapper.deleteById(id);
 		return R.success("删除成功");
 	}
