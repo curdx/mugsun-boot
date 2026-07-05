@@ -8,6 +8,10 @@ import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * 岗位管理
  */
@@ -28,6 +32,22 @@ public class SysPostController {
 		return R.data(postMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("sort", true)));
 	}
 
+	/** 岗位下拉选项（value/label 契约） */
+	@GetMapping("/select")
+	public R<List<Map<String, Object>>> select() {
+		List<Map<String, Object>> options = postMapper
+			.selectListByQuery(QueryWrapper.create().orderBy("sort", true))
+			.stream()
+			.map(post -> {
+				Map<String, Object> option = new HashMap<>();
+				option.put("value", post.getId());
+				option.put("label", post.getPostName());
+				return option;
+			})
+			.toList();
+		return R.data(options);
+	}
+
 	@GetMapping("/detail")
 	public R<SysPost> detail(@RequestParam Long id) {
 		return R.data(postMapper.selectOneById(id));
@@ -44,8 +64,8 @@ public class SysPostController {
 	}
 
 	@PostMapping("/remove")
-	public R<Void> remove(@RequestParam Long id) {
-		postMapper.deleteById(id);
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		postMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
 	}
 }

@@ -8,7 +8,9 @@ import com.mugsun.core.tool.tree.TreeUtil;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 部门管理
@@ -30,6 +32,22 @@ public class SysDeptController {
 		return R.data(TreeUtil.build(all, 0L));
 	}
 
+	/** 部门下拉选项（value/label 契约，供上级部门选择等场景） */
+	@GetMapping("/select")
+	public R<List<Map<String, Object>>> select() {
+		List<Map<String, Object>> options = deptMapper
+			.selectListByQuery(QueryWrapper.create().orderBy("sort", true))
+			.stream()
+			.map(dept -> {
+				Map<String, Object> option = new HashMap<>();
+				option.put("value", dept.getId());
+				option.put("label", dept.getDeptName());
+				return option;
+			})
+			.toList();
+		return R.data(options);
+	}
+
 	@GetMapping("/detail")
 	public R<SysDept> detail(@RequestParam Long id) {
 		return R.data(deptMapper.selectOneById(id));
@@ -46,8 +64,8 @@ public class SysDeptController {
 	}
 
 	@PostMapping("/remove")
-	public R<Void> remove(@RequestParam Long id) {
-		deptMapper.deleteById(id);
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		deptMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
 	}
 }
