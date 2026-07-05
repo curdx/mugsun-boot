@@ -7,9 +7,11 @@ import com.mugsun.boot.datascope.DataScopeContext;
 import com.mugsun.boot.log.AuditService;
 import com.mugsun.boot.log.OperationLog;
 import com.mugsun.boot.system.entity.SysUser;
+import com.mugsun.boot.system.entity.SysDept;
 import com.mugsun.boot.system.entity.SysUserRole;
 import com.mugsun.boot.system.excel.SysUserExcel;
 import com.mugsun.boot.system.mapper.SysUserMapper;
+import com.mugsun.boot.system.mapper.SysDeptMapper;
 import com.mugsun.boot.system.mapper.SysUserRoleMapper;
 import com.mugsun.boot.system.payload.StatusParam;
 import com.mugsun.boot.system.payload.UserGrantParam;
@@ -22,7 +24,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 用户管理
@@ -36,13 +42,15 @@ public class SysUserController {
 	private final PasswordEncoder passwordEncoder;
 	private final AuditService auditService;
 	private final SysUserRoleMapper userRoleMapper;
+	private final SysDeptMapper deptMapper;
 
 	public SysUserController(SysUserMapper userMapper, PasswordEncoder passwordEncoder, AuditService auditService,
-							 SysUserRoleMapper userRoleMapper) {
+							 SysUserRoleMapper userRoleMapper, SysDeptMapper deptMapper) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.auditService = auditService;
 		this.userRoleMapper = userRoleMapper;
+		this.deptMapper = deptMapper;
 	}
 
 	@GetMapping("/page")
@@ -50,12 +58,15 @@ public class SysUserController {
 	public R<Page<SysUser>> page(@RequestParam(defaultValue = "1") long pageNum,
 								 @RequestParam(defaultValue = "10") long pageSize) {
 		QueryWrapper query = QueryWrapper.create().orderBy("id", false);
-		// 行级数据权限：本部门 / 仅本人
+		// 行级数据权限：1全部 / 2本部门 / 3本部门及子部门 / 4仅本人
 		DataScopeContext.Scope scope = DataScopeContext.get();
 		if (scope != null && scope.dataScope() != null) {
-			if (scope.dataScope() == 2 && scope.deptId() != null) {
+			int ds = scope.dataScope();
+			if (ds == 2 && scope.deptId() != null) {
 				query.and("dept_id = ?", scope.deptId());
-			} else if (scope.dataScope() == 3 && scope.userId() != null) {
+			} else if (ds == 3 && scope.deptId() != null) {
+				query.in("dept_id", subtreeDeptIds(scope.deptId()));
+			} else if (ds == 4 && scope.userId() != null) {
 				query.and("id = ?", scope.userId());
 			}
 		}
@@ -63,6 +74,24 @@ public class SysUserController {
 		// 密码脱敏
 		page.getRecords().forEach(u -> u.setPassword(null));
 		return R.data(page);
+	}
+
+	/** 本部门及子部门：以 parent_id 关系向下广度遍历得到部门子树 id 集合（含自身） */
+	private List<Long> subtreeDeptIds(Long rootId) {
+		List<SysDept> all = deptMapper.selectAll();
+		Set<Long> result = new java.util.HashSet<>();
+		Deque<Long> stack = new ArrayDeque<>();
+		stack.push(rootId);
+		result.add(rootId);
+		while (!stack.isEmpty()) {
+			Long cur = stack.pop();
+			for (SysDept d : all) {
+				if (cur.equals(d.getParentId()) && result.add(d.getId())) {
+					stack.push(d.getId());
+				}
+			}
+		}
+		return new ArrayList<>(result);
 	}
 
 	@GetMapping("/detail")

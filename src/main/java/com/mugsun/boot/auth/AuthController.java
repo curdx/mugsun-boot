@@ -31,6 +31,9 @@ public class AuthController {
 
 	@PostMapping("/login")
 	public R<Map<String, Object>> login(@RequestBody LoginDTO dto) {
+		if (dto.getUsername() == null || dto.getUsername().isBlank()) {
+			throw new ServiceException("账号或密码错误");
+		}
 		String tenantId = (dto.getTenantId() == null || dto.getTenantId().isBlank()) ? "000000" : dto.getTenantId();
 		SysUser user = TenantManager.withoutTenantCondition(() ->
 			userMapper.selectOneByQuery(QueryWrapper.create().eq("tenant_id", tenantId).eq("username", dto.getUsername())));
