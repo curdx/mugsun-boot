@@ -7,12 +7,16 @@ import com.mugsun.boot.datascope.DataScopeContext;
 import com.mugsun.boot.log.AuditService;
 import com.mugsun.boot.log.OperationLog;
 import com.mugsun.boot.system.entity.SysUser;
+import com.mugsun.boot.system.excel.SysUserExcel;
 import com.mugsun.boot.system.mapper.SysUserMapper;
 import com.mugsun.core.tool.api.R;
+import com.mugsun.core.web.excel.ExcelUtil;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -94,5 +98,43 @@ public class SysUserController {
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		userMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
+	}
+
+	@GetMapping("/export")
+	@SaCheckPermission("sys:user:list")
+	public void export(HttpServletResponse response) {
+		List<SysUserExcel> rows = userMapper.selectListByQuery(QueryWrapper.create().orderBy("id", false))
+			.stream().map(user -> {
+				SysUserExcel row = new SysUserExcel();
+				row.setUsername(user.getUsername());
+				row.setNickname(user.getNickname());
+				row.setStatus(user.getStatus());
+				return row;
+			}).toList();
+		ExcelUtil.export(response, "用户数据", "用户", rows, SysUserExcel.class);
+	}
+
+	@PostMapping("/import")
+	@OperationLog("导入用户")
+	public R<Void> importUser(MultipartFile file) {
+		List<SysUserExcel> rows = ExcelUtil.read(file, SysUserExcel.class);
+		int inserted = 0;
+		for (SysUserExcel row : rows) {
+			String username = row.getUsername() == null ? null : row.getUsername().trim();
+			if (username == null || username.isEmpty()) {
+				continue;
+			}
+			if (userMapper.selectCountByQuery(QueryWrapper.create().eq("username", username)) > 0) {
+				continue;
+			}
+			SysUser user = new SysUser();
+			user.setUsername(username);
+			user.setNickname(row.getNickname());
+			user.setStatus(row.getStatus() == null ? 1 : row.getStatus());
+			user.setPassword(passwordEncoder.encode("123456"));
+			userMapper.insert(user);
+			inserted++;
+		}
+		return R.success("导入完成，新增 " + inserted + " 条");
 	}
 }
