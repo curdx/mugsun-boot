@@ -90,4 +90,43 @@ public class AuthController {
 			"buttons", List.of("*")
 		));
 	}
+
+	/** 个人中心：修改昵称 */
+	@PostMapping("/update-info")
+	@SaCheckLogin
+	public R<Void> updateInfo(@RequestBody UpdateInfoDTO dto) {
+		SysUser user = userMapper.selectOneById(StpUtil.getLoginIdAsLong());
+		if (user == null) {
+			throw new ServiceException("用户不存在");
+		}
+		if (dto.nickname() != null && !dto.nickname().isBlank()) {
+			user.setNickname(dto.nickname());
+		}
+		userMapper.update(user);
+		return R.success("修改成功");
+	}
+
+	/** 个人中心：修改密码（校验原密码） */
+	@PostMapping("/update-password")
+	@SaCheckLogin
+	public R<Void> updatePassword(@RequestBody UpdatePasswordDTO dto) {
+		SysUser user = userMapper.selectOneById(StpUtil.getLoginIdAsLong());
+		if (user == null || !passwordEncoder.matches(dto.oldPassword(), user.getPassword())) {
+			throw new ServiceException("原密码错误");
+		}
+		if (dto.newPassword() == null || dto.newPassword().length() < 6) {
+			throw new ServiceException("新密码至少 6 位");
+		}
+		user.setPassword(passwordEncoder.encode(dto.newPassword()));
+		userMapper.update(user);
+		return R.success("密码修改成功");
+	}
+
+	/** 改昵称参数 */
+	public record UpdateInfoDTO(String nickname) {
+	}
+
+	/** 改密参数 */
+	public record UpdatePasswordDTO(String oldPassword, String newPassword) {
+	}
 }
