@@ -43,6 +43,10 @@ public class SysDictBizController {
 
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysDictBiz dict) {
+		// 字典类型无键值：dictKey 兜底空串，避免 NOT NULL 约束报错
+		if (dict.getDictKey() == null) {
+			dict.setDictKey("");
+		}
 		if (dict.getId() == null) {
 			dictBizMapper.insertSelective(dict);
 		} else {

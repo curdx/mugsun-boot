@@ -46,6 +46,10 @@ public class SysDictController {
 
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysDict dict) {
+		// 字典类型无键值：dictKey 兜底空串，避免 NOT NULL 约束报错
+		if (dict.getDictKey() == null) {
+			dict.setDictKey("");
+		}
 		if (dict.getId() == null) {
 			dictMapper.insertSelective(dict);
 		} else {
