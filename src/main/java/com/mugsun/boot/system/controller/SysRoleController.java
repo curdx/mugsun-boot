@@ -10,7 +10,9 @@ import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 角色管理
@@ -32,6 +34,22 @@ public class SysRoleController {
 	public R<Page<SysRole>> page(@RequestParam(defaultValue = "1") long pageNum,
 								 @RequestParam(defaultValue = "10") long pageSize) {
 		return R.data(roleMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("sort", true)));
+	}
+
+	/** 角色下拉选项（value/label 契约样例，供用户授权等场景消费） */
+	@GetMapping("/select")
+	public R<List<Map<String, Object>>> select() {
+		List<Map<String, Object>> options = roleMapper
+			.selectListByQuery(QueryWrapper.create().orderBy("sort", true))
+			.stream()
+			.map(role -> {
+				Map<String, Object> option = new HashMap<>();
+				option.put("value", role.getId());
+				option.put("label", role.getRoleName());
+				return option;
+			})
+			.toList();
+		return R.data(options);
 	}
 
 	@GetMapping("/detail")
