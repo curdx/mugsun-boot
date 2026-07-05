@@ -5,6 +5,7 @@ import com.mugsun.boot.system.entity.SysRole;
 import com.mugsun.boot.system.entity.SysRoleMenu;
 import com.mugsun.boot.system.mapper.SysRoleMapper;
 import com.mugsun.boot.system.mapper.SysRoleMenuMapper;
+import com.mugsun.boot.system.payload.GrantParam;
 import com.mugsun.core.tool.api.R;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -86,13 +87,15 @@ public class SysRoleController {
 
 	/** 角色授权菜单 */
 	@PostMapping("/grant")
-	public R<Void> grant(@RequestParam Long roleId, @RequestBody List<Long> menuIds) {
-		roleMenuMapper.deleteByQuery(QueryWrapper.create().eq("role_id", roleId));
-		for (Long menuId : menuIds) {
-			SysRoleMenu roleMenu = new SysRoleMenu();
-			roleMenu.setRoleId(roleId);
-			roleMenu.setMenuId(menuId);
-			roleMenuMapper.insert(roleMenu);
+	public R<Void> grant(@RequestBody GrantParam param) {
+		roleMenuMapper.deleteByQuery(QueryWrapper.create().eq("role_id", param.roleId()));
+		if (param.menuIds() != null) {
+			for (Long menuId : param.menuIds()) {
+				SysRoleMenu roleMenu = new SysRoleMenu();
+				roleMenu.setRoleId(param.roleId());
+				roleMenu.setMenuId(menuId);
+				roleMenuMapper.insert(roleMenu);
+			}
 		}
 		return R.success("授权成功");
 	}
