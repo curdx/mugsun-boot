@@ -126,7 +126,8 @@ public class AuthController {
 			"nickName", user.getNickname() == null ? user.getUsername() : user.getNickname(),
 			"roles", List.of("R_SUPER"),
 			"buttons", List.of("*"),
-			"needChangePassword", securityPolicyService.needChangePassword(user.getId())
+			"needChangePassword", securityPolicyService.needChangePassword(user.getId()),
+			"watermark", securityPolicyService.isWatermarkEnabled()
 		));
 	}
 

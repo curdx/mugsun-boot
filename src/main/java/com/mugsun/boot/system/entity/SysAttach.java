@@ -18,6 +18,8 @@ public class SysAttach extends BaseEntity {
 	private String contentType;
 	private Long size;
 	private String platform;
+	/** 访问级别：public 公开直取 / private 私有授权下载 */
+	private String access;
 
 	public String getTenantId() {
 		return tenantId;
@@ -89,5 +91,13 @@ public class SysAttach extends BaseEntity {
 
 	public void setPlatform(String platform) {
 		this.platform = platform;
+	}
+
+	public String getAccess() {
+		return access;
+	}
+
+	public void setAccess(String access) {
+		this.access = access;
 	}
 }

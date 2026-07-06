@@ -80,6 +80,10 @@ public class SecurityPolicyService {
 		return v == null || v.isBlank() ? "email" : v.trim();
 	}
 
+	public boolean isWatermarkEnabled() {
+		return boolParam("security.watermark.enabled", false);
+	}
+
 	// ---- 复杂度校验 ----
 	public void validateComplexity(String raw) {
 		if (raw == null || raw.length() < getMinLength()) {

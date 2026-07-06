@@ -35,10 +35,13 @@ public class FileController {
 		this.ossService = ossService;
 	}
 
-	/** 上传文件并登记附件（落到当前启用的存储配置对应平台） */
+	/** 上传文件并登记附件（access=public 公开直取 / private 私有授权下载） */
 	@PostMapping("/upload")
-	public R<SysAttach> upload(@RequestParam("file") MultipartFile file) {
-		FileInfo info = fileStorageService.of(file).setPlatform(ossService.activePlatform()).upload();
+	public R<SysAttach> upload(@RequestParam("file") MultipartFile file,
+							   @RequestParam(defaultValue = "private") String access) {
+		boolean isPublic = "public".equals(access);
+		String folder = isPublic ? "public/" : "private/";
+		FileInfo info = fileStorageService.of(file).setPlatform(ossService.activePlatform()).setPath(folder).upload();
 		SysAttach attach = new SysAttach();
 		attach.setName(info.getOriginalFilename());
 		attach.setUrl(info.getUrl());
@@ -48,8 +51,23 @@ public class FileController {
 		attach.setContentType(info.getContentType());
 		attach.setSize(info.getSize());
 		attach.setPlatform(info.getPlatform());
+		attach.setAccess(isPublic ? "public" : "private");
 		attachMapper.insertSelective(attach);
+		// 私有文件不在响应中直接暴露可访问 url，需走授权下载
+		if (!isPublic) {
+			attach.setUrl(null);
+		}
 		return R.data(attach);
+	}
+
+	/** 授权下载：登录后按 id 获取真实 url（私有文件访问控制入口） */
+	@GetMapping("/download/{id}")
+	public R<String> download(@PathVariable Long id) {
+		SysAttach attach = attachMapper.selectOneById(id);
+		if (attach == null) {
+			throw new com.mugsun.core.tool.exception.ServiceException("附件不存在");
+		}
+		return R.data(attach.getUrl());
 	}
 
 	@GetMapping("/list")
