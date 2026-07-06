@@ -87,3 +87,5 @@ mugsun:
     enabled: true
     show-code: true
     expire-seconds: 300
+  crypto:
+    sm4-key: mugsun-sm4-key16

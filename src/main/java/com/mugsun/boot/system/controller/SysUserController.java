@@ -19,6 +19,7 @@ import com.mugsun.core.tool.api.R;
 import com.mugsun.core.web.excel.ExcelUtil;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
+import com.mybatisflex.core.mask.MaskManager;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -96,7 +97,8 @@ public class SysUserController {
 
 	@GetMapping("/detail")
 	public R<SysUser> detail(@RequestParam Long id) {
-		SysUser user = userMapper.selectOneById(id);
+		// 详情用于编辑回显，需真实手机号：execWithoutMask 跳过脱敏（身份证由 TypeHandler 自动解密）
+		SysUser user = MaskManager.execWithoutMask(() -> userMapper.selectOneById(id));
 		if (user != null) {
 			user.setPassword(null);
 		}

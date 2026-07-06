@@ -1,7 +1,11 @@
 package com.mugsun.boot.system.entity;
 
+import com.mugsun.boot.common.crypto.Sm4TypeHandler;
 import com.mugsun.core.mybatis.base.BaseEntity;
+import com.mybatisflex.annotation.Column;
+import com.mybatisflex.annotation.ColumnMask;
 import com.mybatisflex.annotation.Table;
+import com.mybatisflex.core.mask.Masks;
 
 /**
  * 系统用户
@@ -16,6 +20,12 @@ public class SysUser extends BaseEntity {
 	private Long deptId;
 	private Long postId;
 	private String tenantId;
+	/** 手机号：展示脱敏（Flex 原生 @ColumnMask，超管可 execWithoutMask 看明文） */
+	@ColumnMask(Masks.MOBILE)
+	private String phone;
+	/** 身份证号：SM4 加密存储（TypeHandler 入库加密、查询自动解密） */
+	@Column(typeHandler = Sm4TypeHandler.class)
+	private String idCard;
 
 	public String getUsername() {
 		return username;
@@ -71,5 +81,21 @@ public class SysUser extends BaseEntity {
 
 	public void setTenantId(String tenantId) {
 		this.tenantId = tenantId;
+	}
+
+	public String getPhone() {
+		return phone;
+	}
+
+	public void setPhone(String phone) {
+		this.phone = phone;
+	}
+
+	public String getIdCard() {
+		return idCard;
+	}
+
+	public void setIdCard(String idCard) {
+		this.idCard = idCard;
 	}
 }
