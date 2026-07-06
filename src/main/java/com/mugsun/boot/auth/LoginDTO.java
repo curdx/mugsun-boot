@@ -8,6 +8,8 @@ public class LoginDTO {
 	private String tenantId;
 	private String username;
 	private String password;
+	private String captchaUuid;
+	private String captchaCode;
 
 	public String getTenantId() {
 		return tenantId;
@@ -31,5 +33,21 @@ public class LoginDTO {
 
 	public void setPassword(String password) {
 		this.password = password;
+	}
+
+	public String getCaptchaUuid() {
+		return captchaUuid;
+	}
+
+	public void setCaptchaUuid(String captchaUuid) {
+		this.captchaUuid = captchaUuid;
+	}
+
+	public String getCaptchaCode() {
+		return captchaCode;
+	}
+
+	public void setCaptchaCode(String captchaCode) {
+		this.captchaCode = captchaCode;
 	}
 }

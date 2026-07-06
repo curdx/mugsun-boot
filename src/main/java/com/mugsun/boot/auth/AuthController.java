@@ -29,13 +29,22 @@ public class AuthController {
 	private final PasswordEncoder passwordEncoder;
 	private final LoginLockService loginLockService;
 	private final SysLoginLogMapper loginLogMapper;
+	private final CaptchaService captchaService;
 
 	public AuthController(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
-						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper) {
+						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper,
+						  CaptchaService captchaService) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
 		this.loginLogMapper = loginLogMapper;
+		this.captchaService = captchaService;
+	}
+
+	/** 图形验证码：生成一张，答案入 Redis */
+	@GetMapping("/captcha")
+	public R<CaptchaVO> captcha() {
+		return R.data(captchaService.generate());
 	}
 
 	@PostMapping("/login")
@@ -45,6 +54,7 @@ public class AuthController {
 		if (username == null || username.isBlank()) {
 			throw new ServiceException("账号或密码错误");
 		}
+		captchaService.verify(dto.getCaptchaUuid(), dto.getCaptchaCode());
 		loginLockService.assertNotLocked(username);
 		String tenantId = (dto.getTenantId() == null || dto.getTenantId().isBlank()) ? "000000" : dto.getTenantId();
 		SysUser user = TenantManager.withoutTenantCondition(() ->

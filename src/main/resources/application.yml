@@ -16,6 +16,12 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 0
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 3
+      timeout: 3000ms
 management:
   endpoints:
     web:
@@ -39,6 +45,13 @@ jetcache:
       keyConvertor: jackson
       limit: 500
       expireAfterWriteInMillis: 3600000
+  remote:
+    default:
+      type: redis.lettuce
+      keyConvertor: jackson
+      valueEncoder: java
+      valueDecoder: java
+      uri: redis://localhost:6379/3
 dromara:
   x-file-storage:
     default-platform: local-plus-1
@@ -69,3 +82,8 @@ powerjob:
     port: 27777
 liteflow:
   rule-source: flow/*.el.xml
+mugsun:
+  captcha:
+    enabled: true
+    show-code: true
+    expire-seconds: 300

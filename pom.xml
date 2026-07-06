@@ -65,6 +65,18 @@
 			<artifactId>jetcache-autoconfigure</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>com.alicp.jetcache</groupId>
+			<artifactId>jetcache-starter-redis-lettuce</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-redis</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>cn.hutool</groupId>
+			<artifactId>hutool-captcha</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>org.dromara.x-file-storage</groupId>
 			<artifactId>x-file-storage-spring</artifactId>
 		</dependency>
