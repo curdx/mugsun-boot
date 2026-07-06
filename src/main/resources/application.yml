@@ -89,3 +89,4 @@ mugsun:
     expire-seconds: 300
   crypto:
     sm4-key: mugsun-sm4-key16
+    api-key: mugsun-api-key16
