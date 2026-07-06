@@ -14,6 +14,8 @@ public class SysDataAudit extends BaseEntity {
 	private String beforeData;
 	private String afterData;
 	private String operator;
+	/** 字段级变更内容 JSON：[{label,old,new}] */
+	private String changeContent;
 
 	public String getBizTable() {
 		return bizTable;
@@ -53,5 +55,13 @@ public class SysDataAudit extends BaseEntity {
 
 	public void setOperator(String operator) {
 		this.operator = operator;
+	}
+
+	public String getChangeContent() {
+		return changeContent;
+	}
+
+	public void setChangeContent(String changeContent) {
+		this.changeContent = changeContent;
 	}
 }

@@ -33,4 +33,17 @@ public class DictService {
 	@CacheInvalidate(name = "dict:item:", key = "#code")
 	public void evict(String code) {
 	}
+
+	/** 按编码+键翻译为字典标签（找不到原样返回值） */
+	public String translate(String code, String value) {
+		if (value == null) {
+			return null;
+		}
+		for (SysDict item : listItems(code)) {
+			if (value.equals(item.getDictKey())) {
+				return item.getDictValue();
+			}
+		}
+		return value;
+	}
 }

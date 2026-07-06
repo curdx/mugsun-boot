@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.entity;
 
 import com.mugsun.boot.common.crypto.Sm4TypeHandler;
+import com.mugsun.boot.log.AuditField;
 import com.mugsun.core.mybatis.base.BaseEntity;
 import com.mybatisflex.annotation.Column;
 import com.mybatisflex.annotation.ColumnMask;
@@ -15,16 +16,21 @@ public class SysUser extends BaseEntity {
 
 	private String username;
 	private String password;
+	@AuditField("昵称")
 	private String nickname;
+	@AuditField(value = "状态", dict = "user_status")
 	private Integer status;
 	private Long deptId;
 	private Long postId;
 	private String tenantId;
 	/** 手机号：展示脱敏（Flex 原生 @ColumnMask，超管可 execWithoutMask 看明文） */
+	@AuditField("手机号")
 	@ColumnMask(Masks.MOBILE)
 	private String phone;
-	/** 身份证号：SM4 加密存储（TypeHandler 入库加密、查询自动解密） */
+	/** 身份证号：SM4 加密存储（TypeHandler 入库加密、查询解密）+ 展示脱敏；审计快照取脱敏值不落明文 */
+	@AuditField("身份证")
 	@Column(typeHandler = Sm4TypeHandler.class)
+	@ColumnMask(Masks.ID_CARD_NUMBER)
 	private String idCard;
 
 	public String getUsername() {
