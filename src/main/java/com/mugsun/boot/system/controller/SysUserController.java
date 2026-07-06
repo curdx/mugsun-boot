@@ -108,6 +108,20 @@ public class SysUserController {
 		return R.data(user);
 	}
 
+	/** 用户下拉选项（value=id / label=昵称，供收件人选择等场景，仅启用用户） */
+	@GetMapping("/select")
+	public R<List<java.util.Map<String, Object>>> select() {
+		return R.data(userMapper.selectListByQuery(QueryWrapper.create().eq("status", 1).orderBy("id", false)).stream()
+			.map(u -> {
+				java.util.Map<String, Object> option = new java.util.HashMap<>();
+				option.put("value", u.getId());
+				option.put("label", (u.getNickname() == null ? u.getUsername() : u.getNickname())
+					+ "（" + u.getUsername() + "）");
+				return option;
+			})
+			.toList());
+	}
+
 	@PostMapping("/submit")
 	@OperationLog("保存用户")
 	public R<Void> submit(@RequestBody SysUser user) {
