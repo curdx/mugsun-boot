@@ -30,15 +30,18 @@ public class AuthController {
 	private final LoginLockService loginLockService;
 	private final SysLoginLogMapper loginLogMapper;
 	private final CaptchaService captchaService;
+	private final com.mugsun.boot.security.SecurityPolicyService securityPolicyService;
 
 	public AuthController(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
 						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper,
-						  CaptchaService captchaService) {
+						  CaptchaService captchaService,
+						  com.mugsun.boot.security.SecurityPolicyService securityPolicyService) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
 		this.loginLogMapper = loginLogMapper;
 		this.captchaService = captchaService;
+		this.securityPolicyService = securityPolicyService;
 	}
 
 	/** 图形验证码：生成一张，答案入 Redis */
@@ -97,7 +100,8 @@ public class AuthController {
 			"userName", user.getUsername(),
 			"nickName", user.getNickname() == null ? user.getUsername() : user.getNickname(),
 			"roles", List.of("R_SUPER"),
-			"buttons", List.of("*")
+			"buttons", List.of("*"),
+			"needChangePassword", securityPolicyService.needChangePassword(user.getId())
 		));
 	}
 
@@ -124,11 +128,13 @@ public class AuthController {
 		if (user == null || !passwordEncoder.matches(dto.oldPassword(), user.getPassword())) {
 			throw new ServiceException("原密码错误");
 		}
-		if (dto.newPassword() == null || dto.newPassword().length() < 6) {
-			throw new ServiceException("新密码至少 6 位");
-		}
-		user.setPassword(passwordEncoder.encode(dto.newPassword()));
+		// 等保：复杂度校验 + 历史密码防重
+		securityPolicyService.validateComplexity(dto.newPassword());
+		securityPolicyService.checkHistory(user.getId(), dto.newPassword());
+		String encoded = passwordEncoder.encode(dto.newPassword());
+		user.setPassword(encoded);
 		userMapper.update(user);
+		securityPolicyService.logPassword(user.getId(), encoded);
 		return R.success("密码修改成功");
 	}
 

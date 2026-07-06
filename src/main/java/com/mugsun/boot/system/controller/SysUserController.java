@@ -44,14 +44,17 @@ public class SysUserController {
 	private final AuditService auditService;
 	private final SysUserRoleMapper userRoleMapper;
 	private final SysDeptMapper deptMapper;
+	private final com.mugsun.boot.security.SecurityPolicyService securityPolicyService;
 
 	public SysUserController(SysUserMapper userMapper, PasswordEncoder passwordEncoder, AuditService auditService,
-							 SysUserRoleMapper userRoleMapper, SysDeptMapper deptMapper) {
+							 SysUserRoleMapper userRoleMapper, SysDeptMapper deptMapper,
+							 com.mugsun.boot.security.SecurityPolicyService securityPolicyService) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.auditService = auditService;
 		this.userRoleMapper = userRoleMapper;
 		this.deptMapper = deptMapper;
+		this.securityPolicyService = securityPolicyService;
 	}
 
 	@GetMapping("/page")
@@ -112,6 +115,7 @@ public class SysUserController {
 			String raw = (user.getPassword() == null || user.getPassword().isBlank()) ? "123456" : user.getPassword();
 			user.setPassword(passwordEncoder.encode(raw));
 			userMapper.insert(user);
+			securityPolicyService.logPassword(user.getId(), user.getPassword());
 		} else {
 			SysUser before = userMapper.selectOneById(user.getId());
 			if (user.getPassword() != null && !user.getPassword().isBlank()) {
@@ -183,8 +187,10 @@ public class SysUserController {
 		for (Long id : ids) {
 			SysUser user = new SysUser();
 			user.setId(id);
-			user.setPassword(passwordEncoder.encode("123456"));
+			String encoded = passwordEncoder.encode("123456");
+			user.setPassword(encoded);
 			userMapper.update(user);
+			securityPolicyService.logPassword(id, encoded);
 		}
 		return R.success("密码已重置为 123456");
 	}

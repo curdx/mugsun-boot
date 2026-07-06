@@ -1,5 +1,6 @@
 package com.mugsun.boot.auth;
 
+import com.mugsun.boot.security.SecurityPolicyService;
 import com.mugsun.core.tool.exception.ServiceException;
 import org.springframework.stereotype.Service;
 
@@ -10,14 +11,18 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 登录锁定：按用户名维度累计失败次数，达阈值后锁定一段时间（内存态，防暴力破解与账号枚举）。
+ * 阈值/时长取自安全策略参数（后台可改，即时生效）。
  */
 @Service
 public class LoginLockService {
 
-	private static final int MAX_FAIL = 5;
-	private static final long LOCK_MINUTES = 10;
+	private final SecurityPolicyService securityPolicyService;
 
 	private final Map<String, Attempt> attempts = new ConcurrentHashMap<>();
+
+	public LoginLockService(SecurityPolicyService securityPolicyService) {
+		this.securityPolicyService = securityPolicyService;
+	}
 
 	private static final class Attempt {
 		int count;
@@ -40,8 +45,8 @@ public class LoginLockService {
 	public synchronized void recordFail(String username) {
 		Attempt a = attempts.computeIfAbsent(username, k -> new Attempt());
 		a.count++;
-		if (a.count >= MAX_FAIL) {
-			a.lockUntil = LocalDateTime.now().plusMinutes(LOCK_MINUTES);
+		if (a.count >= securityPolicyService.getLoginFailMax()) {
+			a.lockUntil = LocalDateTime.now().plusMinutes(securityPolicyService.getLockMinutes());
 		}
 	}
 
