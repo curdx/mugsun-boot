@@ -31,17 +31,20 @@ public class AuthController {
 	private final SysLoginLogMapper loginLogMapper;
 	private final CaptchaService captchaService;
 	private final com.mugsun.boot.security.SecurityPolicyService securityPolicyService;
+	private final TwoFactorService twoFactorService;
 
 	public AuthController(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
 						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper,
 						  CaptchaService captchaService,
-						  com.mugsun.boot.security.SecurityPolicyService securityPolicyService) {
+						  com.mugsun.boot.security.SecurityPolicyService securityPolicyService,
+						  TwoFactorService twoFactorService) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
 		this.loginLogMapper = loginLogMapper;
 		this.captchaService = captchaService;
 		this.securityPolicyService = securityPolicyService;
+		this.twoFactorService = twoFactorService;
 	}
 
 	/** 图形验证码：生成一张，答案入 Redis */
@@ -68,9 +71,31 @@ public class AuthController {
 			throw new ServiceException("账号或密码错误");
 		}
 		loginLockService.clear(username);
+		// 双因子登录（默认关闭）：密码通过后下发二次验证码，暂不发 token
+		if (twoFactorService.isEnabled()) {
+			String[] challenge = twoFactorService.challenge(user.getId(), null);
+			saveLoginLog(username, ip, 1, "登录待二次验证");
+			java.util.Map<String, Object> resp = new java.util.HashMap<>();
+			resp.put("twoFactorRequired", true);
+			resp.put("twoFactorToken", challenge[0]);
+			if (challenge[1] != null) {
+				resp.put("twoFactorCode", challenge[1]);
+			}
+			return R.data(resp);
+		}
 		StpUtil.login(user.getId());
 		StpUtil.getSession().set("tenantId", user.getTenantId());
 		saveLoginLog(username, ip, 1, "登录成功");
+		return R.data(Map.of("token", StpUtil.getTokenValue()));
+	}
+
+	/** 双因子二次校验：验证码正确才发 token */
+	@PostMapping("/two-factor")
+	public R<Map<String, Object>> twoFactor(@RequestBody Map<String, String> body) {
+		Long userId = twoFactorService.verify(body.get("twoFactorToken"), body.get("code"));
+		SysUser user = userMapper.selectOneById(userId);
+		StpUtil.login(userId);
+		StpUtil.getSession().set("tenantId", user.getTenantId());
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
 	}
 

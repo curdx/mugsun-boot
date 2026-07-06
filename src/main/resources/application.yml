@@ -16,12 +16,21 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 0
+    placeholder-replacement: false
   data:
     redis:
       host: localhost
       port: 6379
       database: 3
       timeout: 3000ms
+  mail:
+    host: smtp.example.com
+    port: 465
+    username: placeholder@example.com
+    password: placeholder
+    properties:
+      mail.smtp.connectiontimeout: 3000
+      mail.smtp.timeout: 3000
 management:
   endpoints:
     web:

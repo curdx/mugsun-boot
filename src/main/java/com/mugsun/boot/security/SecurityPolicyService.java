@@ -71,6 +71,15 @@ public class SecurityPolicyService {
 		return intParam("security.login.lock-minutes", 10);
 	}
 
+	public boolean isTwoFactorEnabled() {
+		return boolParam("security.login.two-factor", false);
+	}
+
+	public String getTwoFactorChannel() {
+		String v = paramService.getValue("security.login.two-factor-channel");
+		return v == null || v.isBlank() ? "email" : v.trim();
+	}
+
 	// ---- 复杂度校验 ----
 	public void validateComplexity(String raw) {
 		if (raw == null || raw.length() < getMinLength()) {
