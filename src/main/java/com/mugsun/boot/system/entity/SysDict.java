@@ -20,6 +20,7 @@ public class SysDict extends BaseEntity implements INode<SysDict> {
 	private Integer sort;
 	private String remark;
 	private Integer isSealed;
+	private String color;
 
 	@Column(ignore = true)
 	private List<SysDict> children;
@@ -79,6 +80,14 @@ public class SysDict extends BaseEntity implements INode<SysDict> {
 
 	public void setIsSealed(Integer isSealed) {
 		this.isSealed = isSealed;
+	}
+
+	public String getColor() {
+		return color;
+	}
+
+	public void setColor(String color) {
+		this.color = color;
 	}
 
 	@Override
