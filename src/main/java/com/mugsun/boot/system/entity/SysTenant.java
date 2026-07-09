@@ -16,6 +16,8 @@ public class SysTenant extends BaseEntity {
 	private String contactUser;
 	private String contactPhone;
 	private LocalDateTime expireTime;
+	/** 所属套餐（NULL 表示不限功能） */
+	private Long packageId;
 
 	public String getTenantCode() {
 		return tenantCode;
@@ -55,5 +57,13 @@ public class SysTenant extends BaseEntity {
 
 	public void setExpireTime(LocalDateTime expireTime) {
 		this.expireTime = expireTime;
+	}
+
+	public Long getPackageId() {
+		return packageId;
+	}
+
+	public void setPackageId(Long packageId) {
+		this.packageId = packageId;
 	}
 }

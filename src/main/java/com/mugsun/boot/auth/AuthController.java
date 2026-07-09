@@ -34,6 +34,8 @@ public class AuthController {
 	private final TwoFactorService twoFactorService;
 	private final com.mugsun.boot.system.service.SmsService smsService;
 	private final com.mugsun.boot.system.service.SocialService socialService;
+	private final com.mugsun.boot.system.mapper.SysTenantMapper tenantMapper;
+	private final com.mugsun.boot.tenant.mapper.SysTenantPackageMapper tenantPackageMapper;
 
 	public AuthController(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
 						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper,
@@ -41,7 +43,9 @@ public class AuthController {
 						  com.mugsun.boot.security.SecurityPolicyService securityPolicyService,
 						  TwoFactorService twoFactorService,
 						  com.mugsun.boot.system.service.SmsService smsService,
-						  com.mugsun.boot.system.service.SocialService socialService) {
+						  com.mugsun.boot.system.service.SocialService socialService,
+						  com.mugsun.boot.system.mapper.SysTenantMapper tenantMapper,
+						  com.mugsun.boot.tenant.mapper.SysTenantPackageMapper tenantPackageMapper) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
@@ -51,6 +55,8 @@ public class AuthController {
 		this.twoFactorService = twoFactorService;
 		this.smsService = smsService;
 		this.socialService = socialService;
+		this.tenantMapper = tenantMapper;
+		this.tenantPackageMapper = tenantPackageMapper;
 	}
 
 	/** 图形验证码：生成一张，答案入 Redis */
@@ -216,15 +222,35 @@ public class AuthController {
 	@SaCheckLogin
 	public R<Map<String, Object>> info() {
 		SysUser user = userMapper.selectOneById(StpUtil.getLoginIdAsLong());
-		return R.data(Map.of(
-			"userId", user.getId(),
-			"userName", user.getUsername(),
-			"nickName", user.getNickname() == null ? user.getUsername() : user.getNickname(),
-			"roles", List.of("R_SUPER"),
-			"buttons", List.of("*"),
-			"needChangePassword", securityPolicyService.needChangePassword(user.getId()),
-			"watermark", securityPolicyService.isWatermarkEnabled()
-		));
+		Map<String, Object> data = new java.util.HashMap<>();
+		data.put("userId", user.getId());
+		data.put("userName", user.getUsername());
+		data.put("nickName", user.getNickname() == null ? user.getUsername() : user.getNickname());
+		data.put("roles", List.of("R_SUPER"));
+		data.put("buttons", List.of("*"));
+		data.put("needChangePassword", securityPolicyService.needChangePassword(user.getId()));
+		data.put("watermark", securityPolicyService.isWatermarkEnabled());
+		// 租户套餐：非超管租户按套餐限定可用菜单（null 表示不限）
+		data.put("menus", resolveTenantMenus(user.getTenantId()));
+		return R.data(data);
+	}
+
+	/** 解析当前租户套餐允许的菜单标识；超管租户或未绑套餐返回 null（不限功能） */
+	private List<String> resolveTenantMenus(String tenantId) {
+		if (tenantId == null || "000000".equals(tenantId)) {
+			return null;
+		}
+		com.mugsun.boot.system.entity.SysTenant tenant = TenantManager.withoutTenantCondition(() ->
+			tenantMapper.selectOneByQuery(QueryWrapper.create().eq("tenant_code", tenantId)));
+		if (tenant == null || tenant.getPackageId() == null) {
+			return null;
+		}
+		com.mugsun.boot.tenant.entity.SysTenantPackage pkg = tenantPackageMapper.selectOneById(tenant.getPackageId());
+		if (pkg == null || pkg.getMenuKeys() == null || pkg.getMenuKeys().isBlank()) {
+			return null;
+		}
+		return java.util.Arrays.stream(pkg.getMenuKeys().split(","))
+			.map(String::trim).filter(s -> !s.isEmpty()).toList();
 	}
 
 	/** 个人中心：修改昵称 */

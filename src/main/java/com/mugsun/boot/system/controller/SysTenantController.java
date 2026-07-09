@@ -42,6 +42,22 @@ public class SysTenantController {
 		return R.data(tenantService.create(tenant));
 	}
 
+	/** 更新租户信息（含套餐分配），不重新初始化默认数据 */
+	@PostMapping("/update")
+	public R<Void> update(@RequestBody SysTenant tenant) {
+		SysTenant db = tenantMapper.selectOneById(tenant.getId());
+		if (db == null) {
+			return R.fail("租户不存在");
+		}
+		db.setTenantName(tenant.getTenantName());
+		db.setContactUser(tenant.getContactUser());
+		db.setContactPhone(tenant.getContactPhone());
+		db.setExpireTime(tenant.getExpireTime());
+		db.setPackageId(tenant.getPackageId());
+		tenantMapper.update(db);
+		return R.success("更新成功");
+	}
+
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		tenantMapper.deleteBatchByIds(ids);
