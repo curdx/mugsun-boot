@@ -1,7 +1,10 @@
 package com.mugsun.boot.system.entity;
 
 import com.mugsun.core.mybatis.base.BaseEntity;
+import com.mybatisflex.annotation.Column;
 import com.mybatisflex.annotation.Table;
+
+import java.util.List;
 
 /**
  * 角色
@@ -14,6 +17,10 @@ public class SysRole extends BaseEntity {
 	private Integer sort;
 	private Integer dataScope;
 	private String tenantId;
+
+	/** 自定义数据部门 id 集合（data_scope=5 时提交/回显，非持久化列，落 sys_role_dept） */
+	@Column(ignore = true)
+	private List<Long> deptIds;
 
 	public String getRoleName() {
 		return roleName;
@@ -53,5 +60,13 @@ public class SysRole extends BaseEntity {
 
 	public void setTenantId(String tenantId) {
 		this.tenantId = tenantId;
+	}
+
+	public List<Long> getDeptIds() {
+		return deptIds;
+	}
+
+	public void setDeptIds(List<Long> deptIds) {
+		this.deptIds = deptIds;
 	}
 }

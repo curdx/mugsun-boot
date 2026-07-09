@@ -51,10 +51,11 @@ public class DataScopeInterceptor implements HandlerInterceptor {
 		return true;
 	}
 
-	/** 数据范围广度排名（越大越广） */
+	/** 数据范围广度排名（越大越广）：全部 > 自定义部门 > 本部门及子 > 本部门 > 仅本人 */
 	private static int breadth(int dataScope) {
 		return switch (dataScope) {
-			case 1 -> 4;
+			case 1 -> 5;
+			case 5 -> 4;
 			case 3 -> 3;
 			case 2 -> 2;
 			default -> 1;

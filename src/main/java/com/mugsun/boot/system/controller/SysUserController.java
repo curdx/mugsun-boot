@@ -3,15 +3,14 @@ package com.mugsun.boot.system.controller;
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
-import com.mugsun.boot.datascope.DataScopeContext;
+import com.mugsun.boot.datascope.DataScope;
+import com.mugsun.boot.datascope.DataScopeHolder;
 import com.mugsun.boot.log.AuditService;
 import com.mugsun.boot.log.OperationLog;
 import com.mugsun.boot.system.entity.SysUser;
-import com.mugsun.boot.system.entity.SysDept;
 import com.mugsun.boot.system.entity.SysUserRole;
 import com.mugsun.boot.system.excel.SysUserExcel;
 import com.mugsun.boot.system.mapper.SysUserMapper;
-import com.mugsun.boot.system.mapper.SysDeptMapper;
 import com.mugsun.boot.system.mapper.SysUserRoleMapper;
 import com.mugsun.boot.system.payload.StatusParam;
 import com.mugsun.boot.system.payload.UserGrantParam;
@@ -25,11 +24,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
 import java.util.List;
-import java.util.Set;
 
 /**
  * 用户管理
@@ -43,59 +38,30 @@ public class SysUserController {
 	private final PasswordEncoder passwordEncoder;
 	private final AuditService auditService;
 	private final SysUserRoleMapper userRoleMapper;
-	private final SysDeptMapper deptMapper;
 	private final com.mugsun.boot.security.SecurityPolicyService securityPolicyService;
 
 	public SysUserController(SysUserMapper userMapper, PasswordEncoder passwordEncoder, AuditService auditService,
-							 SysUserRoleMapper userRoleMapper, SysDeptMapper deptMapper,
+							 SysUserRoleMapper userRoleMapper,
 							 com.mugsun.boot.security.SecurityPolicyService securityPolicyService) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.auditService = auditService;
 		this.userRoleMapper = userRoleMapper;
-		this.deptMapper = deptMapper;
 		this.securityPolicyService = securityPolicyService;
 	}
 
 	@GetMapping("/page")
 	@SaCheckPermission("sys:user:list")
+	@DataScope
 	public R<Page<SysUser>> page(@RequestParam(defaultValue = "1") long pageNum,
 								 @RequestParam(defaultValue = "10") long pageSize) {
 		QueryWrapper query = QueryWrapper.create().orderBy("id", false);
-		// 行级数据权限：1全部 / 2本部门 / 3本部门及子部门 / 4仅本人
-		DataScopeContext.Scope scope = DataScopeContext.get();
-		if (scope != null && scope.dataScope() != null) {
-			int ds = scope.dataScope();
-			if (ds == 2 && scope.deptId() != null) {
-				query.and("dept_id = ?", scope.deptId());
-			} else if (ds == 3 && scope.deptId() != null) {
-				query.in("dept_id", subtreeDeptIds(scope.deptId()));
-			} else if (ds == 4 && scope.userId() != null) {
-				query.and("id = ?", scope.userId());
-			}
-		}
+		// 行级数据权限：注解驱动，按当前用户角色数据范围自动过滤（全部/本部门/及子/仅本人/自定义部门）
+		DataScopeHolder.apply(query);
 		Page<SysUser> page = userMapper.paginate(pageNum, pageSize, query);
 		// 密码脱敏
 		page.getRecords().forEach(u -> u.setPassword(null));
 		return R.data(page);
-	}
-
-	/** 本部门及子部门：以 parent_id 关系向下广度遍历得到部门子树 id 集合（含自身） */
-	private List<Long> subtreeDeptIds(Long rootId) {
-		List<SysDept> all = deptMapper.selectAll();
-		Set<Long> result = new java.util.HashSet<>();
-		Deque<Long> stack = new ArrayDeque<>();
-		stack.push(rootId);
-		result.add(rootId);
-		while (!stack.isEmpty()) {
-			Long cur = stack.pop();
-			for (SysDept d : all) {
-				if (cur.equals(d.getParentId()) && result.add(d.getId())) {
-					stack.push(d.getId());
-				}
-			}
-		}
-		return new ArrayList<>(result);
 	}
 
 	@GetMapping("/detail")

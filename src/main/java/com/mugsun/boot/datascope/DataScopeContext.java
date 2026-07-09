@@ -6,7 +6,7 @@ package com.mugsun.boot.datascope;
 public class DataScopeContext {
 
 	/**
-	 * @param dataScope 1 全部 / 2 本部门 / 3 仅本人
+	 * @param dataScope 1 全部 / 2 本部门 / 3 本部门及子 / 4 仅本人 / 5 自定义部门
 	 * @param deptId    当前用户部门
 	 * @param userId    当前用户
 	 */

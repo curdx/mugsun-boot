@@ -2,13 +2,16 @@ package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import com.mugsun.boot.system.entity.SysRole;
+import com.mugsun.boot.system.entity.SysRoleDept;
 import com.mugsun.boot.system.entity.SysRoleMenu;
+import com.mugsun.boot.system.mapper.SysRoleDeptMapper;
 import com.mugsun.boot.system.mapper.SysRoleMapper;
 import com.mugsun.boot.system.mapper.SysRoleMenuMapper;
 import com.mugsun.boot.system.payload.GrantParam;
 import com.mugsun.core.tool.api.R;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -25,10 +28,13 @@ public class SysRoleController {
 
 	private final SysRoleMapper roleMapper;
 	private final SysRoleMenuMapper roleMenuMapper;
+	private final SysRoleDeptMapper roleDeptMapper;
 
-	public SysRoleController(SysRoleMapper roleMapper, SysRoleMenuMapper roleMenuMapper) {
+	public SysRoleController(SysRoleMapper roleMapper, SysRoleMenuMapper roleMenuMapper,
+							 SysRoleDeptMapper roleDeptMapper) {
 		this.roleMapper = roleMapper;
 		this.roleMenuMapper = roleMenuMapper;
+		this.roleDeptMapper = roleDeptMapper;
 	}
 
 	@GetMapping("/page")
@@ -59,13 +65,39 @@ public class SysRoleController {
 	}
 
 	@PostMapping("/submit")
+	@Transactional(rollbackFor = Exception.class)
 	public R<Void> submit(@RequestBody SysRole role) {
 		if (role.getId() == null) {
 			roleMapper.insert(role);
 		} else {
 			roleMapper.update(role);
 		}
+		syncRoleDept(role);
 		return R.success("操作成功");
+	}
+
+	/** 同步角色自定义部门：data_scope=5 时按 deptIds 重建，否则清空（避免残留旧配置穿透） */
+	private void syncRoleDept(SysRole role) {
+		roleDeptMapper.deleteByQuery(QueryWrapper.create().eq("role_id", role.getId()));
+		if (role.getDataScope() != null && role.getDataScope() == 5 && role.getDeptIds() != null) {
+			for (Long deptId : role.getDeptIds()) {
+				SysRoleDept roleDept = new SysRoleDept();
+				roleDept.setRoleId(role.getId());
+				roleDept.setDeptId(deptId);
+				roleDeptMapper.insert(roleDept);
+			}
+		}
+	}
+
+	/** 角色自定义部门 id 集合（data_scope=5 授权回显） */
+	@GetMapping("/dept-ids")
+	public R<List<Long>> deptIds(@RequestParam Long roleId) {
+		List<Long> ids = roleDeptMapper
+			.selectListByQuery(QueryWrapper.create().eq("role_id", roleId))
+			.stream()
+			.map(SysRoleDept::getDeptId)
+			.toList();
+		return R.data(ids);
 	}
 
 	@PostMapping("/remove")

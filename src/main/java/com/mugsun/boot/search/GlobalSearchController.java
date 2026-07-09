@@ -1,7 +1,8 @@
 package com.mugsun.boot.search;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
-import com.mugsun.boot.datascope.DataScopeContext;
+import com.mugsun.boot.datascope.DataScope;
+import com.mugsun.boot.datascope.DataScopeHolder;
 import com.mugsun.boot.system.entity.SysDept;
 import com.mugsun.boot.system.entity.SysNotice;
 import com.mugsun.boot.system.entity.SysRole;
@@ -17,14 +18,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * 全局搜索·后端联想：顶栏搜索框在前端菜单联想之外，补充用户/部门/角色/通知等业务数据的实时联想。
@@ -54,6 +51,7 @@ public class GlobalSearchController {
 
 	/** 关键词联想：跨用户/部门/角色/通知白名单数据源，每类取前 N 条 */
 	@GetMapping("/suggest")
+	@DataScope
 	public R<List<Map<String, Object>>> suggest(@RequestParam String keyword) {
 		List<Map<String, Object>> out = new ArrayList<>();
 		String kw = keyword == null ? "" : keyword.trim();
@@ -62,11 +60,11 @@ public class GlobalSearchController {
 		}
 		String pat = "%" + kw + "%";
 
-		// 用户：套行级数据权限，仅暴露昵称/账号，绝不含密码/手机/身份证等敏感字段
+		// 用户：注解驱动的行级数据权限，仅暴露昵称/账号，绝不含密码/手机/身份证等敏感字段
 		QueryWrapper uq = QueryWrapper.create()
 			.and("(username like ? or nickname like ?)", pat, pat)
 			.orderBy("id", false).limit(PER_TYPE_LIMIT);
-		applyUserScope(uq);
+		DataScopeHolder.apply(uq);
 		for (SysUser u : userMapper.selectListByQuery(uq)) {
 			String title = u.getNickname() != null && !u.getNickname().isBlank() ? u.getNickname() : u.getUsername();
 			out.add(item("user", "用户", title, "账号 " + u.getUsername(), "/system/user"));
@@ -102,39 +100,5 @@ public class GlobalSearchController {
 		m.put("subtitle", subtitle);
 		m.put("path", path);
 		return m;
-	}
-
-	/** 用户联想套行级数据权限，与 SysUserController.page 同口径（1全部/2本部门/3本部门及子/4仅本人） */
-	private void applyUserScope(QueryWrapper query) {
-		DataScopeContext.Scope scope = DataScopeContext.get();
-		if (scope == null || scope.dataScope() == null) {
-			return;
-		}
-		int ds = scope.dataScope();
-		if (ds == 2 && scope.deptId() != null) {
-			query.and("dept_id = ?", scope.deptId());
-		} else if (ds == 3 && scope.deptId() != null) {
-			query.in("dept_id", subtreeDeptIds(scope.deptId()));
-		} else if (ds == 4 && scope.userId() != null) {
-			query.and("id = ?", scope.userId());
-		}
-	}
-
-	/** 本部门及子部门 id 集合（含自身），按 parent_id 向下广度遍历 */
-	private List<Long> subtreeDeptIds(Long rootId) {
-		List<SysDept> all = deptMapper.selectAll();
-		Set<Long> result = new HashSet<>();
-		Deque<Long> stack = new ArrayDeque<>();
-		stack.push(rootId);
-		result.add(rootId);
-		while (!stack.isEmpty()) {
-			Long cur = stack.pop();
-			for (SysDept d : all) {
-				if (cur.equals(d.getParentId()) && result.add(d.getId())) {
-					stack.push(d.getId());
-				}
-			}
-		}
-		return new ArrayList<>(result);
 	}
 }
