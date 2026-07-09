@@ -32,12 +32,16 @@ public class AuthController {
 	private final CaptchaService captchaService;
 	private final com.mugsun.boot.security.SecurityPolicyService securityPolicyService;
 	private final TwoFactorService twoFactorService;
+	private final com.mugsun.boot.system.service.SmsService smsService;
+	private final com.mugsun.boot.system.service.SocialService socialService;
 
 	public AuthController(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
 						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper,
 						  CaptchaService captchaService,
 						  com.mugsun.boot.security.SecurityPolicyService securityPolicyService,
-						  TwoFactorService twoFactorService) {
+						  TwoFactorService twoFactorService,
+						  com.mugsun.boot.system.service.SmsService smsService,
+						  com.mugsun.boot.system.service.SocialService socialService) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
@@ -45,6 +49,8 @@ public class AuthController {
 		this.captchaService = captchaService;
 		this.securityPolicyService = securityPolicyService;
 		this.twoFactorService = twoFactorService;
+		this.smsService = smsService;
+		this.socialService = socialService;
 	}
 
 	/** 图形验证码：生成一张，答案入 Redis */
@@ -97,6 +103,96 @@ public class AuthController {
 		StpUtil.login(userId);
 		StpUtil.getSession().set("tenantId", user.getTenantId());
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
+	}
+
+	/** 自助注册：用户名唯一 + BCrypt + 默认租户，建号后可登录 */
+	@PostMapping("/register")
+	public R<Void> register(@RequestBody RegisterDTO dto) {
+		if (dto.getUsername() == null || dto.getUsername().isBlank()
+			|| dto.getPassword() == null || dto.getPassword().isBlank()) {
+			throw new ServiceException("用户名和密码不能为空");
+		}
+		if (dto.getPassword().length() < 6) {
+			throw new ServiceException("密码长度不能少于 6 位");
+		}
+		String tenantId = "000000";
+		long exists = TenantManager.withoutTenantCondition(() -> userMapper.selectCountByQuery(
+			QueryWrapper.create().eq("tenant_id", tenantId).eq("username", dto.getUsername())));
+		if (exists > 0) {
+			throw new ServiceException("用户名已存在");
+		}
+		SysUser user = new SysUser();
+		user.setUsername(dto.getUsername());
+		user.setNickname((dto.getNickname() == null || dto.getNickname().isBlank()) ? dto.getUsername() : dto.getNickname());
+		user.setPassword(passwordEncoder.encode(dto.getPassword()));
+		user.setPhone(dto.getPhone());
+		user.setStatus(1);
+		user.setTenantId(tenantId);
+		TenantManager.withoutTenantCondition(() -> userMapper.insert(user));
+		securityPolicyService.logPassword(user.getId(), user.getPassword());
+		return R.success("注册成功");
+	}
+
+	/** 短信登录：发送验证码（开发回显） */
+	@PostMapping("/sms-code")
+	public R<Map<String, Object>> smsCode(@RequestBody Map<String, String> body) {
+		String phone = body.get("phone");
+		if (phone == null || phone.isBlank()) {
+			throw new ServiceException("手机号不能为空");
+		}
+		smsService.sendCode(phone);
+		Map<String, Object> resp = new java.util.HashMap<>();
+		if (smsService.isShowCode()) {
+			resp.put("code", smsService.peekCode(phone));
+		}
+		return R.data(resp);
+	}
+
+	/** 短信登录：校验验证码 + 按手机号查用户 + 发 token */
+	@PostMapping("/sms-login")
+	public R<Map<String, Object>> smsLogin(@RequestBody Map<String, String> body, HttpServletRequest request) {
+		String phone = body.get("phone");
+		String code = body.get("code");
+		String ip = request.getRemoteAddr();
+		if (phone == null || phone.isBlank() || !smsService.verifyCode(phone, code)) {
+			saveLoginLog(phone, ip, 0, "短信验证码错误");
+			throw new ServiceException("验证码错误或已过期");
+		}
+		SysUser user = TenantManager.withoutTenantCondition(() ->
+			userMapper.selectOneByQuery(QueryWrapper.create().eq("phone", phone).orderBy("id", false)));
+		if (user == null) {
+			saveLoginLog(phone, ip, 0, "手机号未注册");
+			throw new ServiceException("该手机号未注册");
+		}
+		StpUtil.login(user.getId());
+		StpUtil.getSession().set("tenantId", user.getTenantId());
+		saveLoginLog(user.getUsername(), ip, 1, "短信登录成功");
+		return R.data(Map.of("token", StpUtil.getTokenValue()));
+	}
+
+	/** 社交登录：以回调得到的 (source, openId) 绑定/登录（真实 OAuth 握手需凭证，此为回调后逻辑） */
+	@PostMapping("/social/login")
+	public R<Map<String, Object>> socialLogin(@RequestBody Map<String, String> body) {
+		String source = body.get("source");
+		String openId = body.get("openId");
+		if (source == null || source.isBlank() || openId == null || openId.isBlank()) {
+			throw new ServiceException("社交来源与标识不能为空");
+		}
+		String token = socialService.loginByOpenId(source, openId, body.get("unionId"));
+		return R.data(Map.of("token", token));
+	}
+
+	/** 当前登录用户绑定社交账号 */
+	@PostMapping("/social/bind")
+	@SaCheckLogin
+	public R<Void> socialBind(@RequestBody Map<String, String> body) {
+		String source = body.get("source");
+		String openId = body.get("openId");
+		if (source == null || source.isBlank() || openId == null || openId.isBlank()) {
+			throw new ServiceException("社交来源与标识不能为空");
+		}
+		socialService.bind(StpUtil.getLoginIdAsLong(), source, openId, body.get("unionId"));
+		return R.success("绑定成功");
 	}
 
 	/** 登录日志留痕（平台级，登录前无租户上下文） */

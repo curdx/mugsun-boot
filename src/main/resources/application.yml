@@ -96,6 +96,8 @@ mugsun:
     enabled: true
     show-code: true
     expire-seconds: 300
+  sms:
+    show-code: true          # 开发回显短信验证码（生产须 false）
   crypto:
     sm4-key: mugsun-sm4-key16
     api-key: mugsun-api-key16

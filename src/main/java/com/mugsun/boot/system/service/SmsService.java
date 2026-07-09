@@ -14,6 +14,7 @@ import org.dromara.sms4j.provider.config.BaseConfig;
 import org.dromara.sms4j.tencent.config.TencentConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -33,9 +34,25 @@ public class SmsService {
 	private final SysSmsMapper smsMapper;
 	private final Random random = new Random();
 
+	/** 开发环境回显验证码（生产须 false） */
+	@Value("${mugsun.sms.show-code:true}")
+	private boolean showCode;
+
 	public SmsService(SysSmsCodeMapper smsCodeMapper, SysSmsMapper smsMapper) {
 		this.smsCodeMapper = smsCodeMapper;
 		this.smsMapper = smsMapper;
+	}
+
+	/** 是否回显验证码（开发便于联调，生产关闭） */
+	public boolean isShowCode() {
+		return showCode;
+	}
+
+	/** 取该手机号最近一条未过期验证码（仅供开发回显，勿用于生产鉴权） */
+	public String peekCode(String phone) {
+		SysSmsCode rec = smsCodeMapper.selectOneByQuery(QueryWrapper.create()
+			.eq("phone", phone).ge("expire_time", LocalDateTime.now()).orderBy("id", false));
+		return rec == null ? null : rec.getCode();
 	}
 
 	/** 发送验证码：生成 6 位码落库，按启用短信配置下发，未就绪则降级日志 */
