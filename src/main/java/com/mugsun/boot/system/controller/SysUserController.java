@@ -65,6 +65,7 @@ public class SysUserController {
 	}
 
 	@GetMapping("/detail")
+	@SaCheckPermission("sys:user:list")
 	public R<SysUser> detail(@RequestParam Long id) {
 		// 详情用于编辑回显，需真实手机号：execWithoutMask 跳过脱敏（身份证由 TypeHandler 自动解密）
 		SysUser user = MaskManager.execWithoutMask(() -> userMapper.selectOneById(id));
@@ -91,6 +92,8 @@ public class SysUserController {
 	@PostMapping("/submit")
 	@OperationLog("保存用户")
 	public R<Void> submit(@RequestBody SysUser user) {
+		// 新增走 sys:user:add，编辑走 sys:user:edit（与前端按钮门控码对齐，避免"可见却越权失败"）
+		StpUtil.checkPermission(user.getId() == null ? "sys:user:add" : "sys:user:edit");
 		if (user.getId() == null) {
 			String raw = (user.getPassword() == null || user.getPassword().isBlank()) ? "123456" : user.getPassword();
 			user.setPassword(passwordEncoder.encode(raw));
@@ -117,6 +120,7 @@ public class SysUserController {
 	}
 
 	@PostMapping("/remove")
+	@SaCheckPermission("sys:user:remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		userMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
@@ -137,6 +141,7 @@ public class SysUserController {
 	}
 
 	@PostMapping("/import")
+	@SaCheckPermission("sys:user:add")
 	@OperationLog("导入用户")
 	public R<Void> importUser(MultipartFile file) {
 		List<SysUserExcel> rows = ExcelUtil.read(file, SysUserExcel.class);
@@ -162,6 +167,7 @@ public class SysUserController {
 
 	/** 重置密码为默认 123456（批量） */
 	@PostMapping("/reset-password")
+	@SaCheckPermission("sys:user:reset")
 	@OperationLog("重置密码")
 	public R<Void> resetPassword(@RequestBody List<Long> ids) {
 		for (Long id : ids) {
@@ -177,6 +183,7 @@ public class SysUserController {
 
 	/** 启用 / 停用用户 */
 	@PostMapping("/status")
+	@SaCheckPermission("sys:user:edit")
 	@OperationLog("变更用户状态")
 	public R<Void> status(@RequestBody StatusParam param) {
 		SysUser user = new SysUser();
@@ -199,6 +206,7 @@ public class SysUserController {
 
 	/** 用户授权角色 */
 	@PostMapping("/grant")
+	@SaCheckPermission("sys:user:grant")
 	@OperationLog("用户授权")
 	public R<Void> grant(@RequestBody UserGrantParam param) {
 		userRoleMapper.deleteByQuery(QueryWrapper.create().eq("user_id", param.userId()));
