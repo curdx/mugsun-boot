@@ -39,6 +39,11 @@
 			<groupId>com.mugsun</groupId>
 			<artifactId>mugsun-starter-web</artifactId>
 		</dependency>
+		<!-- 在线 API 文档（版本由 mugsun-bom 统一管理） -->
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>com.mugsun</groupId>
 			<artifactId>mugsun-starter-mybatis</artifactId>
