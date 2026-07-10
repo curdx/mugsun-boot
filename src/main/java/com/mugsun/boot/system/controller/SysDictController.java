@@ -9,7 +9,9 @@ import com.mugsun.core.tool.tree.TreeUtil;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 系统字典管理
@@ -37,6 +39,20 @@ public class SysDictController {
 	@GetMapping("/dictionary")
 	public R<List<SysDict>> dictionary(@RequestParam String code) {
 		return R.data(dictService.listItems(code));
+	}
+
+	/** 批量按编码查字典项（一次拉多码，各码走缓存，供前端字典运行时并发去重） */
+	@PostMapping("/batch")
+	public R<Map<String, List<SysDict>>> batch(@RequestBody List<String> codes) {
+		Map<String, List<SysDict>> result = new LinkedHashMap<>();
+		if (codes != null) {
+			for (String code : codes) {
+				if (code != null && !result.containsKey(code)) {
+					result.put(code, dictService.listItems(code));
+				}
+			}
+		}
+		return R.data(result);
 	}
 
 	@GetMapping("/detail")
