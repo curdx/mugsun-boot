@@ -45,16 +45,17 @@ public class SysTenantController {
 	/** 更新租户信息（含套餐分配），不重新初始化默认数据 */
 	@PostMapping("/update")
 	public R<Void> update(@RequestBody SysTenant tenant) {
-		SysTenant db = tenantMapper.selectOneById(tenant.getId());
-		if (db == null) {
+		if (tenant.getId() == null || tenantMapper.selectOneById(tenant.getId()) == null) {
 			return R.fail("租户不存在");
 		}
-		db.setTenantName(tenant.getTenantName());
-		db.setContactUser(tenant.getContactUser());
-		db.setContactPhone(tenant.getContactPhone());
-		db.setExpireTime(tenant.getExpireTime());
-		db.setPackageId(tenant.getPackageId());
-		tenantMapper.update(db);
+		// 用 UpdateEntity 显式追踪字段，支持将 package_id 置空以解绑套餐（Flex update(entity) 默认忽略 null）
+		SysTenant upd = com.mybatisflex.core.util.UpdateEntity.of(SysTenant.class, tenant.getId());
+		upd.setTenantName(tenant.getTenantName());
+		upd.setContactUser(tenant.getContactUser());
+		upd.setContactPhone(tenant.getContactPhone());
+		upd.setExpireTime(tenant.getExpireTime());
+		upd.setPackageId(tenant.getPackageId());
+		tenantMapper.update(upd);
 		return R.success("更新成功");
 	}
 
