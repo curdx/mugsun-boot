@@ -20,6 +20,8 @@ public class SysAttach extends BaseEntity {
 	private String platform;
 	/** 访问级别：public 公开直取 / private 私有授权下载 */
 	private String access;
+	/** 存储平台基础路径（授权流式下载定位文件用） */
+	private String basePath;
 
 	public String getTenantId() {
 		return tenantId;
@@ -99,5 +101,13 @@ public class SysAttach extends BaseEntity {
 
 	public void setAccess(String access) {
 		this.access = access;
+	}
+
+	public String getBasePath() {
+		return basePath;
+	}
+
+	public void setBasePath(String basePath) {
+		this.basePath = basePath;
 	}
 }

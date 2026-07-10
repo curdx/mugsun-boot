@@ -52,6 +52,7 @@ public class FileController {
 		attach.setSize(info.getSize());
 		attach.setPlatform(info.getPlatform());
 		attach.setAccess(isPublic ? "public" : "private");
+		attach.setBasePath(info.getBasePath());
 		attachMapper.insertSelective(attach);
 		// 私有文件不在响应中直接暴露可访问 url，需走授权下载
 		if (!isPublic) {
@@ -68,6 +69,39 @@ public class FileController {
 			throw new com.mugsun.core.tool.exception.ServiceException("附件不存在");
 		}
 		return R.data(attach.getUrl());
+	}
+
+	/**
+	 * 授权流式下载：登录后按 id 从存储平台读取文件字节流写回响应。
+	 * 补平台级文件服务缺口——本地/云存储均经 x-file-storage 统一下载，token 由 Sa-Token 校验。
+	 */
+	@GetMapping("/download-stream/{id}")
+	public void downloadStream(@PathVariable Long id, jakarta.servlet.http.HttpServletResponse response)
+			throws java.io.IOException {
+		SysAttach attach = attachMapper.selectOneById(id);
+		if (attach == null) {
+			response.sendError(jakarta.servlet.http.HttpServletResponse.SC_NOT_FOUND, "附件不存在");
+			return;
+		}
+		FileInfo fileInfo = new FileInfo();
+		fileInfo.setPlatform(attach.getPlatform());
+		fileInfo.setBasePath(attach.getBasePath() == null ? "" : attach.getBasePath());
+		fileInfo.setPath(attach.getPath());
+		fileInfo.setFilename(attach.getFilename());
+		String downloadName = java.net.URLEncoder.encode(
+			attach.getName() == null ? attach.getFilename() : attach.getName(), java.nio.charset.StandardCharsets.UTF_8);
+		response.setContentType(attach.getContentType() == null ? "application/octet-stream" : attach.getContentType());
+		response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + downloadName);
+		if (attach.getSize() != null) {
+			response.setContentLengthLong(attach.getSize());
+		}
+		try {
+			fileStorageService.download(fileInfo).outputStream(response.getOutputStream());
+		} catch (Exception e) {
+			log.warn("文件下载失败 id={}: {}", id, e.getMessage());
+			response.reset();
+			response.sendError(jakarta.servlet.http.HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "文件读取失败");
+		}
 	}
 
 	@GetMapping("/list")
