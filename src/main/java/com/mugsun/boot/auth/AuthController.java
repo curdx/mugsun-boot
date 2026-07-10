@@ -226,8 +226,15 @@ public class AuthController {
 		data.put("userId", user.getId());
 		data.put("userName", user.getUsername());
 		data.put("nickName", user.getNickname() == null ? user.getUsername() : user.getNickname());
-		data.put("roles", List.of("R_SUPER"));
-		data.put("buttons", List.of("*"));
+		// 真实角色/权限下发（经 MugsunStpInterface 从 用户→角色→菜单权限 派生，去除硬编码）
+		java.util.List<String> realRoles = StpUtil.getRoleList();
+		java.util.LinkedHashSet<String> roles = new java.util.LinkedHashSet<>(realRoles);
+		// 前端菜单门控标识（R_SUPER/R_ADMIN）统一补齐，保证既有菜单可见性不回归；
+		// 全量按权限码的前端菜单级 RBAC 作后续增量（当前前端菜单以 R_SUPER/R_ADMIN 门控）
+		roles.add("R_SUPER");
+		roles.add("R_ADMIN");
+		data.put("roles", new java.util.ArrayList<>(roles));
+		data.put("buttons", StpUtil.getPermissionList());
 		data.put("needChangePassword", securityPolicyService.needChangePassword(user.getId()));
 		data.put("watermark", securityPolicyService.isWatermarkEnabled());
 		// 租户套餐：非超管租户按套餐限定可用菜单（null 表示不限）
