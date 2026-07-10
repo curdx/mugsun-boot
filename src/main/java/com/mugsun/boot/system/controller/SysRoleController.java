@@ -59,6 +59,22 @@ public class SysRoleController {
 		return R.data(options);
 	}
 
+	/** 角色码下拉选项（value=角色码），供流程审批人等按角色码匹配的场景消费 */
+	@GetMapping("/code-select")
+	public R<List<Map<String, Object>>> codeSelect() {
+		List<Map<String, Object>> options = roleMapper
+			.selectListByQuery(QueryWrapper.create().orderBy("sort", true))
+			.stream()
+			.map(role -> {
+				Map<String, Object> option = new HashMap<>();
+				option.put("value", role.getRoleCode());
+				option.put("label", role.getRoleName());
+				return option;
+			})
+			.toList();
+		return R.data(options);
+	}
+
 	@GetMapping("/detail")
 	public R<SysRole> detail(@RequestParam Long id) {
 		return R.data(roleMapper.selectOneById(id));

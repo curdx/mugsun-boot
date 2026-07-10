@@ -90,4 +90,14 @@ public class SysReportController {
 		}
 		return R.data(Db.selectListBySql(sql));
 	}
+
+	/** 数据集预览：按内置数据集 key 执行聚合（多图表仪表盘按图逐个取数） */
+	@GetMapping("/preview-dataset")
+	public R<List<Row>> previewDataset(@RequestParam String key) {
+		String sql = DATASETS.get(key);
+		if (sql == null) {
+			throw new ServiceException("未知数据集：" + key);
+		}
+		return R.data(Db.selectListBySql(sql));
+	}
 }

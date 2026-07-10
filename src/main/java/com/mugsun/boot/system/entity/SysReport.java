@@ -12,6 +12,8 @@ public class SysReport extends BaseEntity {
 	private String reportName;
 	private String reportKey;
 	private String chartType;
+	/** 多图表仪表盘配置 JSON：[{dataset,chartType,title}] */
+	private String charts;
 	private String remark;
 
 	public String getReportName() {
@@ -36,6 +38,14 @@ public class SysReport extends BaseEntity {
 
 	public void setChartType(String chartType) {
 		this.chartType = chartType;
+	}
+
+	public String getCharts() {
+		return charts;
+	}
+
+	public void setCharts(String charts) {
+		this.charts = charts;
 	}
 
 	public String getRemark() {
