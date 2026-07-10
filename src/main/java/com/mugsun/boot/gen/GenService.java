@@ -17,6 +17,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -108,7 +109,9 @@ public class GenService {
 					}
 				});
 			}
-			result.put("vue", vuePage(tableName, tablePrefix));
+			@SuppressWarnings("unchecked")
+			List<Map<String, Object>> cols = (List<Map<String, Object>>) columns(tableName).getOrDefault("columns", List.of());
+			result.put("vue", vuePage(tableName, tablePrefix, cols));
 			return result;
 		} catch (IOException e) {
 			throw new RuntimeException("代码生成失败：" + e.getMessage(), e);
@@ -130,50 +133,92 @@ public class GenService {
 		return config;
 	}
 
-	/** 由表名与列生成前端 CRUD 页脚手架 */
-	private String vuePage(String tableName, String tablePrefix) {
+	/** 由表名与列元数据生成可用的前端 CRUD 页（useCrud 组合式 + ArtTable + 内联新增/编辑弹窗） */
+	private String vuePage(String tableName, String tablePrefix, List<Map<String, Object>> columns) {
 		String entity = toCamel(stripPrefix(tableName, tablePrefix), true);
-		String path = "/system/" + toCamel(stripPrefix(tableName, tablePrefix), false).toLowerCase();
-		return """
-			<!-- %1$s 管理页（生成脚手架，按需调整字段与接口） -->
-			<template>
-			  <div class="art-full-height">
-			    <ElCard class="art-table-card">
-			      <ElButton @click="showDialog('add')">新增</ElButton>
-			      <ElTable :data="tableData" border>
-			        <ElTableColumn type="index" label="序号" width="60" />
-			        <!-- TODO: 按列补充 ElTableColumn -->
-			        <ElTableColumn label="操作" width="160">
-			          <template #default="{ row }">
-			            <ElButton link type="primary" @click="showDialog('edit', row)">编辑</ElButton>
-			            <ElButton link type="danger" @click="deleteRow(row)">删除</ElButton>
-			          </template>
-			        </ElTableColumn>
-			      </ElTable>
-			    </ElCard>
-			  </div>
-			</template>
-
-			<script setup lang="ts">
-			  import { ref, onMounted } from 'vue'
-			  import request from '@/utils/http'
-
-			  defineOptions({ name: '%1$s' })
-
-			  const tableData = ref<any[]>([])
-			  const loadData = async () => {
-			    const resp = await request.get<any>({ url: '/api%2$s/page', params: { pageNum: 1, pageSize: 20 } })
-			    tableData.value = resp?.records ?? []
-			  }
-			  onMounted(loadData)
-
-			  const showDialog = (_type: string, _row?: any) => {}
-			  const deleteRow = async (row: any) => {
-			    await request.post<void>({ url: '/api%2$s/remove', data: [row.id] })
-			    loadData()
-			  }
-			</script>
-			""".formatted(entity, path);
+		// 平台约定：多词表用 kebab 路径（如 sys_mail_template → /system/mail-template）
+		String path = "/system/" + stripPrefix(tableName, tablePrefix).replace("_", "-");
+		// 系统/审计列：不进表格展示 / 不进编辑表单
+		Set<String> tableSkip = Set.of("id", "tenantId", "isDeleted", "createUser", "updateUser", "updateTime");
+		Set<String> formSkip = Set.of("id", "tenantId", "isDeleted", "createUser", "updateUser", "createTime", "updateTime");
+		StringBuilder cols = new StringBuilder();
+		StringBuilder fields = new StringBuilder();
+		for (Map<String, Object> c : columns) {
+			String prop = String.valueOf(c.get("property"));
+			Object cm = c.get("comment");
+			String raw = (cm == null || cm.toString().isBlank()) ? prop : cm.toString();
+			// 清洗标签：去换行/反引号/引号/尖括号，避免破坏生成的 SFC 字符串与模板
+			String label = raw.replaceAll("[\\r\\n`<>\"']", " ").trim();
+			if (!tableSkip.contains(prop)) {
+				cols.append("    { prop: '").append(prop).append("', label: '").append(label).append("', minWidth: 140 },\n");
+			}
+			if (!formSkip.contains(prop)) {
+				fields.append("          <ElFormItem label=\"").append(label).append("\">\n")
+					.append("            <ElInput v-model=\"currentRow.").append(prop).append("\" placeholder=\"请输入").append(label).append("\" />\n")
+					.append("          </ElFormItem>\n");
+			}
+		}
+		return "<!-- " + entity + " 管理页（代码生成产物·useCrud 组合式）；后端需按平台约定暴露 " + path + " 的 GET /page、POST /submit、POST /remove(体为 id 数组) 接口 -->\n"
+			+ "<template>\n"
+			+ "  <div class=\"art-full-height\">\n"
+			+ "    <ElCard class=\"art-table-card\">\n"
+			+ "      <div style=\"margin-bottom: 12px\">\n"
+			+ "        <ElButton @click=\"showDialog('add')\" v-ripple>新增</ElButton>\n"
+			+ "      </div>\n"
+			+ "      <ArtTable\n"
+			+ "        :loading=\"loading\"\n"
+			+ "        :data=\"data as any[]\"\n"
+			+ "        :columns=\"columns\"\n"
+			+ "        :pagination=\"pagination\"\n"
+			+ "        border\n"
+			+ "        @pagination:size-change=\"handleSizeChange\"\n"
+			+ "        @pagination:current-change=\"handleCurrentChange\"\n"
+			+ "      />\n"
+			+ "      <ElDialog v-model=\"dialogVisible\" :title=\"dialogType === 'add' ? '新增' : '编辑'\" width=\"520px\" align-center>\n"
+			+ "        <ElForm :model=\"currentRow\" label-width=\"100px\">\n"
+			+ fields
+			+ "        </ElForm>\n"
+			+ "        <template #footer>\n"
+			+ "          <ElButton @click=\"dialogVisible = false\">取消</ElButton>\n"
+			+ "          <ElButton type=\"primary\" @click=\"handleSubmit(currentRow)\">提交</ElButton>\n"
+			+ "        </template>\n"
+			+ "      </ElDialog>\n"
+			+ "    </ElCard>\n"
+			+ "  </div>\n"
+			+ "</template>\n\n"
+			+ "<script setup lang=\"ts\">\n"
+			+ "  import { h } from 'vue'\n"
+			+ "  import { ElButton, ElDialog, ElForm, ElFormItem, ElInput } from 'element-plus'\n"
+			+ "  import request from '@/utils/http'\n"
+			+ "  import { useCrud } from '@/hooks/core/useCrud'\n"
+			+ "  import type { ColumnOption } from '@/types/component'\n\n"
+			+ "  defineOptions({ name: '" + entity + "' })\n\n"
+			+ "  const columnsFactory = (): ColumnOption[] => [\n"
+			+ "    { type: 'index', width: 60, label: '序号' },\n"
+			+ cols
+			+ "    {\n"
+			+ "      prop: 'operation',\n"
+			+ "      label: '操作',\n"
+			+ "      width: 160,\n"
+			+ "      fixed: 'right',\n"
+			+ "      formatter: (row: any) =>\n"
+			+ "        h('div', [\n"
+			+ "          h(ElButton, { link: true, type: 'primary', size: 'small', onClick: () => showDialog('edit', row) }, () => '编辑'),\n"
+			+ "          h(ElButton, { link: true, type: 'danger', size: 'small', onClick: () => handleDelete(row) }, () => '删除')\n"
+			+ "        ])\n"
+			+ "    }\n"
+			+ "  ]\n\n"
+			+ "  const {\n"
+			+ "    columns, data, loading, pagination, handleSizeChange, handleCurrentChange,\n"
+			+ "    dialogVisible, dialogType, currentRow, showDialog, handleDelete, handleSubmit\n"
+			+ "  } = useCrud({\n"
+			+ "    listApi: (params: any) => request.get({ url: '/api" + path + "/page', params }),\n"
+			+ "    saveApi: (data: any) => request.post({ url: '/api" + path + "/submit', data }),\n"
+			+ "    removeApi: (id: any) => request.post({ url: '/api" + path + "/remove', data: [id] }),\n"
+			+ "    columnsFactory,\n"
+			+ "    label: '" + entity + "'\n"
+			+ "  })\n"
+			+ "</script>\n";
 	}
 
 	private String stripPrefix(String name, String prefix) {
