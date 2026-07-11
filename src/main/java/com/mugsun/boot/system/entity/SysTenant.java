@@ -18,6 +18,10 @@ public class SysTenant extends BaseEntity {
 	private LocalDateTime expireTime;
 	/** 所属套餐（NULL 表示不限功能） */
 	private Long packageId;
+	/** 状态：1正常 0停用 */
+	private Integer status;
+	/** 账号数上限（-1 不限制） */
+	private Integer accountCount;
 
 	public String getTenantCode() {
 		return tenantCode;
@@ -65,5 +69,21 @@ public class SysTenant extends BaseEntity {
 
 	public void setPackageId(Long packageId) {
 		this.packageId = packageId;
+	}
+
+	public Integer getStatus() {
+		return status;
+	}
+
+	public void setStatus(Integer status) {
+		this.status = status;
+	}
+
+	public Integer getAccountCount() {
+		return accountCount;
+	}
+
+	public void setAccountCount(Integer accountCount) {
+		this.accountCount = accountCount;
 	}
 }

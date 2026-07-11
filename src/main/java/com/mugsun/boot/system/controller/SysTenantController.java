@@ -42,26 +42,19 @@ public class SysTenantController {
 		return R.data(tenantService.create(tenant));
 	}
 
-	/** 更新租户信息（含套餐分配），不重新初始化默认数据 */
+	/** 更新租户信息（含状态/期限/配额/套餐分配），不重新初始化默认数据 */
 	@PostMapping("/update")
 	public R<Void> update(@RequestBody SysTenant tenant) {
 		if (tenant.getId() == null || tenantMapper.selectOneById(tenant.getId()) == null) {
 			return R.fail("租户不存在");
 		}
-		// 用 UpdateEntity 显式追踪字段，支持将 package_id 置空以解绑套餐（Flex update(entity) 默认忽略 null）
-		SysTenant upd = com.mybatisflex.core.util.UpdateEntity.of(SysTenant.class, tenant.getId());
-		upd.setTenantName(tenant.getTenantName());
-		upd.setContactUser(tenant.getContactUser());
-		upd.setContactPhone(tenant.getContactPhone());
-		upd.setExpireTime(tenant.getExpireTime());
-		upd.setPackageId(tenant.getPackageId());
-		tenantMapper.update(upd);
+		tenantService.update(tenant);
 		return R.success("更新成功");
 	}
 
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
-		tenantMapper.deleteBatchByIds(ids);
+		tenantService.remove(ids);
 		return R.success("删除成功");
 	}
 }

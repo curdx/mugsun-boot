@@ -39,15 +39,18 @@ public class SysUserController {
 	private final AuditService auditService;
 	private final SysUserRoleMapper userRoleMapper;
 	private final com.mugsun.boot.security.SecurityPolicyService securityPolicyService;
+	private final com.mugsun.boot.tenant.TenantValidator tenantValidator;
 
 	public SysUserController(SysUserMapper userMapper, PasswordEncoder passwordEncoder, AuditService auditService,
 							 SysUserRoleMapper userRoleMapper,
-							 com.mugsun.boot.security.SecurityPolicyService securityPolicyService) {
+							 com.mugsun.boot.security.SecurityPolicyService securityPolicyService,
+							 com.mugsun.boot.tenant.TenantValidator tenantValidator) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.auditService = auditService;
 		this.userRoleMapper = userRoleMapper;
 		this.securityPolicyService = securityPolicyService;
+		this.tenantValidator = tenantValidator;
 	}
 
 	@GetMapping("/page")
@@ -95,6 +98,8 @@ public class SysUserController {
 		// 新增走 sys:user:add，编辑走 sys:user:edit（与前端按钮门控码对齐，避免"可见却越权失败"）
 		StpUtil.checkPermission(user.getId() == null ? "sys:user:add" : "sys:user:edit");
 		if (user.getId() == null) {
+			// 账号数配额：按当前租户 account_count 上限拦截（平台租户/不限额放行）
+			tenantValidator.assertAccountQuota(com.mugsun.boot.tenant.TenantContext.current());
 			String raw = (user.getPassword() == null || user.getPassword().isBlank()) ? "123456" : user.getPassword();
 			user.setPassword(passwordEncoder.encode(raw));
 			userMapper.insert(user);
@@ -146,6 +151,7 @@ public class SysUserController {
 	public R<Void> importUser(MultipartFile file) {
 		List<SysUserExcel> rows = ExcelUtil.read(file, SysUserExcel.class);
 		int inserted = 0;
+		String tenant = com.mugsun.boot.tenant.TenantContext.current();
 		for (SysUserExcel row : rows) {
 			String username = row.getUsername() == null ? null : row.getUsername().trim();
 			if (username == null || username.isEmpty()) {
@@ -154,6 +160,8 @@ public class SysUserController {
 			if (userMapper.selectCountByQuery(QueryWrapper.create().eq("username", username)) > 0) {
 				continue;
 			}
+			// 账号数配额：逐条入库前校验租户上限，超额即停（平台租户/不限额放行）
+			tenantValidator.assertAccountQuota(tenant);
 			SysUser user = new SysUser();
 			user.setUsername(username);
 			user.setNickname(row.getNickname());

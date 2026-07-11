@@ -20,9 +20,11 @@ import java.util.List;
 public class TenantPackageController {
 
 	private final SysTenantPackageMapper packageMapper;
+	private final TenantValidator tenantValidator;
 
-	public TenantPackageController(SysTenantPackageMapper packageMapper) {
+	public TenantPackageController(SysTenantPackageMapper packageMapper, TenantValidator tenantValidator) {
 		this.packageMapper = packageMapper;
+		this.tenantValidator = tenantValidator;
 	}
 
 	@GetMapping("/page")
@@ -55,6 +57,7 @@ public class TenantPackageController {
 			packageMapper.insertSelective(param);
 		} else {
 			packageMapper.update(param);
+			tenantValidator.evictPackage(param.getId());
 		}
 		return R.success("保存成功");
 	}
@@ -62,6 +65,7 @@ public class TenantPackageController {
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		packageMapper.deleteBatchByIds(ids);
+		ids.forEach(tenantValidator::evictPackage);
 		return R.success("删除成功");
 	}
 }

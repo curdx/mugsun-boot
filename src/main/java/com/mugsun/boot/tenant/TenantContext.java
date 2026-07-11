@@ -1,6 +1,8 @@
 package com.mugsun.boot.tenant;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.mugsun.boot.common.constant.RoleConstants;
+import com.mugsun.boot.common.constant.TenantConstants;
 
 import java.util.function.Supplier;
 
@@ -73,6 +75,27 @@ public final class TenantContext {
 	public static String current() {
 		Object[] r = resolve();
 		return (r == null || r.length == 0) ? null : r[0].toString();
+	}
+
+	/**
+	 * 是否平台超管：会话租户为平台租户 {@code 000000} <b>且</b>持内置 {@code admin} 角色。
+	 * <p>刻意不以「会话租户==000000」等价超管——自助注册用户亦落 000000 但无任何角色，
+	 * 仅凭租户归属会把其误判为超管；而 {@code admin} 角色每租户各有一个，仅凭角色又会把各租户管理员误判为平台超管。
+	 * 二者取交集方为唯一平台超管（平台租户下的内置管理员），用于平台专属路径与跨租户切换的门控。
+	 */
+	public static boolean isPlatformSuperAdmin() {
+		try {
+			if (!StpUtil.isLogin()) {
+				return false;
+			}
+			Object t = StpUtil.getSession().get(TENANT_SESSION_KEY);
+			if (t == null || !TenantConstants.DEFAULT_TENANT_ID.equals(t.toString())) {
+				return false;
+			}
+			return StpUtil.getRoleList().contains(RoleConstants.ADMIN);
+		} catch (Exception ignored) {
+			return false;
+		}
 	}
 
 	/**

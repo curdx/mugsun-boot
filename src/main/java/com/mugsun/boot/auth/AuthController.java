@@ -43,6 +43,7 @@ public class AuthController {
 	private final com.mugsun.boot.system.mapper.SysTenantMapper tenantMapper;
 	private final com.mugsun.boot.tenant.mapper.SysTenantPackageMapper tenantPackageMapper;
 	private final com.mugsun.boot.client.ClientService clientService;
+	private final com.mugsun.boot.tenant.TenantValidator tenantValidator;
 
 	public AuthController(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
 						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper,
@@ -53,7 +54,8 @@ public class AuthController {
 						  com.mugsun.boot.system.service.SocialService socialService,
 						  com.mugsun.boot.system.mapper.SysTenantMapper tenantMapper,
 						  com.mugsun.boot.tenant.mapper.SysTenantPackageMapper tenantPackageMapper,
-						  com.mugsun.boot.client.ClientService clientService) {
+						  com.mugsun.boot.client.ClientService clientService,
+						  com.mugsun.boot.tenant.TenantValidator tenantValidator) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
@@ -66,6 +68,7 @@ public class AuthController {
 		this.tenantMapper = tenantMapper;
 		this.tenantPackageMapper = tenantPackageMapper;
 		this.clientService = clientService;
+		this.tenantValidator = tenantValidator;
 	}
 
 	/** 图形验证码：生成一张，答案入 Redis */
@@ -88,6 +91,12 @@ public class AuthController {
 		}
 		loginLockService.assertNotLocked(username);
 		String tenantId = (dto.getTenantId() == null || dto.getTenantId().isBlank()) ? TenantConstants.DEFAULT_TENANT_ID : dto.getTenantId();
+		// 登录层租户生命周期校验：停用/过期/不存在的租户禁止登录（平台租户 000000 短路放行）
+		String tenantInvalid = tenantValidator.validate(tenantId);
+		if (tenantInvalid != null) {
+			saveLoginLog(username, request, client.getClientId(), tenantId, 0, tenantInvalid);
+			throw new ServiceException(tenantInvalid);
+		}
 		SysUser user = TenantContext.ignore(() ->
 			userMapper.selectOneByQuery(QueryWrapper.create().eq("tenant_id", tenantId).eq("username", username)));
 		if (user == null || !passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
@@ -207,6 +216,12 @@ public class AuthController {
 			saveLoginLog(phone, request, ClientConstants.DEFAULT_CLIENT_ID, TenantConstants.DEFAULT_TENANT_ID, 0, "手机号未注册");
 			throw new ServiceException("该手机号未注册");
 		}
+		// 登录层租户生命周期校验：停用/过期的租户禁止短信登录
+		String smsTenantInvalid = tenantValidator.validate(user.getTenantId());
+		if (smsTenantInvalid != null) {
+			saveLoginLog(user.getUsername(), request, ClientConstants.DEFAULT_CLIENT_ID, user.getTenantId(), 0, smsTenantInvalid);
+			throw new ServiceException(smsTenantInvalid);
+		}
 		loginLockService.clear(phone);
 		StpUtil.login(user.getId());
 		StpUtil.getSession().set(TenantContext.TENANT_SESSION_KEY, user.getTenantId());
@@ -291,7 +306,8 @@ public class AuthController {
 	@PostMapping("/switch-tenant/{tenantId}")
 	@SaCheckLogin
 	public R<Void> switchTenant(@PathVariable String tenantId) {
-		if (!TenantConstants.DEFAULT_TENANT_ID.equals(String.valueOf(StpUtil.getSession().get(TenantContext.TENANT_SESSION_KEY)))) {
+		// 仅平台超管（平台租户 000000 + admin 角色）可切换租户视图，杜绝自助注册用户凭 000000 会话跨租户逃逸
+		if (!TenantContext.isPlatformSuperAdmin()) {
 			throw new ServiceException("仅平台超管可切换租户视图");
 		}
 		StpUtil.getSession().set(TenantContext.SWITCH_KEY, tenantId);
