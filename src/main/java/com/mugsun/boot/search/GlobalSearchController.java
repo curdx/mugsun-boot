@@ -2,7 +2,6 @@ package com.mugsun.boot.search;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import com.mugsun.boot.datascope.DataScope;
-import com.mugsun.boot.datascope.DataScopeHolder;
 import com.mugsun.boot.system.entity.SysDept;
 import com.mugsun.boot.system.entity.SysNotice;
 import com.mugsun.boot.system.entity.SysRole;
@@ -60,11 +59,10 @@ public class GlobalSearchController {
 		}
 		String pat = "%" + kw + "%";
 
-		// 用户：注解驱动的行级数据权限，仅暴露昵称/账号，绝不含密码/手机/身份证等敏感字段
+		// 用户：@DataScope 激活后由数据权限方言自动注入行级过滤，仅暴露昵称/账号，绝不含密码/手机/身份证等敏感字段
 		QueryWrapper uq = QueryWrapper.create()
 			.and("(username like ? or nickname like ?)", pat, pat)
 			.orderBy("id", false).limit(PER_TYPE_LIMIT);
-		DataScopeHolder.apply(uq);
 		for (SysUser u : userMapper.selectListByQuery(uq)) {
 			String title = u.getNickname() != null && !u.getNickname().isBlank() ? u.getNickname() : u.getUsername();
 			out.add(item("user", "用户", title, "账号 " + u.getUsername(), "/system/user"));

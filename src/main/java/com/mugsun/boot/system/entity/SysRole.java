@@ -16,6 +16,8 @@ public class SysRole extends BaseEntity {
 	private String roleCode;
 	private Integer sort;
 	private Integer dataScope;
+	/** 自定义数据权限 SQL 片段（data_scope=6 生效） */
+	private String customSql;
 	private String tenantId;
 
 	/** 自定义数据部门 id 集合（data_scope=5 时提交/回显，非持久化列，落 sys_role_dept） */
@@ -52,6 +54,14 @@ public class SysRole extends BaseEntity {
 
 	public void setDataScope(Integer dataScope) {
 		this.dataScope = dataScope;
+	}
+
+	public String getCustomSql() {
+		return customSql;
+	}
+
+	public void setCustomSql(String customSql) {
+		this.customSql = customSql;
 	}
 
 	public String getTenantId() {

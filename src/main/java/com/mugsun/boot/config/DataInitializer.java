@@ -58,7 +58,7 @@ public class DataInitializer implements CommandLineRunner {
 		adminRole.setRoleName("超级管理员");
 		adminRole.setRoleCode(RoleConstants.ADMIN);
 		adminRole.setSort(1);
-		adminRole.setDataScope(1);
+		adminRole.setDataScope(com.mugsun.boot.common.constant.DataScopeConstants.ALL);
 		adminRole.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
 		roleMapper.insert(adminRole);
 		// 菜单：系统管理 > 用户管理

@@ -114,7 +114,7 @@ public class TenantService {
 		role.setRoleName("管理员");
 		role.setRoleCode(RoleConstants.ADMIN);
 		role.setSort(1);
-		role.setDataScope(1);
+		role.setDataScope(com.mugsun.boot.common.constant.DataScopeConstants.ALL);
 		role.setTenantId(code);
 		roleMapper.insertSelective(role);
 

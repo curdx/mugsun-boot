@@ -199,11 +199,11 @@ public class SysNoticeController {
 
 	// ============ 内部工具 ============
 
-	/** 当前用户部门（优先取数据权限上下文，兜底查库） */
+	/** 当前用户部门（优先取已激活的数据权限上下文，兜底查库） */
 	private Long deptIdOf(Long userId) {
-		DataScopeContext.Scope scope = DataScopeContext.get();
-		if (scope != null && scope.deptId() != null) {
-			return scope.deptId();
+		DataScopeContext.Ctx ctx = DataScopeContext.current();
+		if (ctx != null && ctx.deptId() != null) {
+			return ctx.deptId();
 		}
 		SysUser user = userMapper.selectOneById(userId);
 		return user == null ? null : user.getDeptId();

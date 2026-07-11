@@ -4,7 +4,6 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import com.mugsun.boot.datascope.DataScope;
-import com.mugsun.boot.datascope.DataScopeHolder;
 import com.mugsun.boot.log.AuditService;
 import com.mugsun.boot.log.OperationLog;
 import com.mugsun.boot.system.entity.SysUser;
@@ -59,8 +58,7 @@ public class SysUserController {
 	public R<Page<SysUser>> page(@RequestParam(defaultValue = "1") long pageNum,
 								 @RequestParam(defaultValue = "10") long pageSize) {
 		QueryWrapper query = QueryWrapper.create().orderBy("id", false);
-		// 行级数据权限：注解驱动，按当前用户角色数据范围自动过滤（全部/本部门/及子/仅本人/自定义部门）
-		DataScopeHolder.apply(query);
+		// 行级数据权限：@DataScope 激活后由数据权限方言自动注入 OR 并集条件（无需手工 apply）
 		Page<SysUser> page = userMapper.paginate(pageNum, pageSize, query);
 		// 密码脱敏
 		page.getRecords().forEach(u -> u.setPassword(null));

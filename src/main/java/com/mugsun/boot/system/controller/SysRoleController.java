@@ -85,6 +85,15 @@ public class SysRoleController {
 	@PostMapping("/submit")
 	@Transactional(rollbackFor = Exception.class)
 	public R<Void> submit(@RequestBody SysRole role) {
+		// 自定义数据权限 SQL 是原始 SQL 片段（注入面），仅平台超管可配置；非超管的输入一律忽略（新建置空/编辑保留原值）
+		if (!com.mugsun.boot.tenant.TenantContext.isPlatformSuperAdmin()) {
+			if (role.getId() == null) {
+				role.setCustomSql(null);
+			} else {
+				SysRole exist = roleMapper.selectOneById(role.getId());
+				role.setCustomSql(exist == null ? null : exist.getCustomSql());
+			}
+		}
 		if (role.getId() == null) {
 			roleMapper.insert(role);
 		} else {
@@ -97,7 +106,7 @@ public class SysRoleController {
 	/** 同步角色自定义部门：data_scope=5 时按 deptIds 重建，否则清空（避免残留旧配置穿透） */
 	private void syncRoleDept(SysRole role) {
 		roleDeptMapper.deleteByQuery(QueryWrapper.create().eq("role_id", role.getId()));
-		if (role.getDataScope() != null && role.getDataScope() == 5 && role.getDeptIds() != null) {
+		if (role.getDataScope() != null && role.getDataScope() == com.mugsun.boot.common.constant.DataScopeConstants.CUSTOM_DEPT && role.getDeptIds() != null) {
 			for (Long deptId : role.getDeptIds()) {
 				SysRoleDept roleDept = new SysRoleDept();
 				roleDept.setRoleId(role.getId());
