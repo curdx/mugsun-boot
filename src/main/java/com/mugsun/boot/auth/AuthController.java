@@ -132,7 +132,7 @@ public class AuthController {
 	@PostMapping("/two-factor")
 	public R<Map<String, Object>> twoFactor(@RequestBody Map<String, String> body) {
 		Long userId = twoFactorService.verify(body.get("twoFactorToken"), body.get("code"));
-		SysUser user = userMapper.selectOneById(userId);
+		SysUser user = TenantManager.withoutTenantCondition(() -> userMapper.selectOneById(userId));
 		StpUtil.login(userId);
 		StpUtil.getSession().set("tenantId", user.getTenantId());
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
@@ -284,10 +284,29 @@ public class AuthController {
 		return R.success("已登出");
 	}
 
+	/** 超管切换查看租户：落 Sa-Token 会话，跨请求生效（含异步/定时透传），登出即随会话销毁复位。-1 查看全部 */
+	@PostMapping("/switch-tenant/{tenantId}")
+	@SaCheckLogin
+	public R<Void> switchTenant(@PathVariable String tenantId) {
+		if (!"000000".equals(String.valueOf(StpUtil.getSession().get("tenantId")))) {
+			throw new ServiceException("仅平台超管可切换租户视图");
+		}
+		StpUtil.getSession().set(com.mugsun.boot.tenant.TenantContext.SWITCH_KEY, tenantId);
+		return R.success("已切换租户视图");
+	}
+
+	/** 复位租户切换，回本租户视图 */
+	@PostMapping("/switch-tenant/reset")
+	@SaCheckLogin
+	public R<Void> switchTenantReset() {
+		StpUtil.getSession().delete(com.mugsun.boot.tenant.TenantContext.SWITCH_KEY);
+		return R.success("已复位租户视图");
+	}
+
 	@GetMapping("/info")
 	@SaCheckLogin
 	public R<Map<String, Object>> info() {
-		SysUser user = userMapper.selectOneById(StpUtil.getLoginIdAsLong());
+		SysUser user = TenantManager.withoutTenantCondition(() -> userMapper.selectOneById(StpUtil.getLoginIdAsLong()));
 		Map<String, Object> data = new java.util.HashMap<>();
 		data.put("userId", user.getId());
 		data.put("userName", user.getUsername());
@@ -330,7 +349,7 @@ public class AuthController {
 	@PostMapping("/update-info")
 	@SaCheckLogin
 	public R<Void> updateInfo(@RequestBody UpdateInfoDTO dto) {
-		SysUser user = userMapper.selectOneById(StpUtil.getLoginIdAsLong());
+		SysUser user = TenantManager.withoutTenantCondition(() -> userMapper.selectOneById(StpUtil.getLoginIdAsLong()));
 		if (user == null) {
 			throw new ServiceException("用户不存在");
 		}
@@ -345,7 +364,7 @@ public class AuthController {
 	@PostMapping("/update-password")
 	@SaCheckLogin
 	public R<Void> updatePassword(@RequestBody UpdatePasswordDTO dto) {
-		SysUser user = userMapper.selectOneById(StpUtil.getLoginIdAsLong());
+		SysUser user = TenantManager.withoutTenantCondition(() -> userMapper.selectOneById(StpUtil.getLoginIdAsLong()));
 		if (user == null || !passwordEncoder.matches(dto.oldPassword(), user.getPassword())) {
 			throw new ServiceException("原密码错误");
 		}

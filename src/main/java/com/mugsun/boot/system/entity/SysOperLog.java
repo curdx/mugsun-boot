@@ -19,6 +19,8 @@ public class SysOperLog extends BaseEntity {
 	private Long duration;
 	private Integer status;
 	private String errorMsg;
+	/** 操作所属租户（@Async 落库经 TenantTaskDecorator 透传，异步不丢隔离） */
+	private String tenantId;
 
 	public String getTitle() {
 		return title;
@@ -98,5 +100,13 @@ public class SysOperLog extends BaseEntity {
 
 	public void setErrorMsg(String errorMsg) {
 		this.errorMsg = errorMsg;
+	}
+
+	public String getTenantId() {
+		return tenantId;
+	}
+
+	public void setTenantId(String tenantId) {
+		this.tenantId = tenantId;
 	}
 }
