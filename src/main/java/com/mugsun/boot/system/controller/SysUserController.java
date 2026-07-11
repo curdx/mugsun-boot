@@ -3,6 +3,7 @@ package com.mugsun.boot.system.controller;
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
+import com.mugsun.boot.common.constant.FieldMaskConstants;
 import com.mugsun.boot.datascope.DataScope;
 import com.mugsun.boot.log.AuditService;
 import com.mugsun.boot.log.OperationLog;
@@ -17,7 +18,6 @@ import com.mugsun.core.tool.api.R;
 import com.mugsun.core.web.excel.ExcelUtil;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.mybatisflex.core.mask.MaskManager;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -67,9 +67,11 @@ public class SysUserController {
 
 	@GetMapping("/detail")
 	@SaCheckPermission("sys:user:list")
+	@DataScope
 	public R<SysUser> detail(@RequestParam Long id) {
-		// 详情用于编辑回显，需真实手机号：execWithoutMask 跳过脱敏（身份证由 TypeHandler 自动解密）
-		SysUser user = MaskManager.execWithoutMask(() -> userMapper.selectOneById(id));
+		// 手机号/身份证的 明文/脱敏/不可见 由按角色决策的脱敏处理器统一裁决（绑权限码而非绑端点，与 page 表现一致）
+		// 行级：按 id 走 QueryWrapper 查询以经 @DataScope 方言注入数据范围（selectOneById 直查会绕过行级范围），越范围返 null
+		SysUser user = userMapper.selectOneByQuery(QueryWrapper.create().eq("id", id));
 		if (user != null) {
 			user.setPassword(null);
 		}
@@ -95,6 +97,14 @@ public class SysUserController {
 	public R<Void> submit(@RequestBody SysUser user) {
 		// 新增走 sys:user:add，编辑走 sys:user:edit（与前端按钮门控码对齐，避免"可见却越权失败"）
 		StpUtil.checkPermission(user.getId() == null ? "sys:user:add" : "sys:user:edit");
+		// 字段级写门控（新建/编辑一致，读写权对称）：无字段明文权则不得写该敏感字段——
+		// 编辑时置 null 交 Flex update 忽略、保留原值（防"看不到明文却把脱敏串覆盖入库"的污染与越权改写）；新建时即不落该字段
+		if (!StpUtil.hasPermission(FieldMaskConstants.PERM_USER_PHONE_PLAIN)) {
+			user.setPhone(null);
+		}
+		if (!StpUtil.hasPermission(FieldMaskConstants.PERM_USER_ID_CARD_PLAIN)) {
+			user.setIdCard(null);
+		}
 		if (user.getId() == null) {
 			// 账号数配额：按当前租户 account_count 上限拦截（平台租户/不限额放行）
 			tenantValidator.assertAccountQuota(com.mugsun.boot.tenant.TenantContext.current());
@@ -103,12 +113,13 @@ public class SysUserController {
 			userMapper.insert(user);
 			securityPolicyService.logPassword(user.getId(), user.getPassword());
 		} else {
-			SysUser before = userMapper.selectOneById(user.getId());
+			// 审计前后镜像恒脱敏读：与操作者角色无关，敏感字段永不落明文入审计
+			SysUser before = com.mugsun.boot.common.mask.FieldMaskContext.maskedRead(() -> userMapper.selectOneById(user.getId()));
 			if (user.getPassword() != null && !user.getPassword().isBlank()) {
 				user.setPassword(passwordEncoder.encode(user.getPassword()));
 			}
 			userMapper.update(user);
-			SysUser after = userMapper.selectOneById(user.getId());
+			SysUser after = com.mugsun.boot.common.mask.FieldMaskContext.maskedRead(() -> userMapper.selectOneById(user.getId()));
 			if (before != null) {
 				before.setPassword(null);
 			}
