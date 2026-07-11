@@ -21,6 +21,8 @@ public class SysOauthClient extends BaseEntity {
 	private Integer accessTokenValidity;
 	private Integer status;
 	private String remark;
+	/** 所属租户（令牌据此对 /open/** 施加租户隔离，防跨租户越权） */
+	private String tenantId;
 
 	public String getName() {
 		return name;
@@ -92,5 +94,13 @@ public class SysOauthClient extends BaseEntity {
 
 	public void setRemark(String remark) {
 		this.remark = remark;
+	}
+
+	public String getTenantId() {
+		return tenantId;
+	}
+
+	public void setTenantId(String tenantId) {
+		this.tenantId = tenantId;
 	}
 }

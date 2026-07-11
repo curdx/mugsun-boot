@@ -4,7 +4,6 @@ import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.mapper.SysUserMapper;
 import com.mugsun.core.tool.api.R;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.mybatisflex.core.tenant.TenantManager;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
@@ -13,7 +12,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 开放接口演示：由 {@link OpenApiInterceptor} 校验令牌与 scope。
+ * 开放接口演示：由 {@link OpenApiInterceptor} 校验令牌与 scope，并按令牌租户隔离
+ * （Flex 依 {@code SaTokenTenantFactory} 回退的令牌租户自动过滤，A 租户令牌取不到 B 租户数据）。
  * 仅暴露非敏感字段，供第三方按授权范围调用。
  */
 @RestController
@@ -32,12 +32,12 @@ public class OpenApiController {
 		return R.data("open api pong");
 	}
 
-	/** 需 user:read：返回用户基础信息（不含密码/手机/身份证等敏感字段） */
+	/** 需 user:read：返回用户基础信息（不含密码/手机/身份证等敏感字段），按令牌租户隔离 */
 	@GetMapping("/user/list")
 	@OpenScope("user:read")
 	public R<List<Map<String, Object>>> userList() {
-		List<SysUser> users = TenantManager.withoutTenantCondition(() ->
-			userMapper.selectListByQuery(QueryWrapper.create().select("username", "nickname").limit(20)));
+		List<SysUser> users = userMapper.selectListByQuery(
+			QueryWrapper.create().select("username", "nickname").limit(20));
 		List<Map<String, Object>> data = users.stream().map(u -> {
 			Map<String, Object> m = new LinkedHashMap<>();
 			m.put("username", u.getUsername());
@@ -47,13 +47,11 @@ public class OpenApiController {
 		return R.data(data);
 	}
 
-	/** 需 user:read：用户总数 */
+	/** 需 user:read：用户总数，按令牌租户隔离 */
 	@GetMapping("/user/count")
 	@OpenScope("user:read")
 	public R<Long> userCount() {
-		long count = TenantManager.withoutTenantCondition(() ->
-			userMapper.selectCountByQuery(QueryWrapper.create()));
-		return R.data(count);
+		return R.data(userMapper.selectCountByQuery(QueryWrapper.create()));
 	}
 
 	/** 需 user:write：回显（演示写范围，无实际写库） */
