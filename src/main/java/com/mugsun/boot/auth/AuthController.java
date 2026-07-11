@@ -3,6 +3,9 @@ package com.mugsun.boot.auth;
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.IdUtil;
+import com.mugsun.boot.common.constant.ClientConstants;
+import com.mugsun.boot.common.constant.RoleConstants;
+import com.mugsun.boot.common.constant.TenantConstants;
 import com.mugsun.boot.system.entity.SysLoginLog;
 import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.mapper.SysLoginLogMapper;
@@ -84,7 +87,7 @@ public class AuthController {
 			captchaService.verify(dto.getCaptchaUuid(), dto.getCaptchaCode());
 		}
 		loginLockService.assertNotLocked(username);
-		String tenantId = (dto.getTenantId() == null || dto.getTenantId().isBlank()) ? "000000" : dto.getTenantId();
+		String tenantId = (dto.getTenantId() == null || dto.getTenantId().isBlank()) ? TenantConstants.DEFAULT_TENANT_ID : dto.getTenantId();
 		SysUser user = TenantManager.withoutTenantCondition(() ->
 			userMapper.selectOneByQuery(QueryWrapper.create().eq("tenant_id", tenantId).eq("username", username)));
 		if (user == null || !passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
@@ -147,7 +150,7 @@ public class AuthController {
 		}
 		// 等保密码复杂度校验（min-length + 大小写/数字/特殊字符组合，策略可后台改）
 		securityPolicyService.validateComplexity(dto.getPassword());
-		String tenantId = "000000";
+		String tenantId = TenantConstants.DEFAULT_TENANT_ID;
 		long exists = TenantManager.withoutTenantCondition(() -> userMapper.selectCountByQuery(
 			QueryWrapper.create().eq("tenant_id", tenantId).eq("username", dto.getUsername())));
 		if (exists > 0) {
@@ -194,20 +197,20 @@ public class AuthController {
 		loginLockService.assertNotLocked(phone);
 		if (!smsService.verifyCode(phone, code)) {
 			loginLockService.recordFail(phone);
-			saveLoginLog(phone, request, "web", "000000", 0, "短信验证码错误");
+			saveLoginLog(phone, request, ClientConstants.DEFAULT_CLIENT_ID, TenantConstants.DEFAULT_TENANT_ID, 0, "短信验证码错误");
 			throw new ServiceException("验证码错误或已过期");
 		}
 		SysUser user = TenantManager.withoutTenantCondition(() ->
 			userMapper.selectOneByQuery(QueryWrapper.create().eq("phone", phone).orderBy("id", false)));
 		if (user == null) {
 			loginLockService.recordFail(phone);
-			saveLoginLog(phone, request, "web", "000000", 0, "手机号未注册");
+			saveLoginLog(phone, request, ClientConstants.DEFAULT_CLIENT_ID, TenantConstants.DEFAULT_TENANT_ID, 0, "手机号未注册");
 			throw new ServiceException("该手机号未注册");
 		}
 		loginLockService.clear(phone);
 		StpUtil.login(user.getId());
 		StpUtil.getSession().set("tenantId", user.getTenantId());
-		saveLoginLog(user.getUsername(), request, "web", user.getTenantId(), 1, "短信登录成功");
+		saveLoginLog(user.getUsername(), request, ClientConstants.DEFAULT_CLIENT_ID, user.getTenantId(), 1, "短信登录成功");
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
 	}
 
@@ -288,7 +291,7 @@ public class AuthController {
 	@PostMapping("/switch-tenant/{tenantId}")
 	@SaCheckLogin
 	public R<Void> switchTenant(@PathVariable String tenantId) {
-		if (!"000000".equals(String.valueOf(StpUtil.getSession().get("tenantId")))) {
+		if (!TenantConstants.DEFAULT_TENANT_ID.equals(String.valueOf(StpUtil.getSession().get("tenantId")))) {
 			throw new ServiceException("仅平台超管可切换租户视图");
 		}
 		StpUtil.getSession().set(com.mugsun.boot.tenant.TenantContext.SWITCH_KEY, tenantId);
@@ -316,8 +319,8 @@ public class AuthController {
 		java.util.LinkedHashSet<String> roles = new java.util.LinkedHashSet<>(realRoles);
 		// 前端菜单门控标识（R_SUPER/R_ADMIN）统一补齐，保证既有菜单可见性不回归；
 		// 全量按权限码的前端菜单级 RBAC 作后续增量（当前前端菜单以 R_SUPER/R_ADMIN 门控）
-		roles.add("R_SUPER");
-		roles.add("R_ADMIN");
+		roles.add(RoleConstants.FRONT_SUPER);
+		roles.add(RoleConstants.FRONT_ADMIN);
 		data.put("roles", new java.util.ArrayList<>(roles));
 		data.put("buttons", StpUtil.getPermissionList());
 		data.put("needChangePassword", securityPolicyService.needChangePassword(user.getId()));
@@ -329,7 +332,7 @@ public class AuthController {
 
 	/** 解析当前租户套餐允许的菜单标识；超管租户或未绑套餐返回 null（不限功能） */
 	private List<String> resolveTenantMenus(String tenantId) {
-		if (tenantId == null || "000000".equals(tenantId)) {
+		if (tenantId == null || TenantConstants.DEFAULT_TENANT_ID.equals(tenantId)) {
 			return null;
 		}
 		com.mugsun.boot.system.entity.SysTenant tenant = TenantManager.withoutTenantCondition(() ->

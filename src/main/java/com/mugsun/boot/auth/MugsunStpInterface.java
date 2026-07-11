@@ -1,6 +1,7 @@
 package com.mugsun.boot.auth;
 
 import cn.dev33.satoken.stp.StpInterface;
+import com.mugsun.boot.common.constant.RoleConstants;
 import com.mugsun.boot.system.entity.SysMenu;
 import com.mugsun.boot.system.entity.SysRole;
 import com.mugsun.boot.system.entity.SysRoleMenu;
@@ -47,7 +48,7 @@ public class MugsunStpInterface implements StpInterface {
 			}
 			List<SysRole> roles = roleMapper.selectListByIds(roleIds);
 			// 超级管理员通配全部权限
-			if (roles.stream().anyMatch(r -> "admin".equals(r.getRoleCode()))) {
+			if (roles.stream().anyMatch(r -> RoleConstants.ADMIN.equals(r.getRoleCode()))) {
 				return List.of("*");
 			}
 			List<Long> menuIds = roleMenuMapper.selectListByQuery(QueryWrapper.create().in("role_id", roleIds))

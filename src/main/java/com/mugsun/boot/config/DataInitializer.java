@@ -1,5 +1,8 @@
 package com.mugsun.boot.config;
 
+import com.mugsun.boot.common.constant.RoleConstants;
+import com.mugsun.boot.common.constant.TenantConstants;
+import com.mugsun.boot.common.constant.UserConstants;
 import com.mugsun.boot.system.entity.SysMenu;
 import com.mugsun.boot.system.entity.SysRole;
 import com.mugsun.boot.system.entity.SysRoleMenu;
@@ -41,16 +44,16 @@ public class DataInitializer implements CommandLineRunner {
 
 	@Override
 	public void run(String... args) {
-		if (userMapper.selectCountByQuery(QueryWrapper.create().eq("username", "admin")) > 0) {
+		if (userMapper.selectCountByQuery(QueryWrapper.create().eq("username", UserConstants.ADMIN_USERNAME)) > 0) {
 			return;
 		}
 		// 角色
 		SysRole adminRole = new SysRole();
 		adminRole.setRoleName("超级管理员");
-		adminRole.setRoleCode("admin");
+		adminRole.setRoleCode(RoleConstants.ADMIN);
 		adminRole.setSort(1);
 		adminRole.setDataScope(1);
-		adminRole.setTenantId("000000");
+		adminRole.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
 		roleMapper.insert(adminRole);
 		// 菜单：系统管理 > 用户管理
 		SysMenu systemMenu = new SysMenu();
@@ -70,11 +73,11 @@ public class DataInitializer implements CommandLineRunner {
 		menuMapper.insert(userMenu);
 		// 管理员用户
 		SysUser admin = new SysUser();
-		admin.setUsername("admin");
+		admin.setUsername(UserConstants.ADMIN_USERNAME);
 		admin.setPassword(passwordEncoder.encode("123456"));
 		admin.setNickname("超级管理员");
 		admin.setStatus(1);
-		admin.setTenantId("000000");
+		admin.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
 		userMapper.insert(admin);
 		// 用户-角色
 		SysUserRole userRole = new SysUserRole();

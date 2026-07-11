@@ -1,5 +1,7 @@
 package com.mugsun.boot.system.service;
 
+import com.mugsun.boot.common.constant.RoleConstants;
+import com.mugsun.boot.common.constant.UserConstants;
 import com.mugsun.boot.system.entity.SysDept;
 import com.mugsun.boot.system.entity.SysPost;
 import com.mugsun.boot.system.entity.SysRole;
@@ -75,14 +77,14 @@ public class TenantService {
 
 		SysRole role = new SysRole();
 		role.setRoleName("管理员");
-		role.setRoleCode("admin");
+		role.setRoleCode(RoleConstants.ADMIN);
 		role.setSort(1);
 		role.setDataScope(1);
 		role.setTenantId(code);
 		roleMapper.insertSelective(role);
 
 		SysUser admin = new SysUser();
-		admin.setUsername("admin");
+		admin.setUsername(UserConstants.ADMIN_USERNAME);
 		admin.setPassword(passwordEncoder.encode("123456"));
 		admin.setNickname(tenantName + "管理员");
 		admin.setStatus(1);

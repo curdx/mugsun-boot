@@ -2,6 +2,7 @@ package com.mugsun.boot.system.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.IdUtil;
+import com.mugsun.boot.common.constant.TenantConstants;
 import com.mugsun.boot.social.SocialAuthFactory;
 import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.entity.SysUserOauth;
@@ -26,8 +27,6 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class SocialService {
-
-	private static final String DEFAULT_TENANT = "000000";
 
 	private final SysUserOauthMapper oauthMapper;
 	private final SysUserMapper userMapper;
@@ -138,7 +137,7 @@ public class SocialService {
 		user.setNickname(authUser.getNickname() != null ? authUser.getNickname() : source + "用户" + suffix);
 		user.setPassword(passwordEncoder.encode(IdUtil.fastSimpleUUID()));
 		user.setStatus(1);
-		user.setTenantId(DEFAULT_TENANT);
+		user.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
 		return user;
 	}
 }

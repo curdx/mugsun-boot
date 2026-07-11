@@ -2,6 +2,7 @@ package com.mugsun.boot.client;
 
 import com.mugsun.boot.client.entity.SysClient;
 import com.mugsun.boot.client.mapper.SysClientMapper;
+import com.mugsun.boot.common.constant.ClientConstants;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.springframework.stereotype.Service;
 
@@ -12,9 +13,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class ClientService {
 
-	/** 默认客户端码 */
-	public static final String DEFAULT_CLIENT = "web";
-
 	private final SysClientMapper clientMapper;
 
 	public ClientService(SysClientMapper clientMapper) {
@@ -22,7 +20,7 @@ public class ClientService {
 	}
 
 	public SysClient loadClient(String clientId) {
-		String cid = (clientId == null || clientId.isBlank()) ? DEFAULT_CLIENT : clientId;
+		String cid = (clientId == null || clientId.isBlank()) ? ClientConstants.DEFAULT_CLIENT_ID : clientId;
 		SysClient client = clientMapper.selectOneByQuery(QueryWrapper.create().eq("client_id", cid));
 		if (client == null || !Integer.valueOf(1).equals(client.getStatus())) {
 			// 未配置或停用：回退默认策略（验证码开、不限在线、30 天）
