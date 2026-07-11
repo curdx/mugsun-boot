@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.system.entity.SysParam;
 import com.mugsun.boot.system.mapper.SysParamMapper;
 import com.mugsun.boot.system.service.ParamService;
@@ -42,6 +43,7 @@ public class SysParamController {
 		return R.data(paramMapper.selectOneById(id));
 	}
 
+	@SaCheckPermission("sys:param:save")
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysParam param) {
 		if (param.getId() == null) {
@@ -53,6 +55,7 @@ public class SysParamController {
 		return R.success("操作成功");
 	}
 
+	@SaCheckPermission("sys:param:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		ids.forEach(id -> {

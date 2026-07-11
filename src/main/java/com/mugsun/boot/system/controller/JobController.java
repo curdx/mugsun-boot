@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.core.tool.api.R;
 import org.springframework.web.bind.annotation.*;
 import tech.powerjob.client.PowerJobClient;
@@ -47,6 +48,7 @@ public class JobController {
 	}
 
 	/** 新建 / 更新任务 */
+	@SaCheckPermission("sys:job:save")
 	@PostMapping("/save")
 	public R<Long> save(@RequestBody JobParam param) {
 		SaveJobInfoRequest req = new SaveJobInfoRequest();
@@ -68,12 +70,14 @@ public class JobController {
 	}
 
 	/** 立即执行一次，返回执行实例ID */
+	@SaCheckPermission("sys:job:run")
 	@PostMapping("/run/{jobId}")
 	public R<Long> run(@PathVariable Long jobId) {
 		return R.data(client().runJob(jobId, "手动触发", 0L).getData());
 	}
 
 	/** 启用任务 */
+	@SaCheckPermission("sys:job:edit")
 	@PostMapping("/enable/{jobId}")
 	public R<Void> enable(@PathVariable Long jobId) {
 		client().enableJob(jobId);
@@ -81,6 +85,7 @@ public class JobController {
 	}
 
 	/** 停用任务 */
+	@SaCheckPermission("sys:job:edit")
 	@PostMapping("/disable/{jobId}")
 	public R<Void> disable(@PathVariable Long jobId) {
 		client().disableJob(jobId);
@@ -88,6 +93,7 @@ public class JobController {
 	}
 
 	/** 删除任务 */
+	@SaCheckPermission("sys:job:remove")
 	@PostMapping("/delete/{jobId}")
 	public R<Void> delete(@PathVariable Long jobId) {
 		client().deleteJob(jobId);

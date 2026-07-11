@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.system.entity.SysRegion;
 import com.mugsun.boot.system.excel.RegionExcel;
 import com.mugsun.boot.system.mapper.SysRegionMapper;
@@ -44,6 +45,7 @@ public class SysRegionController {
 		return R.data(nodes);
 	}
 
+	@SaCheckPermission("sys:region:save")
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysRegion region) {
 		if (region.getId() == null) {
@@ -54,6 +56,7 @@ public class SysRegionController {
 		return R.success("操作成功");
 	}
 
+	@SaCheckPermission("sys:region:remove")
 	@PostMapping("/remove/{id}")
 	public R<Void> remove(@PathVariable Long id) {
 		regionMapper.deleteById(id);
@@ -76,6 +79,7 @@ public class SysRegionController {
 	}
 
 	/** 导入区划：按编码存在则更新，否则新增 */
+	@SaCheckPermission("sys:region:import")
 	@PostMapping("/import")
 	public R<Integer> importData(@RequestParam("file") MultipartFile file) {
 		List<RegionExcel> rows = ExcelUtil.read(file, RegionExcel.class);

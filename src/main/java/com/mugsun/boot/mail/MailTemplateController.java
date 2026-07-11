@@ -1,6 +1,7 @@
 package com.mugsun.boot.mail;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.mail.entity.SysMailTemplate;
 import com.mugsun.boot.mail.mapper.SysMailTemplateMapper;
 import com.mugsun.core.tool.api.R;
@@ -38,6 +39,7 @@ public class MailTemplateController {
 		return R.data(mapper.selectOneById(id));
 	}
 
+	@SaCheckPermission("sys:mail-template:save")
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysMailTemplate template) {
 		if (template.getId() == null) {
@@ -48,6 +50,7 @@ public class MailTemplateController {
 		return R.success("操作成功");
 	}
 
+	@SaCheckPermission("sys:mail-template:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		mapper.deleteBatchByIds(ids);
@@ -55,6 +58,7 @@ public class MailTemplateController {
 	}
 
 	/** 发送测试：按模板渲染并发送到指定邮箱（无 SMTP 凭证时降级日志），返回渲染内容 */
+	@SaCheckPermission("sys:mail-template:send")
 	@PostMapping("/send-test")
 	public R<String> sendTest(@RequestBody Map<String, String> body) {
 		String code = body.get("code");

@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.system.entity.SysRole;
 import com.mugsun.boot.system.entity.SysRoleDept;
 import com.mugsun.boot.system.entity.SysRoleMenu;
@@ -80,6 +81,7 @@ public class SysRoleController {
 		return R.data(roleMapper.selectOneById(id));
 	}
 
+	@SaCheckPermission("sys:role:save")
 	@PostMapping("/submit")
 	@Transactional(rollbackFor = Exception.class)
 	public R<Void> submit(@RequestBody SysRole role) {
@@ -116,6 +118,7 @@ public class SysRoleController {
 		return R.data(ids);
 	}
 
+	@SaCheckPermission("sys:role:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		roleMapper.deleteBatchByIds(ids);
@@ -134,6 +137,7 @@ public class SysRoleController {
 	}
 
 	/** 角色授权菜单 */
+	@SaCheckPermission("sys:role:grant")
 	@PostMapping("/grant")
 	public R<Void> grant(@RequestBody GrantParam param) {
 		roleMenuMapper.deleteByQuery(QueryWrapper.create().eq("role_id", param.roleId()));

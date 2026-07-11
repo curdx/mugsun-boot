@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.system.entity.SysDictBiz;
 import com.mugsun.boot.system.mapper.SysDictBizMapper;
 import com.mugsun.core.tool.api.R;
@@ -41,6 +42,7 @@ public class SysDictBizController {
 		return R.data(dictBizMapper.selectOneById(id));
 	}
 
+	@SaCheckPermission("sys:dict-biz:save")
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysDictBiz dict) {
 		// 字典类型无键值：dictKey 兜底空串，避免 NOT NULL 约束报错
@@ -55,6 +57,7 @@ public class SysDictBizController {
 		return R.success("操作成功");
 	}
 
+	@SaCheckPermission("sys:dict-biz:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		dictBizMapper.deleteBatchByIds(ids);

@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.system.entity.SysReport;
 import com.mugsun.boot.system.mapper.SysReportMapper;
 import com.mugsun.core.tool.api.R;
@@ -61,6 +62,7 @@ public class SysReportController {
 	}
 
 	/** 报表设计：保存报表定义 */
+	@SaCheckPermission("sys:report:save")
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysReport report) {
 		if (report.getId() == null) {
@@ -71,6 +73,7 @@ public class SysReportController {
 		return R.success("操作成功");
 	}
 
+	@SaCheckPermission("sys:report:remove")
 	@PostMapping("/remove/{id}")
 	public R<Void> remove(@PathVariable Long id) {
 		reportMapper.deleteById(id);

@@ -1,6 +1,7 @@
 package com.mugsun.boot.client;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.client.entity.SysClient;
 import com.mugsun.boot.client.mapper.SysClientMapper;
 import com.mugsun.core.tool.api.R;
@@ -32,6 +33,7 @@ public class SysClientController {
 		return R.data(clientMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("id", false)));
 	}
 
+	@SaCheckPermission("sys:client:save")
 	@PostMapping("/save")
 	public R<Void> save(@RequestBody SysClient client) {
 		if (client.getClientId() == null || client.getClientId().isBlank()) {
@@ -53,6 +55,7 @@ public class SysClientController {
 		return R.success("保存成功");
 	}
 
+	@SaCheckPermission("sys:client:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		if (ids != null && !ids.isEmpty()) {
@@ -61,11 +64,13 @@ public class SysClientController {
 		return R.success("删除成功");
 	}
 
+	@SaCheckPermission("sys:client:edit")
 	@PostMapping("/enable/{id}")
 	public R<Void> enable(@PathVariable Long id) {
 		return changeStatus(id, 1);
 	}
 
+	@SaCheckPermission("sys:client:edit")
 	@PostMapping("/disable/{id}")
 	public R<Void> disable(@PathVariable Long id) {
 		return changeStatus(id, 0);

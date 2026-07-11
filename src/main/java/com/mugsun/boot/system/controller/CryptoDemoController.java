@@ -1,5 +1,6 @@
 package com.mugsun.boot.system.controller;
 
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.web.crypto.ApiDecrypt;
 import com.mugsun.core.web.crypto.ApiEncrypt;
@@ -17,6 +18,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/system/crypto")
+@SaCheckLogin
 public class CryptoDemoController {
 
 	/** 回声：入参已由 @ApiDecrypt 解密为明文，返回值将由 @ApiEncrypt 加密为密文 */

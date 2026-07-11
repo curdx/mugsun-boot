@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.system.entity.SysOss;
 import com.mugsun.boot.system.mapper.SysOssMapper;
 import com.mugsun.core.tool.api.R;
@@ -35,6 +36,7 @@ public class SysOssController {
 		return R.data(ossMapper.selectOneById(id));
 	}
 
+	@SaCheckPermission("sys:oss:save")
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysOss oss) {
 		if (oss.getId() == null) {
@@ -45,6 +47,7 @@ public class SysOssController {
 		return R.success("操作成功");
 	}
 
+	@SaCheckPermission("sys:oss:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		ids.forEach(ossMapper::deleteById);
@@ -52,6 +55,7 @@ public class SysOssController {
 	}
 
 	/** 启用指定配置：同租户互斥，其余置禁用 */
+	@SaCheckPermission("sys:oss:edit")
 	@PostMapping("/enable/{id}")
 	public R<Void> enable(@PathVariable Long id) {
 		ossMapper.selectListByQuery(QueryWrapper.create().eq("status", 1)).forEach(o -> {

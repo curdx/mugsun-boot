@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.system.entity.SysDept;
 import com.mugsun.boot.system.mapper.SysDeptMapper;
 import com.mugsun.core.tool.api.R;
@@ -53,6 +54,7 @@ public class SysDeptController {
 		return R.data(deptMapper.selectOneById(id));
 	}
 
+	@SaCheckPermission("sys:dept:save")
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysDept dept) {
 		if (dept.getId() == null) {
@@ -63,6 +65,7 @@ public class SysDeptController {
 		return R.success("操作成功");
 	}
 
+	@SaCheckPermission("sys:dept:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		deptMapper.deleteBatchByIds(ids);

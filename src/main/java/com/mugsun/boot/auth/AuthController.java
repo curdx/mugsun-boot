@@ -330,13 +330,17 @@ public class AuthController {
 		data.put("userId", user.getId());
 		data.put("userName", user.getUsername());
 		data.put("nickName", user.getNickname() == null ? user.getUsername() : user.getNickname());
-		// 真实角色/权限下发（经 MugsunStpInterface 从 用户→角色→菜单权限 派生，去除硬编码）
+		// 真实角色/权限下发（经 MugsunStpInterface 从 用户→角色→菜单权限 派生）
 		java.util.List<String> realRoles = StpUtil.getRoleList();
 		java.util.LinkedHashSet<String> roles = new java.util.LinkedHashSet<>(realRoles);
-		// 前端菜单门控标识（R_SUPER/R_ADMIN）统一补齐，保证既有菜单可见性不回归；
-		// 全量按权限码的前端菜单级 RBAC 作后续增量（当前前端菜单以 R_SUPER/R_ADMIN 门控）
-		roles.add(RoleConstants.FRONT_SUPER);
-		roles.add(RoleConstants.FRONT_ADMIN);
+		// 前端菜单门控伪角色按真实身份派生（不再对所有人无条件注入，杜绝普通用户菜单越权可见）：
+		// 平台超管(000000+admin)→R_SUPER+R_ADMIN；租户管理员(admin 角色)→R_ADMIN；普通用户→均无（仅见未门控页）
+		if (TenantContext.isPlatformSuperAdmin()) {
+			roles.add(RoleConstants.FRONT_SUPER);
+			roles.add(RoleConstants.FRONT_ADMIN);
+		} else if (realRoles.contains(RoleConstants.ADMIN)) {
+			roles.add(RoleConstants.FRONT_ADMIN);
+		}
 		data.put("roles", new java.util.ArrayList<>(roles));
 		data.put("buttons", StpUtil.getPermissionList());
 		data.put("needChangePassword", securityPolicyService.needChangePassword(user.getId()));

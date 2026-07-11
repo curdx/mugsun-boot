@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.system.entity.SysSms;
 import com.mugsun.boot.system.mapper.SysSmsMapper;
 import com.mugsun.core.tool.api.R;
@@ -35,6 +36,7 @@ public class SysSmsController {
 		return R.data(smsMapper.selectOneById(id));
 	}
 
+	@SaCheckPermission("sys:sms:save")
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysSms sms) {
 		if (sms.getId() == null) {
@@ -45,6 +47,7 @@ public class SysSmsController {
 		return R.success("操作成功");
 	}
 
+	@SaCheckPermission("sys:sms:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		ids.forEach(smsMapper::deleteById);
@@ -52,6 +55,7 @@ public class SysSmsController {
 	}
 
 	/** 启用指定配置：同租户互斥，其余置禁用 */
+	@SaCheckPermission("sys:sms:edit")
 	@PostMapping("/enable/{id}")
 	public R<Void> enable(@PathVariable Long id) {
 		smsMapper.selectListByQuery(QueryWrapper.create().eq("status", 1)).forEach(s -> {

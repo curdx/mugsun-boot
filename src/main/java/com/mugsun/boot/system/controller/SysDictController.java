@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.system.entity.SysDict;
 import com.mugsun.boot.system.mapper.SysDictMapper;
 import com.mugsun.boot.system.service.DictService;
@@ -60,6 +61,7 @@ public class SysDictController {
 		return R.data(dictMapper.selectOneById(id));
 	}
 
+	@SaCheckPermission("sys:dict:save")
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysDict dict) {
 		// 字典类型无键值：dictKey 兜底空串，避免 NOT NULL 约束报错
@@ -75,6 +77,7 @@ public class SysDictController {
 		return R.success("操作成功");
 	}
 
+	@SaCheckPermission("sys:dict:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		ids.forEach(id -> {
