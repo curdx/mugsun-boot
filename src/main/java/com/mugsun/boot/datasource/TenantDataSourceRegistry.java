@@ -1,9 +1,13 @@
 package com.mugsun.boot.datasource;
 
+import com.mugsun.boot.common.crypto.Sm4Util;
 import com.mugsun.boot.datasource.entity.SysTenantDatasource;
 import com.mugsun.boot.datasource.mapper.SysTenantDatasourceMapper;
+import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.datasource.FlexDataSource;
 import com.mybatisflex.core.query.QueryWrapper;
+import com.mybatisflex.core.row.Db;
+import com.mybatisflex.core.row.Row;
 import com.mugsun.boot.tenant.TenantContext;
 import com.zaxxer.hikari.HikariDataSource;
 import org.slf4j.Logger;
@@ -13,12 +17,16 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
+import java.sql.Connection;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 租户独立数据源注册中心：运行时把租户数据源加入 FlexDataSource，
- * 并按当前租户解析路由键（DataSourceKey）。启用配置的租户其业务数据落独立库。
+ * 租户数据源注册中心（隔离策略中央解析）：运行时把租户数据源加入 FlexDataSource，并按当前租户解析路由键。
+ * <p>隔离策略：无配置=FIELD（主库 + tenant_id 字段隔离）；配置 isolation_type=1=DATASOURCE（独立库）；
+ * =2=SCHEMA（同库独立 schema，专用连接池 connectionInitSql 设 search_path，规避共享池 search_path 泄漏）。
+ * <p>注册前 testConnection 探活，坏配置不入池（不污染主库运行）。密码由 {@code Sm4TypeHandler} 透明解密。
  */
 @Component
 public class TenantDataSourceRegistry {
@@ -26,6 +34,12 @@ public class TenantDataSourceRegistry {
 	private static final Logger log = LoggerFactory.getLogger(TenantDataSourceRegistry.class);
 	public static final String DEFAULT_KEY = "primary";
 	private static final String KEY_PREFIX = "tenant_";
+	/** 隔离策略：独立库 */
+	public static final int ISOLATION_DATABASE = 1;
+	/** 隔离策略：独立 schema（同库） */
+	public static final int ISOLATION_SCHEMA = 2;
+	/** 探活连接超时（毫秒） */
+	private static final long PROBE_TIMEOUT_MS = 3000L;
 
 	private final DataSource dataSource;
 	private final SysTenantDatasourceMapper datasourceMapper;
@@ -37,36 +51,108 @@ public class TenantDataSourceRegistry {
 		this.datasourceMapper = datasourceMapper;
 	}
 
-	/** 应用就绪后加载全部启用配置并注册（此时 Flyway 已建表） */
+	/** 应用就绪后加载全部启用配置并注册（此时 Flyway 已建表）；单个坏配置只告警跳过、不阻断启动 */
 	@EventListener(ApplicationReadyEvent.class)
 	public void loadAll() {
 		if (!(dataSource instanceof FlexDataSource)) {
 			log.warn("当前 dataSource 非 FlexDataSource，租户独立数据源不可用");
 			return;
 		}
+		encryptLegacyPasswords();
 		Set<SysTenantDatasource> configs = TenantContext.ignore(() ->
 			Set.copyOf(datasourceMapper.selectListByQuery(QueryWrapper.create().eq("status", 1))));
-		configs.forEach(this::register);
+		for (SysTenantDatasource cfg : configs) {
+			try {
+				register(cfg);
+			} catch (Exception e) {
+				log.warn("租户数据源 {} 注册失败（探活未通过），跳过：{}", cfg.getTenantCode(), e.getMessage());
+			}
+		}
 		log.info("租户独立数据源加载完成，共 {} 个", activeTenants.size());
 	}
 
-	/** 注册（或重建）某租户数据源 */
+	/**
+	 * 一次性回填：把存量明文密码重加密为 SM4 密文（读原始列绕过 TypeHandler，
+	 * 用 {@code encrypt(decrypt(raw)) != raw} 判定明文——密文自解自加还原、明文则不等，仅明文行被改写，幂等）。
+	 */
+	private void encryptLegacyPasswords() {
+		try {
+			List<Row> rows = TenantContext.ignore(() ->
+				Db.selectListBySql("SELECT id, ds_password FROM sys_tenant_datasource WHERE is_deleted = 0"));
+			for (Row r : rows) {
+				String raw = r.getString("ds_password");
+				if (raw == null || raw.isEmpty()) {
+					continue;
+				}
+				String cipher = Sm4Util.encrypt(Sm4Util.decrypt(raw));
+				if (cipher != null && !cipher.equals(raw)) {
+					TenantContext.ignore(() -> Db.updateBySql(
+						"UPDATE sys_tenant_datasource SET ds_password = ? WHERE id = ?", cipher, r.get("id")));
+					log.info("回填加密租户数据源密码：id={}", r.get("id"));
+				}
+			}
+		} catch (Exception e) {
+			log.warn("存量数据源密码加密回填失败：{}", e.getMessage());
+		}
+	}
+
+	/** 注册（或重建）某租户数据源；探活未通过抛异常、不入池 */
 	public void register(SysTenantDatasource cfg) {
 		if (!(dataSource instanceof FlexDataSource flex)) {
 			return;
 		}
 		String key = KEY_PREFIX + cfg.getTenantCode();
-		// 先移除旧的，避免 stale
-		removeQuietly(flex, key);
 		HikariDataSource ds = new HikariDataSource();
 		ds.setJdbcUrl(cfg.getDsUrl());
 		ds.setUsername(cfg.getDsUsername());
 		ds.setPassword(cfg.getDsPassword());
 		ds.setMaximumPoolSize(5);
 		ds.setPoolName(key);
+		ds.setConnectionTimeout(PROBE_TIMEOUT_MS);
+		// 懒初始化，探活时才真正建连，坏配置不在构造期阻塞
+		ds.setInitializationFailTimeout(-1);
+		// SCHEMA 隔离：专用池 connectionInitSql 设 search_path（每条物理连接建立即生效，随连接生命周期常驻，不泄漏）
+		if (isSchema(cfg)) {
+			ds.setConnectionInitSql("SET search_path TO " + cfg.getSchemaName());
+		}
+		probe(ds, key, isSchema(cfg) ? cfg.getSchemaName() : null);
+		// 探活通过后再替换旧的，避免探活失败却先毁了在用的旧源
+		removeQuietly(flex, key);
 		flex.addDataSource(key, ds);
 		activeTenants.add(cfg.getTenantCode());
-		log.info("注册租户独立数据源 {} -> {}", key, cfg.getDsUrl());
+		log.info("注册租户数据源 {} -> {} ({})", key, cfg.getDsUrl(),
+			isSchema(cfg) ? "schema:" + cfg.getSchemaName() : "database");
+	}
+
+	/** 探活：取一次连接并校验可用；SCHEMA 模式额外校验目标 schema 存在（PG SET search_path 对不存在 schema 不报错，需显式核验）；失败即关闭并抛异常，杜绝坏源污染运行池 */
+	private void probe(HikariDataSource ds, String key, String schemaName) {
+		try (Connection c = ds.getConnection()) {
+			if (!c.isValid((int) (PROBE_TIMEOUT_MS / 1000))) {
+				throw new ServiceException("数据源探活失败：连接不可用");
+			}
+			if (schemaName != null) {
+				try (var ps = c.prepareStatement(
+						"SELECT 1 FROM information_schema.schemata WHERE schema_name = ?")) {
+					ps.setString(1, schemaName);
+					try (var rs = ps.executeQuery()) {
+						if (!rs.next()) {
+							throw new ServiceException("目标 schema 不存在：" + schemaName);
+						}
+					}
+				}
+			}
+		} catch (ServiceException e) {
+			ds.close();
+			throw e;
+		} catch (Exception e) {
+			ds.close();
+			throw new ServiceException("数据源 " + key + " 探活失败：" + e.getMessage());
+		}
+	}
+
+	private boolean isSchema(SysTenantDatasource cfg) {
+		return Integer.valueOf(ISOLATION_SCHEMA).equals(cfg.getIsolationType())
+			&& cfg.getSchemaName() != null && !cfg.getSchemaName().isBlank();
 	}
 
 	/** 注销某租户数据源，回落主库 */
@@ -77,7 +163,7 @@ public class TenantDataSourceRegistry {
 		activeTenants.remove(tenantCode);
 	}
 
-	/** 解析当前租户的数据源路由键：启用独立源的租户返回其键，否则主库 */
+	/** 解析当前租户的数据源路由键：启用独立源（库/schema）的租户返回其键，否则主库（FIELD 策略） */
 	public String resolveDsKey(String tenantCode) {
 		if (tenantCode != null && activeTenants.contains(tenantCode)) {
 			return KEY_PREFIX + tenantCode;
