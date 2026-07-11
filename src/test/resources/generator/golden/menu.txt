@@ -1,0 +1,8 @@
+-- 商品 菜单与按钮权限（代码生成产物；父菜单 parent_id 可按需调整）
+INSERT INTO sys_menu (id, parent_id, menu_name, path, component, menu_type, permission, sort, create_time, is_deleted) VALUES
+(1000000000000000001, 0, '商品', 'product', '/demo/product', 'C', 'demo:product:list', 90, now(), 0)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO sys_menu (id, parent_id, menu_name, menu_type, permission, sort, create_time, is_deleted) VALUES
+(1000000000000000002, 1000000000000000001, '新增', 'F', 'demo:product:save', 1, now(), 0),
+(1000000000000000003, 1000000000000000001, '删除', 'F', 'demo:product:remove', 2, now(), 0)
+ON CONFLICT (id) DO NOTHING;

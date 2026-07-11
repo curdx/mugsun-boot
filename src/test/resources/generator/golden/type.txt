@@ -1,0 +1,16 @@
+/** 商品表单 */
+export interface ProductForm {
+  id?: number | string
+  productName?: string
+  price?: number
+  status?: number
+  remark?: string
+  online?: number
+  publishTime?: string
+}
+
+/** 商品查询 */
+export interface ProductQuery {
+  pageNum?: number
+  pageSize?: number
+}

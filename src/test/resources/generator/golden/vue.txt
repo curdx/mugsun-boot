@@ -1,0 +1,92 @@
+<!-- 商品 管理页（代码生成产物·useCrud 组合式） -->
+<template>
+  <div class="art-full-height">
+    <ElCard class="art-table-card">
+      <div style="margin-bottom: 12px">
+        <ElButton @click="showDialog('add')" v-ripple>新增</ElButton>
+      </div>
+      <ArtTable
+        :loading="loading"
+        :data="data as any[]"
+        :columns="columns"
+        :pagination="pagination"
+        border
+        @pagination:size-change="handleSizeChange"
+        @pagination:current-change="handleCurrentChange"
+      />
+      <ElDialog v-model="dialogVisible" :title="dialogType === 'add' ? '新增' : '编辑'" width="520px" align-center>
+        <ElForm :model="currentRow" label-width="100px">
+          <ElFormItem label="商品名称">
+            <ElInput v-model="currentRow.productName" placeholder="请输入商品名称" />
+          </ElFormItem>
+          <ElFormItem label="价格">
+            <ElInputNumber v-model="currentRow.price" :controls="false" style="width: 100%" />
+          </ElFormItem>
+          <ElFormItem label="状态">
+            <ElSelect v-model="currentRow.status" placeholder="请选择状态" style="width: 100%">
+            <ElOption v-for="d in product_status" :key="d.value" :label="d.label" :value="d.value" />
+          </ElSelect>
+          </ElFormItem>
+          <ElFormItem label="备注">
+            <ElInput v-model="currentRow.remark" type="textarea" :rows="3" placeholder="请输入备注" />
+          </ElFormItem>
+          <ElFormItem label="上架">
+            <ElSwitch v-model="currentRow.online" :active-value="1" :inactive-value="0" />
+          </ElFormItem>
+          <ElFormItem label="发布时间">
+            <ElDatePicker v-model="currentRow.publishTime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" />
+          </ElFormItem>
+        </ElForm>
+        <template v-slot:footer>
+          <ElButton @click="dialogVisible = false">取消</ElButton>
+          <ElButton type="primary" @click="handleSubmit(currentRow)">提交</ElButton>
+        </template>
+      </ElDialog>
+    </ElCard>
+  </div>
+</template>
+
+<script setup lang="ts">
+  import { h } from 'vue'
+  import { ElButton, ElCard, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElSelect, ElOption, ElSwitch, ElDatePicker } from 'element-plus'
+  import { useCrud } from '@/hooks/core/useCrud'
+  import { useDict } from '@/hooks/core/useDict'
+  import { fetchProductPage, fetchSaveProduct, fetchRemoveProduct } from '@/api/demo/product'
+  import type { ColumnOption } from '@/types/component'
+
+  defineOptions({ name: 'Product' })
+
+  const { product_status } = useDict('product_status')
+
+  const columnsFactory = (): ColumnOption[] => [
+    { type: 'index', width: 60, label: '序号' },
+    { prop: 'productName', label: '商品名称', minWidth: 140 },
+    { prop: 'price', label: '价格', minWidth: 140 },
+    { prop: 'status', label: '状态', minWidth: 140 },
+    { prop: 'online', label: '上架', minWidth: 140 },
+    { prop: 'publishTime', label: '发布时间', minWidth: 140 },
+    { prop: 'createTime', label: '创建时间', minWidth: 140 },
+    {
+      prop: 'operation',
+      label: '操作',
+      width: 160,
+      fixed: 'right',
+      formatter: (row: any) =>
+        h('div', [
+          h(ElButton, { link: true, type: 'primary', size: 'small', onClick: () => showDialog('edit', row) }, () => '编辑'),
+          h(ElButton, { link: true, type: 'danger', size: 'small', onClick: () => handleDelete(row) }, () => '删除')
+        ])
+    }
+  ]
+
+  const {
+    columns, data, loading, pagination, handleSizeChange, handleCurrentChange,
+    dialogVisible, dialogType, currentRow, showDialog, handleDelete, handleSubmit
+  } = useCrud({
+    listApi: (params: any) => fetchProductPage(params),
+    saveApi: (data: any) => fetchSaveProduct(data),
+    removeApi: (id: any) => fetchRemoveProduct([id]),
+    columnsFactory,
+    label: '商品'
+  })
+</script>

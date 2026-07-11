@@ -1,0 +1,18 @@
+import request from '@/utils/http'
+import type { ProductForm, ProductQuery } from './type'
+
+/** 商品分页 */
+export const fetchProductPage = (params: ProductQuery) =>
+  request.get({ url: '/api/demo/product/page', params })
+
+/** 商品详情 */
+export const fetchProductDetail = (id: number | string) =>
+  request.get({ url: '/api/demo/product/detail', params: { id } })
+
+/** 保存商品（新增/编辑） */
+export const fetchSaveProduct = (data: ProductForm) =>
+  request.post({ url: '/api/demo/product/submit', data })
+
+/** 删除商品 */
+export const fetchRemoveProduct = (ids: (number | string)[]) =>
+  request.post({ url: '/api/demo/product/remove', data: ids })

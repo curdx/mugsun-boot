@@ -1,0 +1,12 @@
+package com.mugsun.boot.demo.mapper;
+
+import com.mugsun.boot.demo.entity.Product;
+import com.mybatisflex.core.BaseMapper;
+
+/**
+ * 商品 Mapper。
+ *
+ * @author mugsun
+ */
+public interface ProductMapper extends BaseMapper<Product> {
+}

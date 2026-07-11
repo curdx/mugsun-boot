@@ -1,0 +1,58 @@
+package com.mugsun.boot.demo.controller;
+
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.mugsun.boot.demo.entity.Product;
+import com.mugsun.boot.demo.mapper.ProductMapper;
+import com.mugsun.core.tool.api.R;
+import com.mybatisflex.core.paginate.Page;
+import com.mybatisflex.core.query.QueryWrapper;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * 商品管理
+ *
+ * @author mugsun
+ */
+@RestController
+@RequestMapping("/demo/product")
+@SaCheckLogin
+public class ProductController {
+
+	private final ProductMapper productMapper;
+
+	public ProductController(ProductMapper productMapper) {
+		this.productMapper = productMapper;
+	}
+
+	@GetMapping("/page")
+	public R<Page<Product>> page(@RequestParam(defaultValue = "1") long pageNum,
+			@RequestParam(defaultValue = "10") long pageSize) {
+		return R.data(productMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("id", false)));
+	}
+
+	@GetMapping("/detail")
+	public R<Product> detail(@RequestParam Long id) {
+		return R.data(productMapper.selectOneById(id));
+	}
+
+	@SaCheckPermission("demo:product:save")
+	@PostMapping("/submit")
+	public R<Void> submit(@RequestBody Product product) {
+		if (product.getId() == null) {
+			productMapper.insertSelective(product);
+		} else {
+			productMapper.update(product);
+		}
+		return R.success("操作成功");
+	}
+
+	@SaCheckPermission("demo:product:remove")
+	@PostMapping("/remove")
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		productMapper.deleteBatchByIds(ids);
+		return R.success("删除成功");
+	}
+}

@@ -1,0 +1,81 @@
+package com.mugsun.boot.demo.entity;
+
+import com.mugsun.core.mybatis.base.BaseEntity;
+import com.mybatisflex.annotation.Table;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+/**
+ * 商品
+ *
+ * @author mugsun
+ */
+@Table("gen_product")
+public class Product extends BaseEntity {
+
+	/** 商品名称 */
+	private String productName;
+
+	/** 价格 */
+	private BigDecimal price;
+
+	/** 状态 */
+	private Integer status;
+
+	/** 备注 */
+	private String remark;
+
+	/** 上架 */
+	private Integer online;
+
+	/** 发布时间 */
+	private LocalDateTime publishTime;
+
+	public String getProductName() {
+		return productName;
+	}
+
+	public void setProductName(String productName) {
+		this.productName = productName;
+	}
+
+	public BigDecimal getPrice() {
+		return price;
+	}
+
+	public void setPrice(BigDecimal price) {
+		this.price = price;
+	}
+
+	public Integer getStatus() {
+		return status;
+	}
+
+	public void setStatus(Integer status) {
+		this.status = status;
+	}
+
+	public String getRemark() {
+		return remark;
+	}
+
+	public void setRemark(String remark) {
+		this.remark = remark;
+	}
+
+	public Integer getOnline() {
+		return online;
+	}
+
+	public void setOnline(Integer online) {
+		this.online = online;
+	}
+
+	public LocalDateTime getPublishTime() {
+		return publishTime;
+	}
+
+	public void setPublishTime(LocalDateTime publishTime) {
+		this.publishTime = publishTime;
+	}
+}
