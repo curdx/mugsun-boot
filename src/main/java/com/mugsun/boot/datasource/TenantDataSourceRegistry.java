@@ -4,7 +4,7 @@ import com.mugsun.boot.datasource.entity.SysTenantDatasource;
 import com.mugsun.boot.datasource.mapper.SysTenantDatasourceMapper;
 import com.mybatisflex.core.datasource.FlexDataSource;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.mybatisflex.core.tenant.TenantManager;
+import com.mugsun.boot.tenant.TenantContext;
 import com.zaxxer.hikari.HikariDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +44,7 @@ public class TenantDataSourceRegistry {
 			log.warn("当前 dataSource 非 FlexDataSource，租户独立数据源不可用");
 			return;
 		}
-		Set<SysTenantDatasource> configs = TenantManager.withoutTenantCondition(() ->
+		Set<SysTenantDatasource> configs = TenantContext.ignore(() ->
 			Set.copyOf(datasourceMapper.selectListByQuery(QueryWrapper.create().eq("status", 1))));
 		configs.forEach(this::register);
 		log.info("租户独立数据源加载完成，共 {} 个", activeTenants.size());

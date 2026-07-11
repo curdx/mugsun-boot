@@ -4,6 +4,7 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import com.mugsun.boot.datasource.entity.BizCustomer;
 import com.mugsun.boot.datasource.mapper.BizCustomerMapper;
+import com.mugsun.boot.tenant.TenantContext;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.datasource.DataSourceKey;
@@ -68,7 +69,7 @@ public class BizCustomerController {
 	}
 
 	private String currentTenantCode() {
-		Object code = StpUtil.getSession().get("tenantId");
+		Object code = StpUtil.getSession().get(TenantContext.TENANT_SESSION_KEY);
 		return code == null ? null : code.toString();
 	}
 }

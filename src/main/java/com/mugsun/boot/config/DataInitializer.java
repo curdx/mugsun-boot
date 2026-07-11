@@ -3,6 +3,7 @@ package com.mugsun.boot.config;
 import com.mugsun.boot.common.constant.RoleConstants;
 import com.mugsun.boot.common.constant.TenantConstants;
 import com.mugsun.boot.common.constant.UserConstants;
+import com.mugsun.boot.tenant.TenantContext;
 import com.mugsun.boot.system.entity.SysMenu;
 import com.mugsun.boot.system.entity.SysRole;
 import com.mugsun.boot.system.entity.SysRoleMenu;
@@ -44,6 +45,11 @@ public class DataInitializer implements CommandLineRunner {
 
 	@Override
 	public void run(String... args) {
+		// 启动初始化写平台租户表，无会话上下文——经中心忽略入口显式声明，规避 fail-closed
+		TenantContext.ignore(this::seed);
+	}
+
+	private void seed() {
 		if (userMapper.selectCountByQuery(QueryWrapper.create().eq("username", UserConstants.ADMIN_USERNAME)) > 0) {
 			return;
 		}

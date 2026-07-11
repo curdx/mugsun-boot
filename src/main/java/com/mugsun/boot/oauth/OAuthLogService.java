@@ -2,7 +2,7 @@ package com.mugsun.boot.oauth;
 
 import com.mugsun.boot.oauth.entity.SysOauthLog;
 import com.mugsun.boot.oauth.mapper.SysOauthLogMapper;
-import com.mybatisflex.core.tenant.TenantManager;
+import com.mugsun.boot.tenant.TenantContext;
 import org.springframework.stereotype.Service;
 
 /**
@@ -25,6 +25,6 @@ public class OAuthLogService {
 		log.setStatus(status);
 		log.setIp(ip);
 		log.setMsg(msg);
-		TenantManager.withoutTenantCondition(() -> logMapper.insertSelective(log));
+		TenantContext.ignore(() -> logMapper.insertSelective(log));
 	}
 }

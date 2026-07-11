@@ -8,7 +8,7 @@ import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.mapper.SysUserMapper;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.tool.exception.ServiceException;
-import com.mybatisflex.core.tenant.TenantManager;
+import com.mugsun.boot.tenant.TenantContext;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -90,7 +90,7 @@ public class OnlineController {
 		}
 		try {
 			Long id = Long.valueOf(loginId.toString());
-			return TenantManager.withoutTenantCondition(() -> userMapper.selectOneById(id));
+			return TenantContext.ignore(() -> userMapper.selectOneById(id));
 		} catch (NumberFormatException e) {
 			return null;
 		}

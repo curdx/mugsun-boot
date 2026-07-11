@@ -10,7 +10,7 @@ import com.mugsun.boot.system.mapper.SysUserMapper;
 import com.mugsun.boot.system.mapper.SysUserOauthMapper;
 import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.mybatisflex.core.tenant.TenantManager;
+import com.mugsun.boot.tenant.TenantContext;
 import me.zhyd.oauth.model.AuthCallback;
 import me.zhyd.oauth.model.AuthResponse;
 import me.zhyd.oauth.model.AuthUser;
@@ -67,7 +67,7 @@ public class SocialService {
 	public String loginByCode(String source, String code, String state, boolean autoRegister) {
 		AuthUser authUser = resolveAuthUser(source, code, state);
 		String openId = authUser.getUuid();
-		SysUser user = TenantManager.withoutTenantCondition(() -> {
+		SysUser user = TenantContext.ignore(() -> {
 			SysUserOauth bind = oauthMapper.selectOneByQuery(QueryWrapper.create()
 				.eq("source", source).eq("open_id", openId));
 			if (bind != null) {
@@ -85,7 +85,7 @@ public class SocialService {
 			throw new ServiceException("该第三方账号尚未绑定平台用户，请先登录并绑定后再使用第三方登录");
 		}
 		StpUtil.login(user.getId());
-		StpUtil.getSession().set("tenantId", user.getTenantId());
+		StpUtil.getSession().set(TenantContext.TENANT_SESSION_KEY, user.getTenantId());
 		return StpUtil.getTokenValue();
 	}
 
@@ -94,7 +94,7 @@ public class SocialService {
 	public void bindByCode(Long userId, String source, String code, String state) {
 		AuthUser authUser = resolveAuthUser(source, code, state);
 		String openId = authUser.getUuid();
-		TenantManager.withoutTenantCondition(() -> {
+		TenantContext.ignore(() -> {
 			SysUserOauth exist = oauthMapper.selectOneByQuery(QueryWrapper.create()
 				.eq("source", source).eq("open_id", openId));
 			if (exist != null) {
@@ -110,7 +110,7 @@ public class SocialService {
 
 	/** 当前登录用户解绑某来源第三方账号 */
 	public void unbind(Long userId, String source) {
-		TenantManager.withoutTenantCondition(() -> {
+		TenantContext.ignore(() -> {
 			SysUserOauth bind = oauthMapper.selectOneByQuery(QueryWrapper.create()
 				.eq("source", source).eq("user_id", userId));
 			if (bind != null) {

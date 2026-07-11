@@ -5,16 +5,25 @@ import cn.dev33.satoken.stp.StpUtil;
 import java.util.function.Supplier;
 
 /**
- * 租户上下文：统一的当前租户解析与作用域切换，供 {@link SaTokenTenantFactory} 取值。
+ * 租户上下文：统一的当前租户解析、作用域切换与忽略，供 {@link SaTokenTenantFactory} 取值。
  * <p>解析优先级：显式 ThreadLocal（异步透传 / execute / ignore）＞ Sa-Token 会话超管切换租户 ＞ 会话本租户。
- * <p>ThreadLocal 由 {@link com.mugsun.boot.tenant.TenantTaskDecorator} 在 @Async/虚拟线程间捕获-恢复，
- * 严格 finally remove，杜绝虚拟线程复用串号。空串为“显式忽略租户”哨兵（不施加隔离）。
+ * <p>ThreadLocal 由 {@link TenantTaskDecorator} 在 @Async/虚拟线程间捕获-恢复，严格 finally remove。
+ * <p>忽略与恢复采用「存旧值→set→finally 恢复」，天然可重入；与数据权限（G6 拦截器 + 手工条件）相互正交，忽略租户不误伤数据权限或防攻击拦截。
+ * <p>{@link #ignore} 为唯一忽略入口（对标 RuoYi-Vue-Plus TenantHelper.ignore 的中心化助手），替代散落的 Flex {@code withoutTenantCondition}。
  */
 public final class TenantContext {
 
+	/** 会话中保存本租户编号的键 */
+	public static final String TENANT_SESSION_KEY = "tenantId";
 	/** 超管切换租户会话键；值 -1 表示查看全部租户 */
 	public static final String SWITCH_KEY = "switchTenant";
+	/** 查看全部租户哨兵（不施加隔离） */
 	public static final String ALL = "-1";
+	/** 显式忽略租户哨兵（作用域内不施加隔离） */
+	public static final String IGNORE = "";
+
+	/** resolve() 返回此哨兵表示「无任何租户上下文」，区别于「已授权的不加条件(null)」 */
+	private static final Object[] NO_CONTEXT = new Object[0];
 
 	private static final ThreadLocal<String> HOLDER = new ThreadLocal<>();
 
@@ -33,29 +42,52 @@ public final class TenantContext {
 		HOLDER.remove();
 	}
 
-	/** 当前有效租户；返回 null 表示不施加租户条件（全部） */
-	public static String current() {
-		String ctx = HOLDER.get();
-		if (ctx != null) {
-			return ctx.isBlank() ? null : ctx;
+	/**
+	 * 统一解析：{@code null}=不加条件（忽略/查看全部，已授权）；长度1数组=指定租户；
+	 * {@link #NO_CONTEXT}=无任何上下文。
+	 */
+	private static Object[] resolve() {
+		String raw = HOLDER.get();
+		if (raw != null) {
+			return (raw.isBlank() || ALL.equals(raw)) ? null : new Object[]{raw};
 		}
 		try {
 			if (StpUtil.isLogin()) {
 				Object sw = StpUtil.getSession().get(SWITCH_KEY);
 				if (sw != null) {
 					String s = sw.toString();
-					return (ALL.equals(s) || s.isBlank()) ? null : s;
+					return (ALL.equals(s) || s.isBlank()) ? null : new Object[]{s};
 				}
-				Object t = StpUtil.getSession().get("tenantId");
-				return t == null ? null : t.toString();
+				Object t = StpUtil.getSession().get(TENANT_SESSION_KEY);
+				if (t != null && !t.toString().isBlank()) {
+					return new Object[]{t.toString()};
+				}
 			}
 		} catch (Exception ignored) {
-			// 无会话上下文（异步/初始化）
+			// 无会话上下文（异步/初始化）——落到 NO_CONTEXT
 		}
-		return null;
+		return NO_CONTEXT;
 	}
 
-	/** 作用域执行：临时切到指定租户，存旧值→set→finally 恢复（可嵌套） */
+	/** 当前有效租户（不抛）；{@code null} 表示不加租户条件或无上下文。供缓存前缀/日志读取。 */
+	public static String current() {
+		Object[] r = resolve();
+		return (r == null || r.length == 0) ? null : r[0].toString();
+	}
+
+	/**
+	 * 供 {@link SaTokenTenantFactory} 取租户条件：{@code null}=不加条件（忽略/查看全部）；
+	 * 长度1数组=按该租户隔离；无任何上下文则 fail-closed 抛 {@link TenantException}。
+	 */
+	public static Object[] resolveTenantIds() {
+		Object[] r = resolve();
+		if (r == NO_CONTEXT) {
+			throw new TenantException("缺少租户上下文，禁止对租户表执行无隔离操作（须显式 TenantContext.ignore 或建立会话）");
+		}
+		return r;
+	}
+
+	/** 作用域执行：临时切到指定租户，存旧值→set→finally 恢复（可重入） */
 	public static <T> T execute(String tenantId, Supplier<T> supplier) {
 		String prev = HOLDER.get();
 		HOLDER.set(tenantId);
@@ -73,13 +105,13 @@ public final class TenantContext {
 		});
 	}
 
-	/** 作用域忽略租户（空串哨兵，current() 返 null 即不隔离），可嵌套 */
+	/** 作用域忽略租户（唯一忽略入口，current() 返 null 即不隔离），可重入、不误伤数据权限 */
 	public static <T> T ignore(Supplier<T> supplier) {
-		return execute("", supplier);
+		return execute(IGNORE, supplier);
 	}
 
 	public static void ignore(Runnable runnable) {
-		execute("", () -> {
+		execute(IGNORE, () -> {
 			runnable.run();
 			return null;
 		});

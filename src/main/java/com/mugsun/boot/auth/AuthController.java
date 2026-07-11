@@ -13,7 +13,7 @@ import com.mugsun.boot.system.mapper.SysUserMapper;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.mybatisflex.core.tenant.TenantManager;
+import com.mugsun.boot.tenant.TenantContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -88,7 +88,7 @@ public class AuthController {
 		}
 		loginLockService.assertNotLocked(username);
 		String tenantId = (dto.getTenantId() == null || dto.getTenantId().isBlank()) ? TenantConstants.DEFAULT_TENANT_ID : dto.getTenantId();
-		SysUser user = TenantManager.withoutTenantCondition(() ->
+		SysUser user = TenantContext.ignore(() ->
 			userMapper.selectOneByQuery(QueryWrapper.create().eq("tenant_id", tenantId).eq("username", username)));
 		if (user == null || !passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
 			loginLockService.recordFail(username);
@@ -112,7 +112,7 @@ public class AuthController {
 		StpUtil.login(user.getId(), new cn.dev33.satoken.stp.parameter.SaLoginParameter()
 			.setDeviceType(client.getClientId())
 			.setTimeout(client.getTokenTimeout() == null ? 2592000 : client.getTokenTimeout()));
-		StpUtil.getSession().set("tenantId", user.getTenantId());
+		StpUtil.getSession().set(TenantContext.TENANT_SESSION_KEY, user.getTenantId());
 		// 按 client 策略：单账号最大在线终端数（超出踢最旧）
 		enforceMaxOnline(user.getId(), client.getMaxOnline());
 		saveLoginLog(username, request, client.getClientId(), user.getTenantId(), 1, "登录成功");
@@ -135,9 +135,9 @@ public class AuthController {
 	@PostMapping("/two-factor")
 	public R<Map<String, Object>> twoFactor(@RequestBody Map<String, String> body) {
 		Long userId = twoFactorService.verify(body.get("twoFactorToken"), body.get("code"));
-		SysUser user = TenantManager.withoutTenantCondition(() -> userMapper.selectOneById(userId));
+		SysUser user = TenantContext.ignore(() -> userMapper.selectOneById(userId));
 		StpUtil.login(userId);
-		StpUtil.getSession().set("tenantId", user.getTenantId());
+		StpUtil.getSession().set(TenantContext.TENANT_SESSION_KEY, user.getTenantId());
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
 	}
 
@@ -151,7 +151,7 @@ public class AuthController {
 		// 等保密码复杂度校验（min-length + 大小写/数字/特殊字符组合，策略可后台改）
 		securityPolicyService.validateComplexity(dto.getPassword());
 		String tenantId = TenantConstants.DEFAULT_TENANT_ID;
-		long exists = TenantManager.withoutTenantCondition(() -> userMapper.selectCountByQuery(
+		long exists = TenantContext.ignore(() -> userMapper.selectCountByQuery(
 			QueryWrapper.create().eq("tenant_id", tenantId).eq("username", dto.getUsername())));
 		if (exists > 0) {
 			throw new ServiceException("用户名已存在");
@@ -163,7 +163,7 @@ public class AuthController {
 		user.setPhone(dto.getPhone());
 		user.setStatus(1);
 		user.setTenantId(tenantId);
-		TenantManager.withoutTenantCondition(() -> userMapper.insert(user));
+		TenantContext.ignore(() -> userMapper.insert(user));
 		securityPolicyService.logPassword(user.getId(), user.getPassword());
 		return R.success("注册成功");
 	}
@@ -200,7 +200,7 @@ public class AuthController {
 			saveLoginLog(phone, request, ClientConstants.DEFAULT_CLIENT_ID, TenantConstants.DEFAULT_TENANT_ID, 0, "短信验证码错误");
 			throw new ServiceException("验证码错误或已过期");
 		}
-		SysUser user = TenantManager.withoutTenantCondition(() ->
+		SysUser user = TenantContext.ignore(() ->
 			userMapper.selectOneByQuery(QueryWrapper.create().eq("phone", phone).orderBy("id", false)));
 		if (user == null) {
 			loginLockService.recordFail(phone);
@@ -209,7 +209,7 @@ public class AuthController {
 		}
 		loginLockService.clear(phone);
 		StpUtil.login(user.getId());
-		StpUtil.getSession().set("tenantId", user.getTenantId());
+		StpUtil.getSession().set(TenantContext.TENANT_SESSION_KEY, user.getTenantId());
 		saveLoginLog(user.getUsername(), request, ClientConstants.DEFAULT_CLIENT_ID, user.getTenantId(), 1, "短信登录成功");
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
 	}
@@ -278,7 +278,7 @@ public class AuthController {
 		log.setStatus(status);
 		log.setMsg(msg);
 		log.setLoginTime(LocalDateTime.now());
-		TenantManager.withoutTenantCondition(() -> loginLogMapper.insertSelective(log));
+		TenantContext.ignore(() -> loginLogMapper.insertSelective(log));
 	}
 
 	@PostMapping("/logout")
@@ -291,10 +291,10 @@ public class AuthController {
 	@PostMapping("/switch-tenant/{tenantId}")
 	@SaCheckLogin
 	public R<Void> switchTenant(@PathVariable String tenantId) {
-		if (!TenantConstants.DEFAULT_TENANT_ID.equals(String.valueOf(StpUtil.getSession().get("tenantId")))) {
+		if (!TenantConstants.DEFAULT_TENANT_ID.equals(String.valueOf(StpUtil.getSession().get(TenantContext.TENANT_SESSION_KEY)))) {
 			throw new ServiceException("仅平台超管可切换租户视图");
 		}
-		StpUtil.getSession().set(com.mugsun.boot.tenant.TenantContext.SWITCH_KEY, tenantId);
+		StpUtil.getSession().set(TenantContext.SWITCH_KEY, tenantId);
 		return R.success("已切换租户视图");
 	}
 
@@ -302,14 +302,14 @@ public class AuthController {
 	@PostMapping("/switch-tenant/reset")
 	@SaCheckLogin
 	public R<Void> switchTenantReset() {
-		StpUtil.getSession().delete(com.mugsun.boot.tenant.TenantContext.SWITCH_KEY);
+		StpUtil.getSession().delete(TenantContext.SWITCH_KEY);
 		return R.success("已复位租户视图");
 	}
 
 	@GetMapping("/info")
 	@SaCheckLogin
 	public R<Map<String, Object>> info() {
-		SysUser user = TenantManager.withoutTenantCondition(() -> userMapper.selectOneById(StpUtil.getLoginIdAsLong()));
+		SysUser user = TenantContext.ignore(() -> userMapper.selectOneById(StpUtil.getLoginIdAsLong()));
 		Map<String, Object> data = new java.util.HashMap<>();
 		data.put("userId", user.getId());
 		data.put("userName", user.getUsername());
@@ -335,7 +335,7 @@ public class AuthController {
 		if (tenantId == null || TenantConstants.DEFAULT_TENANT_ID.equals(tenantId)) {
 			return null;
 		}
-		com.mugsun.boot.system.entity.SysTenant tenant = TenantManager.withoutTenantCondition(() ->
+		com.mugsun.boot.system.entity.SysTenant tenant = TenantContext.ignore(() ->
 			tenantMapper.selectOneByQuery(QueryWrapper.create().eq("tenant_code", tenantId)));
 		if (tenant == null || tenant.getPackageId() == null) {
 			return null;
@@ -352,7 +352,7 @@ public class AuthController {
 	@PostMapping("/update-info")
 	@SaCheckLogin
 	public R<Void> updateInfo(@RequestBody UpdateInfoDTO dto) {
-		SysUser user = TenantManager.withoutTenantCondition(() -> userMapper.selectOneById(StpUtil.getLoginIdAsLong()));
+		SysUser user = TenantContext.ignore(() -> userMapper.selectOneById(StpUtil.getLoginIdAsLong()));
 		if (user == null) {
 			throw new ServiceException("用户不存在");
 		}
@@ -367,7 +367,7 @@ public class AuthController {
 	@PostMapping("/update-password")
 	@SaCheckLogin
 	public R<Void> updatePassword(@RequestBody UpdatePasswordDTO dto) {
-		SysUser user = TenantManager.withoutTenantCondition(() -> userMapper.selectOneById(StpUtil.getLoginIdAsLong()));
+		SysUser user = TenantContext.ignore(() -> userMapper.selectOneById(StpUtil.getLoginIdAsLong()));
 		if (user == null || !passwordEncoder.matches(dto.oldPassword(), user.getPassword())) {
 			throw new ServiceException("原密码错误");
 		}

@@ -6,7 +6,7 @@ import com.mugsun.boot.oauth.mapper.SysOauthLogMapper;
 import com.mugsun.core.tool.api.R;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.mybatisflex.core.tenant.TenantManager;
+import com.mugsun.boot.tenant.TenantContext;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -35,7 +35,7 @@ public class OAuthLogController {
 		if (clientId != null && !clientId.isBlank()) {
 			query.and("client_id = ?", clientId);
 		}
-		Page<SysOauthLog> page = TenantManager.withoutTenantCondition(() ->
+		Page<SysOauthLog> page = TenantContext.ignore(() ->
 			logMapper.paginate(pageNum, pageSize, query));
 		return R.data(page);
 	}

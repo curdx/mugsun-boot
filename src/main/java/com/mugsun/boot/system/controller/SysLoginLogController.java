@@ -6,7 +6,7 @@ import com.mugsun.boot.system.mapper.SysLoginLogMapper;
 import com.mugsun.core.tool.api.R;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.mybatisflex.core.tenant.TenantManager;
+import com.mugsun.boot.tenant.TenantContext;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -32,7 +32,7 @@ public class SysLoginLogController {
 			query.and("status = ?", status);
 		}
 		// 登录日志为平台级留痕，不做租户过滤
-		Page<SysLoginLog> page = TenantManager.withoutTenantCondition(() ->
+		Page<SysLoginLog> page = TenantContext.ignore(() ->
 			loginLogMapper.paginate(pageNum, pageSize, query));
 		return R.data(page);
 	}

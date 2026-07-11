@@ -57,13 +57,13 @@ jetcache:
   local:
     default:
       type: linkedhashmap
-      keyConvertor: jackson
+      keyConvertor: bean:tenantKeyConvertor
       limit: 500
       expireAfterWriteInMillis: 3600000
   remote:
     default:
       type: redis.lettuce
-      keyConvertor: jackson
+      keyConvertor: bean:tenantKeyConvertor
       valueEncoder: java
       valueDecoder: java
       uri: redis://localhost:6379/3

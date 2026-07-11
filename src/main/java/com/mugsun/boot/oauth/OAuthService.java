@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mugsun.boot.oauth.entity.SysOauthClient;
 import com.mugsun.boot.oauth.mapper.SysOauthClientMapper;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.mybatisflex.core.tenant.TenantManager;
+import com.mugsun.boot.tenant.TenantContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -56,7 +56,7 @@ public class OAuthService {
 		if (clientId == null || clientId.isBlank()) {
 			throw OAuth2Exception.invalidClient("client_id 不能为空");
 		}
-		SysOauthClient client = TenantManager.withoutTenantCondition(() ->
+		SysOauthClient client = TenantContext.ignore(() ->
 			clientMapper.selectOneByQuery(QueryWrapper.create().eq("client_id", clientId)));
 		if (client == null) {
 			throw OAuth2Exception.invalidClient("客户端不存在");

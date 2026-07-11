@@ -15,7 +15,7 @@ import com.mugsun.boot.system.mapper.SysTenantMapper;
 import com.mugsun.boot.system.mapper.SysUserMapper;
 import com.mugsun.boot.system.mapper.SysUserRoleMapper;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.mybatisflex.core.tenant.TenantManager;
+import com.mugsun.boot.tenant.TenantContext;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,7 +56,7 @@ public class TenantService {
 		tenant.setTenantCode(code);
 		tenantMapper.insertSelective(tenant);
 		// 忽略当前会话租户条件，按新租户编号写入默认数据
-		TenantManager.withoutTenantCondition(() -> initDefaults(code, tenant.getTenantName()));
+		TenantContext.ignore(() -> initDefaults(code, tenant.getTenantName()));
 		return code;
 	}
 

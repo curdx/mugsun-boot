@@ -5,7 +5,7 @@ import com.mugsun.boot.system.entity.SysSmsCode;
 import com.mugsun.boot.system.mapper.SysSmsCodeMapper;
 import com.mugsun.boot.system.mapper.SysSmsMapper;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.mybatisflex.core.tenant.TenantManager;
+import com.mugsun.boot.tenant.TenantContext;
 import org.dromara.sms4j.aliyun.config.AlibabaConfig;
 import org.dromara.sms4j.api.entity.SmsResponse;
 import org.dromara.sms4j.core.datainterface.SmsReadConfig;
@@ -65,7 +65,7 @@ public class SmsService {
 		smsCodeMapper.insertSelective(entity);
 
 		// 验证码通道属平台级，登录前无租户上下文，故不加租户条件取启用配置
-		SysSms sms = TenantManager.withoutTenantCondition(() ->
+		SysSms sms = TenantContext.ignore(() ->
 			smsMapper.selectOneByQuery(QueryWrapper.create().eq("status", 1).orderBy("id", false)));
 		if (sms == null) {
 			log.info("无启用短信配置，降级输出验证码 phone={} code={}", phone, code);

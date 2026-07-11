@@ -44,8 +44,11 @@ public class OpenApiInterceptor implements HandlerInterceptor {
 		}
 		logService.record(info.clientId(), path, required, 1, ip, "放行");
 		request.setAttribute("oauthClientId", info.clientId());
-		// 令牌租户写入统一上下文，供 SaTokenTenantFactory 对开放接口按令牌租户隔离（防跨租户越权）
-		com.mugsun.boot.tenant.TenantContext.set(info.tenantId());
+		// 令牌租户写入统一上下文，供 SaTokenTenantFactory 对开放接口按令牌租户隔离（防跨租户越权）。
+		// 空租户不写入：留待 fail-closed，杜绝无租户令牌被当作忽略而全量越权。
+		if (info.tenantId() != null && !info.tenantId().isBlank()) {
+			com.mugsun.boot.tenant.TenantContext.set(info.tenantId());
+		}
 		return true;
 	}
 
