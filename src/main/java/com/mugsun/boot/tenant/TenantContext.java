@@ -11,7 +11,7 @@ import java.util.function.Supplier;
  * <p>解析优先级：显式 ThreadLocal（异步透传 / execute / ignore）＞ Sa-Token 会话超管切换租户 ＞ 会话本租户。
  * <p>ThreadLocal 由 {@link TenantTaskDecorator} 在 @Async/虚拟线程间捕获-恢复，严格 finally remove。
  * <p>忽略与恢复采用「存旧值→set→finally 恢复」，天然可重入；与数据权限（G6 拦截器 + 手工条件）相互正交，忽略租户不误伤数据权限或防攻击拦截。
- * <p>{@link #ignore} 为唯一忽略入口（对标 RuoYi-Vue-Plus TenantHelper.ignore 的中心化助手），替代散落的 Flex {@code withoutTenantCondition}。
+ * <p>{@link #ignore} 为唯一忽略入口（中心化忽略助手），替代散落的 Flex {@code withoutTenantCondition}。
  */
 public final class TenantContext {
 
