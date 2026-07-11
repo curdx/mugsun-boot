@@ -109,3 +109,13 @@ mugsun:
     api-key: mugsun-api-key16
   serial-number:
     provider: redis          # redis 自增（默认）/ db 行锁
+  social:
+    enabled: true
+    # 本地 mock 授权页（后端端点，dev 联调）
+    mock-authorize-url: http://localhost:8080/auth/social/mock-authorize
+    type:
+      # 本地 mock 来源：无真实凭证即可端到端验证社交登录全链路（含 hash 路由回调，须引号避免 # 被当注释）
+      mock:
+        client-id: mock-client
+        client-secret: mock-secret
+        redirect-uri: "http://localhost:3006/#/auth/social-callback?source=mock"

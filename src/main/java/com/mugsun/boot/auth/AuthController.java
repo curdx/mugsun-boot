@@ -2,6 +2,7 @@ package com.mugsun.boot.auth;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
+import cn.hutool.core.util.IdUtil;
 import com.mugsun.boot.system.entity.SysLoginLog;
 import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.mapper.SysLoginLogMapper;
@@ -11,9 +12,11 @@ import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.tenant.TenantManager;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -176,29 +179,55 @@ public class AuthController {
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
 	}
 
-	/** 社交登录：以回调得到的 (source, openId) 绑定/登录（真实 OAuth 握手需凭证，此为回调后逻辑） */
+	/** 社交登录入口：生成第三方授权跳转地址（state 落 Redis 防 CSRF），前端跳转此地址 */
+	@GetMapping("/social/render/{source}")
+	public R<Map<String, Object>> socialRender(@PathVariable String source) {
+		return R.data(Map.of("authorizeUrl", socialService.renderAuthUrl(source)));
+	}
+
+	/** 本地 mock 授权页：模拟第三方放行，生成 code 回跳前端回调地址（dev 联调，无真实凭证时验证全链路） */
+	@GetMapping("/social/mock-authorize")
+	public void socialMockAuthorize(@RequestParam("redirect_uri") String redirectUri,
+									@RequestParam String state, HttpServletResponse response) throws IOException {
+		String code = "mockcode-" + IdUtil.fastSimpleUUID();
+		String sep = redirectUri.contains("?") ? "&" : "?";
+		response.sendRedirect(redirectUri + sep + "code=" + code + "&state=" + state);
+	}
+
+	/** 社交登录：只收 source+code+state，openId 由服务端凭 code 换取（杜绝越权）。clientType=app 走 C 端自动注册，默认管理端禁自动开户 */
 	@PostMapping("/social/login")
 	public R<Map<String, Object>> socialLogin(@RequestBody Map<String, String> body) {
 		String source = body.get("source");
-		String openId = body.get("openId");
-		if (source == null || source.isBlank() || openId == null || openId.isBlank()) {
-			throw new ServiceException("社交来源与标识不能为空");
+		String code = body.get("code");
+		String state = body.get("state");
+		if (source == null || source.isBlank() || code == null || code.isBlank()) {
+			throw new ServiceException("社交来源与授权码不能为空");
 		}
-		String token = socialService.loginByOpenId(source, openId, body.get("unionId"));
+		boolean autoRegister = "app".equalsIgnoreCase(body.get("clientType"));
+		String token = socialService.loginByCode(source, code, state, autoRegister);
 		return R.data(Map.of("token", token));
 	}
 
-	/** 当前登录用户绑定社交账号 */
+	/** 当前登录用户绑定社交账号：同样只收 code+state，服务端换 openId */
 	@PostMapping("/social/bind")
 	@SaCheckLogin
 	public R<Void> socialBind(@RequestBody Map<String, String> body) {
 		String source = body.get("source");
-		String openId = body.get("openId");
-		if (source == null || source.isBlank() || openId == null || openId.isBlank()) {
-			throw new ServiceException("社交来源与标识不能为空");
+		String code = body.get("code");
+		String state = body.get("state");
+		if (source == null || source.isBlank() || code == null || code.isBlank()) {
+			throw new ServiceException("社交来源与授权码不能为空");
 		}
-		socialService.bind(StpUtil.getLoginIdAsLong(), source, openId, body.get("unionId"));
+		socialService.bindByCode(StpUtil.getLoginIdAsLong(), source, code, state);
 		return R.success("绑定成功");
+	}
+
+	/** 当前登录用户解绑某来源社交账号 */
+	@DeleteMapping("/social/unbind/{source}")
+	@SaCheckLogin
+	public R<Void> socialUnbind(@PathVariable String source) {
+		socialService.unbind(StpUtil.getLoginIdAsLong(), source);
+		return R.success("解绑成功");
 	}
 
 	/** 登录日志留痕（平台级，登录前无租户上下文） */
