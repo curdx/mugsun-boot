@@ -1,0 +1,67 @@
+package com.mugsun.boot.demo.service;
+
+import com.mugsun.boot.demo.entity.Order;
+import com.mugsun.boot.demo.entity.OrderItem;
+import com.mugsun.boot.demo.mapper.OrderMapper;
+import com.mugsun.boot.demo.mapper.OrderItemMapper;
+import com.mybatisflex.core.query.QueryWrapper;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+/**
+ * 订单主子表级联服务。
+ *
+ * @author mugsun
+ */
+@Service
+public class OrderService {
+
+	private final OrderMapper orderMapper;
+	private final OrderItemMapper orderItemMapper;
+
+	public OrderService(OrderMapper orderMapper, OrderItemMapper orderItemMapper) {
+		this.orderMapper = orderMapper;
+		this.orderItemMapper = orderItemMapper;
+	}
+
+	/** 详情：主表 + 子表列表 */
+	public Order detail(Long id) {
+		Order order = orderMapper.selectOneById(id);
+		if (order != null) {
+			order.setOrderItemList(orderItemMapper.selectListByQuery(
+				QueryWrapper.create().eq("order_id", id)));
+		}
+		return order;
+	}
+
+	/** 级联保存：存主表 → 按主键重建子表（删旧插新） */
+	@Transactional(rollbackFor = Exception.class)
+	public void save(Order order) {
+		if (order.getId() == null) {
+			orderMapper.insertSelective(order);
+		} else {
+			orderMapper.update(order);
+		}
+		Long mainId = order.getId();
+		orderItemMapper.deleteByQuery(QueryWrapper.create().eq("order_id", mainId));
+		List<OrderItem> subList = order.getOrderItemList();
+		if (subList != null) {
+			for (OrderItem sub : subList) {
+				sub.setId(null);
+				sub.setOrderId(mainId);
+				orderItemMapper.insertSelective(sub);
+			}
+		}
+	}
+
+	/** 级联删除：删子表 → 删主表 */
+	@Transactional(rollbackFor = Exception.class)
+	public void remove(List<Long> ids) {
+		if (ids != null && !ids.isEmpty()) {
+			orderItemMapper.deleteByQuery(QueryWrapper.create().in("order_id", ids));
+			orderMapper.deleteBatchByIds(ids);
+		}
+	}
+}

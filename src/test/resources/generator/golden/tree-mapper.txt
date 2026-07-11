@@ -1,0 +1,12 @@
+package com.mugsun.boot.demo.mapper;
+
+import com.mugsun.boot.demo.entity.Category;
+import com.mybatisflex.core.BaseMapper;
+
+/**
+ * 分类 Mapper。
+ *
+ * @author mugsun
+ */
+public interface CategoryMapper extends BaseMapper<Category> {
+}

@@ -1,5 +1,11 @@
 import request from '@/utils/http'
 import type { #(entityName)Form, #(entityName)Query } from './type'
+#if(isTree)
+
+/** #(functionName)树 */
+export const fetch#(entityName)Tree = () =>
+  request.get({ url: '#(apiUrl)/tree' })
+#end
 
 /** #(functionName)分页 */
 export const fetch#(entityName)Page = (params: #(entityName)Query) =>

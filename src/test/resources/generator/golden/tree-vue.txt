@@ -1,0 +1,92 @@
+<!-- 分类 管理页（代码生成产物·树表 TreeUtil + 懒展开） -->
+<template>
+  <div class="art-full-height">
+    <ElCard class="art-table-card">
+      <div style="margin-bottom: 12px">
+        <ElButton @click="openAdd()" v-ripple>新增</ElButton>
+      </div>
+      <ElTable
+        :data="treeData"
+        row-key="id"
+        border
+        default-expand-all
+        :tree-props="{ children: 'children' }"
+        v-loading="loading"
+      >
+        <ElTableColumn prop="parentId" label="父级" min-width="160" />
+        <ElTableColumn prop="categoryName" label="分类名称" min-width="160" />
+        <ElTableColumn prop="sort" label="排序" min-width="160" />
+        <ElTableColumn prop="createTime" label="创建时间" min-width="160" />
+        <ElTableColumn label="操作" width="220" fixed="right">
+          <template v-slot:default="{ row }">
+            <ElButton link type="primary" size="small" @click="openAdd(row)">新增子</ElButton>
+            <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+            <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
+          </template>
+        </ElTableColumn>
+      </ElTable>
+      <ElDialog v-model="dialogVisible" :title="currentRow.id ? '编辑' : '新增'" width="520px" align-center>
+        <ElForm :model="currentRow" label-width="100px">
+          <ElFormItem label="分类名称">
+            <ElInput v-model="currentRow.categoryName" placeholder="请输入分类名称" />
+          </ElFormItem>
+          <ElFormItem label="排序">
+            <ElInputNumber v-model="currentRow.sort" :controls="false" style="width: 100%" />
+          </ElFormItem>
+        </ElForm>
+        <template v-slot:footer>
+          <ElButton @click="dialogVisible = false">取消</ElButton>
+          <ElButton type="primary" @click="submit">提交</ElButton>
+        </template>
+      </ElDialog>
+    </ElCard>
+  </div>
+</template>
+
+<script setup lang="ts">
+  import { ref, onMounted } from 'vue'
+  import { ElButton, ElCard, ElDialog, ElForm, ElFormItem, ElInputNumber, ElInput, ElTable, ElTableColumn, ElMessage, ElMessageBox } from 'element-plus'
+  import { fetchCategoryTree, fetchSaveCategory, fetchRemoveCategory } from '@/api/demo/category'
+
+  defineOptions({ name: 'Category' })
+
+  const treeData = ref<any[]>([])
+  const loading = ref(false)
+  const dialogVisible = ref(false)
+  const currentRow = ref<any>({})
+
+  const loadTree = async (): Promise<void> => {
+    loading.value = true
+    try {
+      treeData.value = ((await fetchCategoryTree()) as any[]) || []
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const openAdd = (parent?: any): void => {
+    currentRow.value = { parentId: parent ? parent.id : 0 }
+    dialogVisible.value = true
+  }
+
+  const openEdit = (row: any): void => {
+    currentRow.value = { ...row, children: undefined }
+    dialogVisible.value = true
+  }
+
+  const submit = async (): Promise<void> => {
+    await fetchSaveCategory(currentRow.value)
+    ElMessage.success('操作成功')
+    dialogVisible.value = false
+    await loadTree()
+  }
+
+  const remove = async (row: any): Promise<void> => {
+    await ElMessageBox.confirm('确认删除该节点？', '提示', { type: 'warning' })
+    await fetchRemoveCategory([row.id])
+    ElMessage.success('删除成功')
+    await loadTree()
+  }
+
+  onMounted(loadTree)
+</script>

@@ -1,0 +1,63 @@
+package com.mugsun.boot.demo.entity;
+
+import com.mugsun.core.mybatis.base.BaseEntity;
+import com.mybatisflex.annotation.Table;
+import com.mugsun.core.tool.tree.INode;
+import com.mybatisflex.annotation.Column;
+import java.util.List;
+
+/**
+ * 分类
+ *
+ * @author mugsun
+ */
+@Table("gen_category")
+public class Category extends BaseEntity implements INode<Category> {
+
+	/** 父级 */
+	private Long parentId;
+
+	/** 分类名称 */
+	private String categoryName;
+
+	/** 排序 */
+	private Integer sort;
+
+	/** 子节点（树构建，非数据库列） */
+	@Column(ignore = true)
+	private List<Category> children;
+
+	public Long getParentId() {
+		return parentId;
+	}
+
+	public void setParentId(Long parentId) {
+		this.parentId = parentId;
+	}
+
+	public String getCategoryName() {
+		return categoryName;
+	}
+
+	public void setCategoryName(String categoryName) {
+		this.categoryName = categoryName;
+	}
+
+	public Integer getSort() {
+		return sort;
+	}
+
+	public void setSort(Integer sort) {
+		this.sort = sort;
+	}
+
+	@Override
+	public List<Category> getChildren() {
+		return children;
+	}
+
+	@Override
+	public void setChildren(List<Category> children) {
+		this.children = children;
+	}
+}

@@ -1,0 +1,18 @@
+import request from '@/utils/http'
+import type { OrderForm, OrderQuery } from './type'
+
+/** 订单分页 */
+export const fetchOrderPage = (params: OrderQuery) =>
+  request.get({ url: '/api/demo/order/page', params })
+
+/** 订单详情 */
+export const fetchOrderDetail = (id: number | string) =>
+  request.get({ url: '/api/demo/order/detail', params: { id } })
+
+/** 保存订单（新增/编辑） */
+export const fetchSaveOrder = (data: OrderForm) =>
+  request.post({ url: '/api/demo/order/submit', data })
+
+/** 删除订单 */
+export const fetchRemoveOrder = (ids: (number | string)[]) =>
+  request.post({ url: '/api/demo/order/remove', data: ids })

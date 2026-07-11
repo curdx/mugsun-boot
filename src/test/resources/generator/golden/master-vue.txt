@@ -1,0 +1,120 @@
+<!-- 订单 管理页（代码生成产物·主子表一对多·内嵌子表编辑） -->
+<template>
+  <div class="art-full-height">
+    <ElCard class="art-table-card">
+      <div style="margin-bottom: 12px">
+        <ElButton @click="openAdd()" v-ripple>新增</ElButton>
+      </div>
+      <ElTable :data="list" border v-loading="loading">
+        <ElTableColumn prop="orderNo" label="订单号" min-width="140" />
+        <ElTableColumn prop="amount" label="金额" min-width="140" />
+        <ElTableColumn prop="createTime" label="创建时间" min-width="140" />
+        <ElTableColumn label="操作" width="180" fixed="right">
+          <template v-slot:default="{ row }">
+            <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+            <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
+          </template>
+        </ElTableColumn>
+      </ElTable>
+      <ElDialog v-model="dialogVisible" :title="currentRow.id ? '编辑' : '新增'" width="760px" align-center>
+        <ElForm :model="currentRow" label-width="100px">
+          <ElFormItem label="订单号">
+            <ElInput v-model="currentRow.orderNo" placeholder="请输入订单号" />
+          </ElFormItem>
+          <ElFormItem label="金额">
+            <ElInputNumber v-model="currentRow.amount" :controls="false" style="width: 100%" />
+          </ElFormItem>
+        </ElForm>
+        <div style="margin: 8px 0; display: flex; align-items: center; gap: 8px">
+          <b>OrderItem 子表</b>
+          <ElButton link type="primary" size="small" @click="addSub()">添加子行</ElButton>
+        </div>
+        <ElTable :data="currentRow.orderItemList" border size="small">
+          <ElTableColumn label="商品名称" min-width="120">
+            <template v-slot:default="{ row }">
+              <ElInput v-model="row.productName" size="small" />
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="数量" min-width="120">
+            <template v-slot:default="{ row }">
+              <ElInput v-model="row.qty" size="small" />
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="操作" width="70">
+            <template v-slot:default="{ $index }">
+              <ElButton link type="danger" size="small" @click="delSub($index)">删除</ElButton>
+            </template>
+          </ElTableColumn>
+        </ElTable>
+        <template v-slot:footer>
+          <ElButton @click="dialogVisible = false">取消</ElButton>
+          <ElButton type="primary" @click="submit">提交</ElButton>
+        </template>
+      </ElDialog>
+    </ElCard>
+  </div>
+</template>
+
+<script setup lang="ts">
+  import { ref, onMounted } from 'vue'
+  import { ElButton, ElCard, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElTable, ElTableColumn, ElMessage, ElMessageBox } from 'element-plus'
+  import {
+    fetchOrderPage,
+    fetchOrderDetail,
+    fetchSaveOrder,
+    fetchRemoveOrder
+  } from '@/api/demo/order'
+
+  defineOptions({ name: 'Order' })
+
+  const list = ref<any[]>([])
+  const loading = ref(false)
+  const dialogVisible = ref(false)
+  const currentRow = ref<any>({ orderItemList: [] })
+
+  const load = async (): Promise<void> => {
+    loading.value = true
+    try {
+      const res: any = await fetchOrderPage({ pageNum: 1, pageSize: 100 })
+      list.value = res?.records || res || []
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const openAdd = (): void => {
+    currentRow.value = { orderItemList: [] }
+    dialogVisible.value = true
+  }
+
+  const openEdit = async (row: any): Promise<void> => {
+    const detail: any = await fetchOrderDetail(row.id)
+    detail.orderItemList = detail.orderItemList || []
+    currentRow.value = detail
+    dialogVisible.value = true
+  }
+
+  const addSub = (): void => {
+    currentRow.value.orderItemList.push({})
+  }
+
+  const delSub = (i: number): void => {
+    currentRow.value.orderItemList.splice(i, 1)
+  }
+
+  const submit = async (): Promise<void> => {
+    await fetchSaveOrder(currentRow.value)
+    ElMessage.success('操作成功')
+    dialogVisible.value = false
+    await load()
+  }
+
+  const remove = async (row: any): Promise<void> => {
+    await ElMessageBox.confirm('确认删除该主表及其子表？', '提示', { type: 'warning' })
+    await fetchRemoveOrder([row.id])
+    ElMessage.success('删除成功')
+    await load()
+  }
+
+  onMounted(load)
+</script>

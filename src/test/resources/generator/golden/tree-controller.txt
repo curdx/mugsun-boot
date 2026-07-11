@@ -1,0 +1,64 @@
+package com.mugsun.boot.demo.controller;
+
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.mugsun.boot.demo.entity.Category;
+import com.mugsun.boot.demo.mapper.CategoryMapper;
+import com.mugsun.core.tool.api.R;
+import com.mugsun.core.tool.tree.TreeUtil;
+import com.mybatisflex.core.paginate.Page;
+import com.mybatisflex.core.query.QueryWrapper;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * 分类管理
+ *
+ * @author mugsun
+ */
+@RestController
+@RequestMapping("/demo/category")
+@SaCheckLogin
+public class CategoryController {
+
+	private final CategoryMapper categoryMapper;
+
+	public CategoryController(CategoryMapper categoryMapper) {
+		this.categoryMapper = categoryMapper;
+	}
+
+	@GetMapping("/tree")
+	public R<List<Category>> tree() {
+		return R.data(TreeUtil.build(categoryMapper.selectListByQuery(QueryWrapper.create().orderBy("id", true)), 0L));
+	}
+
+	@GetMapping("/page")
+	public R<Page<Category>> page(@RequestParam(defaultValue = "1") long pageNum,
+			@RequestParam(defaultValue = "10") long pageSize) {
+		return R.data(categoryMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("id", false)));
+	}
+
+	@GetMapping("/detail")
+	public R<Category> detail(@RequestParam Long id) {
+		return R.data(categoryMapper.selectOneById(id));
+	}
+
+	@SaCheckPermission("demo:category:save")
+	@PostMapping("/submit")
+	public R<Void> submit(@RequestBody Category category) {
+		if (category.getId() == null) {
+			categoryMapper.insertSelective(category);
+		} else {
+			categoryMapper.update(category);
+		}
+		return R.success("操作成功");
+	}
+
+	@SaCheckPermission("demo:category:remove")
+	@PostMapping("/remove")
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		categoryMapper.deleteBatchByIds(ids);
+		return R.success("删除成功");
+	}
+}

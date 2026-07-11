@@ -2,6 +2,15 @@ package #(entityPkg);
 
 import com.mugsun.core.mybatis.base.BaseEntity;
 import com.mybatisflex.annotation.Table;
+#if(isTree)
+import com.mugsun.core.tool.tree.INode;
+import com.mybatisflex.annotation.Column;
+import java.util.List;
+#end
+#if(isMaster)
+import com.mybatisflex.annotation.Column;
+import java.util.List;
+#end
 #for(imp : imports)
 import #(imp);
 #end
@@ -12,11 +21,23 @@ import #(imp);
  * @author #(author)
  */
 @Table("#(tableName)")
-public class #(entityName) extends BaseEntity {
+public class #(entityName) #(classDecl) {
 #for(col : columns)
 
 	/** #(col.comment) */
 	private #(col.javaType) #(col.javaField);
+#end
+#if(isTree)
+
+	/** 子节点（树构建，非数据库列） */
+	@Column(ignore = true)
+	private List<#(entityName)> children;
+#end
+#if(isMaster)
+
+	/** 子表数据（级联，非数据库列） */
+	@Column(ignore = true)
+	private List<#(childEntityName)> #(subListField);
 #end
 #for(col : columns)
 
@@ -26,6 +47,28 @@ public class #(entityName) extends BaseEntity {
 
 	public void set#(col.capField)(#(col.javaType) #(col.javaField)) {
 		this.#(col.javaField) = #(col.javaField);
+	}
+#end
+#if(isTree)
+
+	@Override
+	public List<#(entityName)> getChildren() {
+		return children;
+	}
+
+	@Override
+	public void setChildren(List<#(entityName)> children) {
+		this.children = children;
+	}
+#end
+#if(isMaster)
+
+	public List<#(childEntityName)> get#(subListCap)() {
+		return #(subListField);
+	}
+
+	public void set#(subListCap)(List<#(childEntityName)> #(subListField)) {
+		this.#(subListField) = #(subListField);
 	}
 #end
 }

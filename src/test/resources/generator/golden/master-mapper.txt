@@ -1,0 +1,12 @@
+package com.mugsun.boot.demo.mapper;
+
+import com.mugsun.boot.demo.entity.Order;
+import com.mybatisflex.core.BaseMapper;
+
+/**
+ * 订单 Mapper。
+ *
+ * @author mugsun
+ */
+public interface OrderMapper extends BaseMapper<Order> {
+}

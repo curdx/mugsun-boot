@@ -33,6 +33,14 @@ public class GenTable extends BaseEntity {
 	private Long parentMenuId;
 	/** 预留选项（JSON，主子表/树表等扩展） */
 	private String options;
+	/** 模板类别：crud（单表）/ tree（树表）/ master（主子表一对多） */
+	private String tplCategory;
+	/** 树表父级字段列名（如 parent_id） */
+	private String treeParentField;
+	/** 主子表：子表名 */
+	private String subTableName;
+	/** 主子表：子表中指向主表的外键列 */
+	private String subJoinField;
 
 	public String getTableName() {
 		return tableName;
@@ -128,5 +136,37 @@ public class GenTable extends BaseEntity {
 
 	public void setOptions(String options) {
 		this.options = options;
+	}
+
+	public String getTplCategory() {
+		return tplCategory;
+	}
+
+	public void setTplCategory(String tplCategory) {
+		this.tplCategory = tplCategory;
+	}
+
+	public String getTreeParentField() {
+		return treeParentField;
+	}
+
+	public void setTreeParentField(String treeParentField) {
+		this.treeParentField = treeParentField;
+	}
+
+	public String getSubTableName() {
+		return subTableName;
+	}
+
+	public void setSubTableName(String subTableName) {
+		this.subTableName = subTableName;
+	}
+
+	public String getSubJoinField() {
+		return subJoinField;
+	}
+
+	public void setSubJoinField(String subJoinField) {
+		this.subJoinField = subJoinField;
 	}
 }

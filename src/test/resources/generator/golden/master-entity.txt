@@ -1,0 +1,50 @@
+package com.mugsun.boot.demo.entity;
+
+import com.mugsun.core.mybatis.base.BaseEntity;
+import com.mybatisflex.annotation.Table;
+import com.mybatisflex.annotation.Column;
+import java.util.List;
+import java.math.BigDecimal;
+
+/**
+ * 订单
+ *
+ * @author mugsun
+ */
+@Table("gen_order")
+public class Order extends BaseEntity {
+
+	/** 订单号 */
+	private String orderNo;
+
+	/** 金额 */
+	private BigDecimal amount;
+
+	/** 子表数据（级联，非数据库列） */
+	@Column(ignore = true)
+	private List<OrderItem> orderItemList;
+
+	public String getOrderNo() {
+		return orderNo;
+	}
+
+	public void setOrderNo(String orderNo) {
+		this.orderNo = orderNo;
+	}
+
+	public BigDecimal getAmount() {
+		return amount;
+	}
+
+	public void setAmount(BigDecimal amount) {
+		this.amount = amount;
+	}
+
+	public List<OrderItem> getOrderItemList() {
+		return orderItemList;
+	}
+
+	public void setOrderItemList(List<OrderItem> orderItemList) {
+		this.orderItemList = orderItemList;
+	}
+}

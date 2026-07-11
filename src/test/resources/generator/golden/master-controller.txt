@@ -1,0 +1,57 @@
+package com.mugsun.boot.demo.controller;
+
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.mugsun.boot.demo.entity.Order;
+import com.mugsun.boot.demo.mapper.OrderMapper;
+import com.mugsun.boot.demo.service.OrderService;
+import com.mugsun.core.tool.api.R;
+import com.mybatisflex.core.paginate.Page;
+import com.mybatisflex.core.query.QueryWrapper;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * 订单管理（主子表一对多）
+ *
+ * @author mugsun
+ */
+@RestController
+@RequestMapping("/demo/order")
+@SaCheckLogin
+public class OrderController {
+
+	private final OrderMapper orderMapper;
+	private final OrderService orderService;
+
+	public OrderController(OrderMapper orderMapper, OrderService orderService) {
+		this.orderMapper = orderMapper;
+		this.orderService = orderService;
+	}
+
+	@GetMapping("/page")
+	public R<Page<Order>> page(@RequestParam(defaultValue = "1") long pageNum,
+			@RequestParam(defaultValue = "10") long pageSize) {
+		return R.data(orderMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("id", false)));
+	}
+
+	@GetMapping("/detail")
+	public R<Order> detail(@RequestParam Long id) {
+		return R.data(orderService.detail(id));
+	}
+
+	@SaCheckPermission("demo:order:save")
+	@PostMapping("/submit")
+	public R<Void> submit(@RequestBody Order order) {
+		orderService.save(order);
+		return R.success("操作成功");
+	}
+
+	@SaCheckPermission("demo:order:remove")
+	@PostMapping("/remove")
+	public R<Void> remove(@RequestBody List<Long> ids) {
+		orderService.remove(ids);
+		return R.success("删除成功");
+	}
+}

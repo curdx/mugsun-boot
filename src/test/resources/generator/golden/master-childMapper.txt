@@ -1,0 +1,12 @@
+package com.mugsun.boot.demo.mapper;
+
+import com.mugsun.boot.demo.entity.OrderItem;
+import com.mybatisflex.core.BaseMapper;
+
+/**
+ * OrderItem Mapper。
+ *
+ * @author mugsun
+ */
+public interface OrderItemMapper extends BaseMapper<OrderItem> {
+}

@@ -1,0 +1,46 @@
+package com.mugsun.boot.demo.entity;
+
+import com.mugsun.core.mybatis.base.BaseEntity;
+import com.mybatisflex.annotation.Table;
+
+/**
+ * OrderItem
+ *
+ * @author mugsun
+ */
+@Table("gen_order_item")
+public class OrderItem extends BaseEntity {
+
+	/** 订单ID */
+	private Long orderId;
+
+	/** 商品名称 */
+	private String productName;
+
+	/** 数量 */
+	private Integer qty;
+
+	public Long getOrderId() {
+		return orderId;
+	}
+
+	public void setOrderId(Long orderId) {
+		this.orderId = orderId;
+	}
+
+	public String getProductName() {
+		return productName;
+	}
+
+	public void setProductName(String productName) {
+		this.productName = productName;
+	}
+
+	public Integer getQty() {
+		return qty;
+	}
+
+	public void setQty(Integer qty) {
+		this.qty = qty;
+	}
+}

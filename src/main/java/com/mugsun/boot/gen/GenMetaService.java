@@ -65,6 +65,18 @@ public class GenMetaService {
 		if (table.getGenType() == null) {
 			table.setGenType("zip");
 		}
+		if (table.getTplCategory() == null) {
+			table.setTplCategory("crud");
+		}
+		// 自动识别树表父级字段（存在 parentId 属性则记录，供切换为树表模板）
+		if (table.getTreeParentField() == null) {
+			for (Column c : meta.getColumns()) {
+				if ("parentId".equals(c.getProperty())) {
+					table.setTreeParentField(c.getName());
+					break;
+				}
+			}
+		}
 		if (existing == null) {
 			tableMapper.insertSelective(table);
 		} else {

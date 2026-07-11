@@ -1,0 +1,22 @@
+import request from '@/utils/http'
+import type { CategoryForm, CategoryQuery } from './type'
+
+/** 分类树 */
+export const fetchCategoryTree = () =>
+  request.get({ url: '/api/demo/category/tree' })
+
+/** 分类分页 */
+export const fetchCategoryPage = (params: CategoryQuery) =>
+  request.get({ url: '/api/demo/category/page', params })
+
+/** 分类详情 */
+export const fetchCategoryDetail = (id: number | string) =>
+  request.get({ url: '/api/demo/category/detail', params: { id } })
+
+/** 保存分类（新增/编辑） */
+export const fetchSaveCategory = (data: CategoryForm) =>
+  request.post({ url: '/api/demo/category/submit', data })
+
+/** 删除分类 */
+export const fetchRemoveCategory = (ids: (number | string)[]) =>
+  request.post({ url: '/api/demo/category/remove', data: ids })

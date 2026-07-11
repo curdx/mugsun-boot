@@ -1,0 +1,13 @@
+/** 分类表单 */
+export interface CategoryForm {
+  id?: number | string
+  parentId?: number
+  categoryName?: string
+  sort?: number
+}
+
+/** 分类查询 */
+export interface CategoryQuery {
+  pageNum?: number
+  pageSize?: number
+}

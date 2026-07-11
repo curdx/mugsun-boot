@@ -1,0 +1,12 @@
+/** 订单表单 */
+export interface OrderForm {
+  id?: number | string
+  orderNo?: string
+  amount?: number
+}
+
+/** 订单查询 */
+export interface OrderQuery {
+  pageNum?: number
+  pageSize?: number
+}

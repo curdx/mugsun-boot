@@ -5,10 +5,15 @@ import com.mugsun.boot.gen.entity.GenColumn;
 import com.mugsun.boot.gen.entity.GenTable;
 import com.mugsun.boot.gen.mapper.GenColumnMapper;
 import com.mugsun.boot.gen.mapper.GenTableMapper;
+import com.mybatisflex.codegen.Generator;
+import com.mybatisflex.codegen.config.GlobalConfig;
+import com.mybatisflex.codegen.entity.Column;
+import com.mybatisflex.codegen.entity.Table;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
+import javax.sql.DataSource;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -40,11 +45,13 @@ public class GenRenderService {
 
 	private final GenTableMapper tableMapper;
 	private final GenColumnMapper columnMapper;
+	private final DataSource dataSource;
 	private final Engine engine = Engine.use();
 
-	public GenRenderService(GenTableMapper tableMapper, GenColumnMapper columnMapper) {
+	public GenRenderService(GenTableMapper tableMapper, GenColumnMapper columnMapper, DataSource dataSource) {
 		this.tableMapper = tableMapper;
 		this.columnMapper = columnMapper;
+		this.dataSource = dataSource;
 	}
 
 	/** 单个产物：类别（预览分组）、工程相对路径（解压即入）、内容 */
@@ -62,9 +69,18 @@ public class GenRenderService {
 		return generate(t, cols);
 	}
 
-	/** 生成某表全部全栈产物（从给定元数据，供 golden 测试等免库场景） */
+	/** 生成某表全部全栈产物（从给定元数据；主子表时内省子表列） */
 	public List<Product> generate(GenTable t, List<GenColumn> cols) {
-		Map<String, Object> m = buildModel(t, cols);
+		List<GenColumn> childCols = "master".equals(nvl(t.getTplCategory(), "crud")) && t.getSubTableName() != null
+			? introspectColumns(t.getSubTableName())
+			: List.of();
+		return generate(t, cols, childCols);
+	}
+
+	/** 生成全栈产物（显式子表列，供 golden 免库测试） */
+	@SuppressWarnings("unchecked")
+	public List<Product> generate(GenTable t, List<GenColumn> cols, List<GenColumn> childCols) {
+		Map<String, Object> m = buildModel(t, cols, childCols);
 		String javaBase = String.valueOf(m.get("basePackage")).replace('.', '/');
 		String module = String.valueOf(m.get("module"));
 		String entity = String.valueOf(m.get("entityName"));
@@ -73,16 +89,52 @@ public class GenRenderService {
 		String backend = "mugsun-boot/src/main/java/" + javaBase + "/" + module;
 		String viewDir = "mugsun-pc/src/views/" + module + "/" + kebab;
 		String apiDir = "mugsun-pc/src/api/" + module + "/" + kebab;
+		boolean isMaster = Boolean.TRUE.equals(m.get("isMaster"));
+		boolean isTree = Boolean.TRUE.equals(m.get("isTree"));
 
 		List<Product> list = new ArrayList<>();
 		list.add(new Product("entity", backend + "/entity/" + entity + ".java", render("entity.tpl", m)));
 		list.add(new Product("mapper", backend + "/mapper/" + entity + "Mapper.java", render("mapper.tpl", m)));
-		list.add(new Product("controller", backend + "/controller/" + entity + "Controller.java", render("controller.tpl", m)));
-		list.add(new Product("vue", viewDir + "/index.vue", render("index.vue.tpl", m)));
+		if (isMaster) {
+			String childEntity = String.valueOf(m.get("childEntityName"));
+			Map<String, Object> childModel = (Map<String, Object>) m.get("childModel");
+			list.add(new Product("childEntity", backend + "/entity/" + childEntity + ".java", render("entity.tpl", childModel)));
+			list.add(new Product("childMapper", backend + "/mapper/" + childEntity + "Mapper.java", render("mapper.tpl", childModel)));
+			list.add(new Product("service", backend + "/service/" + entity + "Service.java", render("service.tpl", m)));
+			list.add(new Product("controller", backend + "/controller/" + entity + "Controller.java", render("master-controller.tpl", m)));
+			list.add(new Product("vue", viewDir + "/index.vue", render("master.vue.tpl", m)));
+		} else {
+			list.add(new Product("controller", backend + "/controller/" + entity + "Controller.java", render("controller.tpl", m)));
+			list.add(new Product("vue", viewDir + "/index.vue", render(isTree ? "tree.vue.tpl" : "index.vue.tpl", m)));
+		}
 		list.add(new Product("api", apiDir + "/index.ts", render("api.ts.tpl", m)));
 		list.add(new Product("type", apiDir + "/type.ts", render("type.ts.tpl", m)));
 		list.add(new Product("menu", "sql/" + tableName + "_menu.sql", render("menu.sql.tpl", m)));
 		return list;
+	}
+
+	/** 内省表列为 GenColumn（子表用，仅结构字段） */
+	private List<GenColumn> introspectColumns(String tableName) {
+		GlobalConfig config = new GlobalConfig();
+		config.getPackageConfig().setBasePackage("com.mugsun.preview");
+		config.getStrategyConfig().setGenerateTable(tableName);
+		List<GenColumn> result = new ArrayList<>();
+		for (Table tb : new Generator(dataSource, config).getTables()) {
+			if (tb.getName().equalsIgnoreCase(tableName)) {
+				int sort = 1;
+				for (Column c : tb.getColumns()) {
+					GenColumn gc = new GenColumn();
+					gc.setColumnName(c.getName());
+					gc.setColumnComment(c.getComment());
+					gc.setColumnType(c.getRawType());
+					gc.setJavaType(c.getPropertySimpleType());
+					gc.setJavaField(c.getProperty());
+					gc.setSort(sort++);
+					result.add(gc);
+				}
+			}
+		}
+		return result;
 	}
 
 	/** 预览：类别→内容 */
@@ -110,7 +162,7 @@ public class GenRenderService {
 	}
 
 	/** 由元数据构建 Enjoy 数据模型 */
-	Map<String, Object> buildModel(GenTable t, List<GenColumn> cols) {
+	Map<String, Object> buildModel(GenTable t, List<GenColumn> cols, List<GenColumn> childCols) {
 		String base = nvl(t.getBasePackage(), "com.mugsun.boot");
 		String module = nvl(t.getModuleName(), "system");
 		String entityName = t.getEntityName();
@@ -130,11 +182,60 @@ public class GenRenderService {
 		m.put("entityPkg", base + "." + module + ".entity");
 		m.put("mapperPkg", base + "." + module + ".mapper");
 		m.put("controllerPkg", base + "." + module + ".controller");
+		m.put("servicePkg", base + "." + module + ".service");
 		m.put("mapperName", entityName + "Mapper");
 		m.put("mapperVar", uncapitalize(entityName) + "Mapper");
 		m.put("path", "/" + module + "/" + kebab);
 		m.put("apiUrl", "/api/" + module + "/" + kebab);
 		m.put("permPrefix", module + ":" + business);
+		// 模板类别：crud / tree（树表 INode + /tree）/ master（主子表一对多）
+		String tplCategory = nvl(t.getTplCategory(), "crud");
+		boolean isTree = "tree".equals(tplCategory);
+		boolean isMaster = "master".equals(tplCategory);
+		m.put("tplCategory", tplCategory);
+		m.put("isTree", isTree);
+		m.put("isMaster", isMaster);
+		// 类声明（预拼，规避 Enjoy 内联指令吞空格）
+		m.put("classDecl", "extends BaseEntity" + (isTree ? " implements INode<" + entityName + ">" : ""));
+		// 主子表：子实体/子表/外键 + 复用 entity/mapper 模板的子模型
+		if (isMaster && t.getSubTableName() != null) {
+			String childEntity = GenNaming.toCamel(GenNaming.stripPrefix(t.getSubTableName(), nvl(t.getTablePrefix(), "")), true);
+			String childVar = uncapitalize(childEntity);
+			String joinField = GenNaming.toCamel(nvl(t.getSubJoinField(), ""), false);
+			m.put("childEntityName", childEntity);
+			m.put("childVar", childVar);
+			m.put("childMapperName", childEntity + "Mapper");
+			m.put("childMapperVar", childVar + "Mapper");
+			m.put("subListField", childVar + "List");
+			m.put("subListCap", capitalize(childVar + "List"));
+			m.put("subJoinField", joinField);
+			m.put("subJoinCap", capitalize(joinField));
+			m.put("subJoinColumn", nvl(t.getSubJoinField(), ""));
+			m.put("childApiUrl", "/api/" + module + "/" + kebab);
+			GenTable childTable = new GenTable();
+			childTable.setId(t.getId());
+			childTable.setTableName(t.getSubTableName());
+			childTable.setEntityName(childEntity);
+			childTable.setModuleName(module);
+			childTable.setBusinessName(childVar);
+			childTable.setBasePackage(base);
+			childTable.setTablePrefix(t.getTablePrefix());
+			childTable.setFunctionName(childEntity);
+			childTable.setFunctionAuthor(t.getFunctionAuthor());
+			childTable.setTplCategory("crud");
+			Map<String, Object> childModel = buildModel(childTable, childCols == null ? List.of() : childCols, List.of());
+			m.put("childModel", childModel);
+			// 子表编辑列：剔除外键列（级联时自动回填），供主子前端子表编辑
+			@SuppressWarnings("unchecked")
+			List<Map<String, Object>> childEntityCols = (List<Map<String, Object>>) childModel.get("columns");
+			List<Map<String, Object>> childForm = new ArrayList<>();
+			for (Map<String, Object> c : childEntityCols) {
+				if (!joinField.equals(c.get("javaField"))) {
+					childForm.add(c);
+				}
+			}
+			m.put("childFormColumns", childForm);
+		}
 
 		List<Map<String, Object>> entityColumns = new ArrayList<>();
 		List<Map<String, Object>> listColumns = new ArrayList<>();
@@ -176,7 +277,20 @@ public class GenRenderService {
 			}
 		}
 		imports.sort(String::compareTo);
+		// 树表页额外用到的 Element Plus 组件/API
+		if (isTree || isMaster) {
+			elImports.add("ElTable");
+			elImports.add("ElTableColumn");
+			elImports.add("ElMessage");
+			elImports.add("ElMessageBox");
+		}
 		m.put("columns", entityColumns);
+		// 树表：父级字段由 新增子/新增根 结构化设置，不进编辑表单（且雪花 Long id 不宜入数值控件）
+		if (isTree) {
+			String parentFieldJava = t.getTreeParentField() != null
+				? GenNaming.toCamel(t.getTreeParentField(), false) : "parentId";
+			formColumns.removeIf(c -> parentFieldJava.equals(c.get("prop")));
+		}
 		m.put("listColumns", listColumns);
 		m.put("formColumns", formColumns);
 		m.put("imports", imports);
