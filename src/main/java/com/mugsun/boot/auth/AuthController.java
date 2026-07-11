@@ -39,6 +39,7 @@ public class AuthController {
 	private final com.mugsun.boot.system.service.SocialService socialService;
 	private final com.mugsun.boot.system.mapper.SysTenantMapper tenantMapper;
 	private final com.mugsun.boot.tenant.mapper.SysTenantPackageMapper tenantPackageMapper;
+	private final com.mugsun.boot.client.ClientService clientService;
 
 	public AuthController(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
 						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper,
@@ -48,7 +49,8 @@ public class AuthController {
 						  com.mugsun.boot.system.service.SmsService smsService,
 						  com.mugsun.boot.system.service.SocialService socialService,
 						  com.mugsun.boot.system.mapper.SysTenantMapper tenantMapper,
-						  com.mugsun.boot.tenant.mapper.SysTenantPackageMapper tenantPackageMapper) {
+						  com.mugsun.boot.tenant.mapper.SysTenantPackageMapper tenantPackageMapper,
+						  com.mugsun.boot.client.ClientService clientService) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
@@ -60,6 +62,7 @@ public class AuthController {
 		this.socialService = socialService;
 		this.tenantMapper = tenantMapper;
 		this.tenantPackageMapper = tenantPackageMapper;
+		this.clientService = clientService;
 	}
 
 	/** 图形验证码：生成一张，答案入 Redis */
@@ -75,21 +78,25 @@ public class AuthController {
 		if (username == null || username.isBlank()) {
 			throw new ServiceException("账号或密码错误");
 		}
-		captchaService.verify(dto.getCaptchaUuid(), dto.getCaptchaCode());
+		com.mugsun.boot.client.entity.SysClient client = clientService.loadClient(dto.getClientId());
+		// 按 client 策略：图形验证码开关
+		if (Integer.valueOf(1).equals(client.getCaptchaEnabled())) {
+			captchaService.verify(dto.getCaptchaUuid(), dto.getCaptchaCode());
+		}
 		loginLockService.assertNotLocked(username);
 		String tenantId = (dto.getTenantId() == null || dto.getTenantId().isBlank()) ? "000000" : dto.getTenantId();
 		SysUser user = TenantManager.withoutTenantCondition(() ->
 			userMapper.selectOneByQuery(QueryWrapper.create().eq("tenant_id", tenantId).eq("username", username)));
 		if (user == null || !passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
 			loginLockService.recordFail(username);
-			saveLoginLog(username, ip, 0, "账号或密码错误");
+			saveLoginLog(username, request, client.getClientId(), tenantId, 0, "账号或密码错误");
 			throw new ServiceException("账号或密码错误");
 		}
 		loginLockService.clear(username);
 		// 双因子登录（默认关闭）：密码通过后下发二次验证码，暂不发 token
 		if (twoFactorService.isEnabled()) {
 			String[] challenge = twoFactorService.challenge(user.getId(), null);
-			saveLoginLog(username, ip, 1, "登录待二次验证");
+			saveLoginLog(username, request, client.getClientId(), user.getTenantId(), 1, "登录待二次验证");
 			java.util.Map<String, Object> resp = new java.util.HashMap<>();
 			resp.put("twoFactorRequired", true);
 			resp.put("twoFactorToken", challenge[0]);
@@ -98,10 +105,27 @@ public class AuthController {
 			}
 			return R.data(resp);
 		}
-		StpUtil.login(user.getId());
+		// 按 client 策略：令牌有效期 + 设备类型
+		StpUtil.login(user.getId(), new cn.dev33.satoken.stp.parameter.SaLoginParameter()
+			.setDeviceType(client.getClientId())
+			.setTimeout(client.getTokenTimeout() == null ? 2592000 : client.getTokenTimeout()));
 		StpUtil.getSession().set("tenantId", user.getTenantId());
-		saveLoginLog(username, ip, 1, "登录成功");
+		// 按 client 策略：单账号最大在线终端数（超出踢最旧）
+		enforceMaxOnline(user.getId(), client.getMaxOnline());
+		saveLoginLog(username, request, client.getClientId(), user.getTenantId(), 1, "登录成功");
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
+	}
+
+	/** 按 client 策略限制单账号最大在线终端数：超出则踢最旧的会话 */
+	private void enforceMaxOnline(long userId, Integer maxOnline) {
+		if (maxOnline == null || maxOnline <= 0) {
+			return;
+		}
+		java.util.List<String> tokens = StpUtil.getTokenValueListByLoginId(userId);
+		int excess = tokens.size() - maxOnline;
+		for (int i = 0; i < excess; i++) {
+			StpUtil.kickoutByTokenValue(tokens.get(i));
+		}
 	}
 
 	/** 双因子二次校验：验证码正确才发 token */
@@ -121,9 +145,8 @@ public class AuthController {
 			|| dto.getPassword() == null || dto.getPassword().isBlank()) {
 			throw new ServiceException("用户名和密码不能为空");
 		}
-		if (dto.getPassword().length() < 6) {
-			throw new ServiceException("密码长度不能少于 6 位");
-		}
+		// 等保密码复杂度校验（min-length + 大小写/数字/特殊字符组合，策略可后台改）
+		securityPolicyService.validateComplexity(dto.getPassword());
 		String tenantId = "000000";
 		long exists = TenantManager.withoutTenantCondition(() -> userMapper.selectCountByQuery(
 			QueryWrapper.create().eq("tenant_id", tenantId).eq("username", dto.getUsername())));
@@ -162,20 +185,29 @@ public class AuthController {
 	public R<Map<String, Object>> smsLogin(@RequestBody Map<String, String> body, HttpServletRequest request) {
 		String phone = body.get("phone");
 		String code = body.get("code");
-		String ip = request.getRemoteAddr();
-		if (phone == null || phone.isBlank() || !smsService.verifyCode(phone, code)) {
-			saveLoginLog(phone, ip, 0, "短信验证码错误");
+		if (phone == null || phone.isBlank()) {
+			throw new ServiceException("手机号不能为空");
+		}
+		// 图形验证码前置（等保：短信登录也需图形码，防短信轰炸/枚举）
+		captchaService.verify(body.get("captchaUuid"), body.get("captchaCode"));
+		// 纳入失败锁定（按手机号维度）
+		loginLockService.assertNotLocked(phone);
+		if (!smsService.verifyCode(phone, code)) {
+			loginLockService.recordFail(phone);
+			saveLoginLog(phone, request, "web", "000000", 0, "短信验证码错误");
 			throw new ServiceException("验证码错误或已过期");
 		}
 		SysUser user = TenantManager.withoutTenantCondition(() ->
 			userMapper.selectOneByQuery(QueryWrapper.create().eq("phone", phone).orderBy("id", false)));
 		if (user == null) {
-			saveLoginLog(phone, ip, 0, "手机号未注册");
+			loginLockService.recordFail(phone);
+			saveLoginLog(phone, request, "web", "000000", 0, "手机号未注册");
 			throw new ServiceException("该手机号未注册");
 		}
+		loginLockService.clear(phone);
 		StpUtil.login(user.getId());
 		StpUtil.getSession().set("tenantId", user.getTenantId());
-		saveLoginLog(user.getUsername(), ip, 1, "短信登录成功");
+		saveLoginLog(user.getUsername(), request, "web", user.getTenantId(), 1, "短信登录成功");
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
 	}
 
@@ -230,11 +262,16 @@ public class AuthController {
 		return R.success("解绑成功");
 	}
 
-	/** 登录日志留痕（平台级，登录前无租户上下文） */
-	private void saveLoginLog(String username, String ip, int status, String msg) {
+	/** 登录日志留痕（平台级，登录前无租户上下文）：含租户/UA/设备增强字段 */
+	private void saveLoginLog(String username, HttpServletRequest request, String device, String tenantId,
+							 int status, String msg) {
 		SysLoginLog log = new SysLoginLog();
 		log.setUsername(username);
-		log.setIp(ip);
+		log.setIp(request.getRemoteAddr());
+		String ua = request.getHeader("User-Agent");
+		log.setUserAgent(ua != null && ua.length() > 500 ? ua.substring(0, 500) : ua);
+		log.setDevice(device);
+		log.setTenantId(tenantId);
 		log.setStatus(status);
 		log.setMsg(msg);
 		log.setLoginTime(LocalDateTime.now());

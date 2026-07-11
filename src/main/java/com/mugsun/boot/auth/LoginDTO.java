@@ -10,6 +10,8 @@ public class LoginDTO {
 	private String password;
 	private String captchaUuid;
 	private String captchaCode;
+	/** 登录客户端码（web/app…），决定验证码开关/令牌有效期/并发在线数等差异化策略；缺省 web */
+	private String clientId;
 
 	public String getTenantId() {
 		return tenantId;
@@ -17,6 +19,14 @@ public class LoginDTO {
 
 	public void setTenantId(String tenantId) {
 		this.tenantId = tenantId;
+	}
+
+	public String getClientId() {
+		return clientId;
+	}
+
+	public void setClientId(String clientId) {
+		this.clientId = clientId;
 	}
 
 	public String getUsername() {
