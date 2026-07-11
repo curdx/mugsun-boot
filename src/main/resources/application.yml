@@ -36,6 +36,10 @@ sa-token:
   timeout: 2592000
   token-style: uuid
   is-log: false
+  # 并发登录控制：允许同账号多端在线（is-concurrent），各端独立 token（is-share=false，方可按 token 踢单端），单账号最大并发终端数
+  is-concurrent: true
+  is-share: false
+  max-login-count: 12
 mybatis-flex:
   datasource:
     primary:
