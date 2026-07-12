@@ -80,11 +80,16 @@ public class FlowController {
 		return R.data(ins.getId());
 	}
 
-	/** 发起指定流程码的实例（设计流程发起用） */
+	/** 发起指定流程码的实例（设计流程发起用）；可选 handlers=发起人自选的首个审批节点办理人 */
 	@PostMapping("/start-by/{flowCode}/{businessId}")
-	public R<Long> startBy(@PathVariable String flowCode, @PathVariable String businessId) {
-		Instance ins = FlowEngine.insService().start(businessId,
-			FlowParams.build().flowCode(flowCode).handler(StpUtil.getLoginIdAsString()));
+	public R<Long> startBy(@PathVariable String flowCode, @PathVariable String businessId,
+						   @RequestBody(required = false) StartParam param) {
+		FlowParams flowParams = FlowParams.build().flowCode(flowCode).handler(StpUtil.getLoginIdAsString());
+		if (param != null && param.handlers() != null && !param.handlers().isEmpty()) {
+			// 发起人自选：覆盖首个审批节点办理人
+			flowParams.nextHandler(param.handlers().toArray(new String[0]));
+		}
+		Instance ins = FlowEngine.insService().start(businessId, flowParams);
 		return R.data(ins.getId());
 	}
 
@@ -202,7 +207,8 @@ public class FlowController {
 			String code = codes.get(i + 1);
 			String next = codes.get(i + 2);
 			String ratio = dn.nodeRatio() == null || dn.nodeRatio().isBlank() ? "0" : dn.nodeRatio();
-			nodeList.add(node(1, code, dn.name(), dn.role(), ratio, x, y, edge(code, next, "通过", x, y, x + step)));
+			String permissionFlag = permissionFlag(dn);
+			nodeList.add(node(1, code, dn.name(), permissionFlag, ratio, x, y, edge(code, next, "通过", x, y, x + step)));
 		}
 
 		x = baseX + step * (n + 1);
@@ -249,12 +255,28 @@ public class FlowController {
 		return e;
 	}
 
+	/** 节点候选人编码为 permissionFlag（warm-flow @@ 分隔多类型 storageId）；兼容旧 role 单角色写法 */
+	private String permissionFlag(FlowDesignNode dn) {
+		if (dn.candidates() != null && !dn.candidates().isEmpty()) {
+			return dn.candidates().stream().filter(c -> c != null && !c.isBlank())
+				.collect(java.util.stream.Collectors.joining(com.mugsun.boot.common.constant.FlowConstants.SEPARATOR));
+		}
+		if (dn.role() != null && !dn.role().isBlank()) {
+			return "role:" + dn.role();
+		}
+		throw new ServiceException("审批节点「" + dn.name() + "」未配置候选人");
+	}
+
 	/** 流程设计请求 */
 	public record FlowDesign(String flowCode, String flowName, List<FlowDesignNode> nodes) {
 	}
 
-	/** 审批节点：名称 + 审批角色码 + 通过比例（0 或签 / 100 会签 / 1~99 票签） */
-	public record FlowDesignNode(String name, String role, String nodeRatio) {
+	/** 审批节点：名称 + 候选人(多类型 storageId 前缀编码 role:/dept:/post:/user:/initiator/deptLeader) + 通过比例(0或签/100会签/1~99票签)；role 为旧单角色兼容位 */
+	public record FlowDesignNode(String name, List<String> candidates, String role, String nodeRatio) {
+	}
+
+	/** 发起参数：发起人自选的首个审批节点办理人 */
+	public record StartParam(List<String> handlers) {
 	}
 
 	/** 通用动作参数（审批意见） */

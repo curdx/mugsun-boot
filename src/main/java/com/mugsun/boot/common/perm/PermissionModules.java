@@ -37,7 +37,10 @@ public final class PermissionModules {
 		"/system/repeat",
 		"/system/crypto",
 		// 工作流任务办理：鉴权由 warm-flow 办理人（permissionFlag）校验，被指派人方可办理，不套 RBAC 码
-		"/system/flow/task"
+		"/system/flow/task",
+		// 工作流发起：提交审批是登录用户的业务动作（流程定义控制审批人），不套 RBAC 码；流程定义管理(deploy/design)仍受管控
+		"/system/flow/start",
+		"/system/flow/start-by"
 	);
 
 	private PermissionModules() {
