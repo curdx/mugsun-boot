@@ -197,14 +197,125 @@ public class GenMetaService {
 		return Map.of("table", table, "columns", columns);
 	}
 
-	/** 保存表级 + 字段级在线配置 */
+	/** 保存表级 + 字段级在线配置（字段 upsert：无 id 新增列、有 id 更新，支撑动态建表加字段/改名） */
 	@Transactional(rollbackFor = Exception.class)
 	public void saveConfig(GenTable table, List<GenColumn> columns) {
+		validateColumnNames(columns);
 		tableMapper.update(table);
 		if (columns != null) {
 			for (GenColumn col : columns) {
-				columnMapper.update(col);
+				if (col.getId() == null) {
+					col.setTableId(table.getId());
+					applyColumnDefaults(col);
+					columnMapper.insert(col);
+				} else {
+					columnMapper.update(col);
+				}
 			}
+		}
+	}
+
+	/** 持久化候选元数据为新表配置（AI/手工正向建表通道，不建物理表），返回表配置 id */
+	@Transactional(rollbackFor = Exception.class)
+	public Long createDraft(GenTable table, List<GenColumn> columns) {
+		if (table == null || table.getTableName() == null || table.getTableName().isBlank()) {
+			throw new com.mugsun.core.tool.exception.ServiceException("表名不能为空");
+		}
+		if (!GenNaming.isIdentifier(table.getTableName())) {
+			throw new com.mugsun.core.tool.exception.ServiceException("非法表名：" + table.getTableName());
+		}
+		validateColumnNames(columns);
+		GenTable dup = tableMapper.selectOneByQuery(QueryWrapper.create().eq("table_name", table.getTableName()));
+		if (dup != null) {
+			throw new com.mugsun.core.tool.exception.ServiceException("表配置已存在：" + table.getTableName());
+		}
+		if (table.getModuleName() == null || table.getModuleName().isBlank()) {
+			table.setModuleName("system");
+		}
+		if (table.getBasePackage() == null || table.getBasePackage().isBlank()) {
+			table.setBasePackage("com.mugsun.boot");
+		}
+		if (table.getFunctionAuthor() == null || table.getFunctionAuthor().isBlank()) {
+			table.setFunctionAuthor("mugsun");
+		}
+		if (table.getGenType() == null) {
+			table.setGenType("zip");
+		}
+		if (table.getTplCategory() == null) {
+			table.setTplCategory("crud");
+		}
+		table.setId(null);
+		tableMapper.insertSelective(table);
+		if (columns != null) {
+			int sort = 0;
+			for (GenColumn c : columns) {
+				c.setId(null);
+				c.setTableId(table.getId());
+				if (c.getSort() == null) {
+					c.setSort(++sort);
+				} else {
+					sort = c.getSort();
+				}
+				applyColumnDefaults(c);
+				columnMapper.insert(c);
+			}
+		}
+		return table.getId();
+	}
+
+	/** 校验列名/旧列名为合法标识符，杜绝非法名落入元数据（防 DDL 注入 + 无效配置残留） */
+	private void validateColumnNames(List<GenColumn> columns) {
+		if (columns == null) {
+			return;
+		}
+		for (GenColumn c : columns) {
+			if (!GenNaming.isIdentifier(c.getColumnName())) {
+				throw new com.mugsun.core.tool.exception.ServiceException("非法列名：" + c.getColumnName());
+			}
+			if (c.getColumnNameOld() != null && !c.getColumnNameOld().isBlank()
+				&& !GenNaming.isIdentifier(c.getColumnNameOld())) {
+				throw new com.mugsun.core.tool.exception.ServiceException("非法旧列名：" + c.getColumnNameOld());
+			}
+		}
+	}
+
+	/** 补齐 gen_column 非空默认，容忍前端传入的部分字段（新增列常缺 is_increment/is_required 等 NOT NULL 列） */
+	private void applyColumnDefaults(GenColumn c) {
+		if (c.getJavaType() == null || c.getJavaType().isBlank()) {
+			c.setJavaType("String");
+		}
+		if (c.getJavaField() == null || c.getJavaField().isBlank()) {
+			c.setJavaField(GenNaming.toCamel(c.getColumnName() == null ? "" : c.getColumnName(), false));
+		}
+		if (c.getIsPk() == null) {
+			c.setIsPk(0);
+		}
+		if (c.getIsIncrement() == null) {
+			c.setIsIncrement(0);
+		}
+		if (c.getIsRequired() == null) {
+			c.setIsRequired(0);
+		}
+		if (c.getIsInsert() == null) {
+			c.setIsInsert(1);
+		}
+		if (c.getIsEdit() == null) {
+			c.setIsEdit(1);
+		}
+		if (c.getIsList() == null) {
+			c.setIsList(1);
+		}
+		if (c.getIsQuery() == null) {
+			c.setIsQuery(0);
+		}
+		if (c.getQueryType() == null || c.getQueryType().isBlank()) {
+			c.setQueryType("String".equals(c.getJavaType()) ? "LIKE" : "EQ");
+		}
+		if (c.getHtmlType() == null || c.getHtmlType().isBlank()) {
+			c.setHtmlType("input");
+		}
+		if (c.getSort() == null) {
+			c.setSort(0);
 		}
 	}
 

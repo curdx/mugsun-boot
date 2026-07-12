@@ -13,6 +13,8 @@ public class GenColumn extends BaseEntity {
 	private Long tableId;
 	/** 列名 */
 	private String columnName;
+	/** 旧列名（改名追踪：增量同步据此走 RENAME 保数据） */
+	private String columnNameOld;
 	/** 列注释 */
 	private String columnComment;
 	/** 数据库列类型 */
@@ -58,6 +60,14 @@ public class GenColumn extends BaseEntity {
 
 	public void setColumnName(String columnName) {
 		this.columnName = columnName;
+	}
+
+	public String getColumnNameOld() {
+		return columnNameOld;
+	}
+
+	public void setColumnNameOld(String columnNameOld) {
+		this.columnNameOld = columnNameOld;
 	}
 
 	public String getColumnComment() {

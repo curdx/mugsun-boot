@@ -1,11 +1,21 @@
 package com.mugsun.boot.gen;
 
+import java.util.regex.Pattern;
+
 /**
- * 代码生成命名约定：下划线↔驼峰↔短横线，表前缀剥离。
+ * 代码生成命名约定：下划线↔驼峰↔短横线，表前缀剥离，数据库标识符校验。
  */
 public final class GenNaming {
 
+	/** 合法数据库标识符：小写字母起，字母/数字/下划线，≤63（PG 上限），防 DDL 注入 */
+	private static final Pattern IDENTIFIER = Pattern.compile("^[a-z][a-z0-9_]{0,62}$");
+
 	private GenNaming() {
+	}
+
+	/** 是否为合法数据库标识符（表名/列名白名单） */
+	public static boolean isIdentifier(String s) {
+		return s != null && IDENTIFIER.matcher(s).matches();
 	}
 
 	/** 剥离表前缀（大小写不敏感），如 gen_product / gen_ → product */
