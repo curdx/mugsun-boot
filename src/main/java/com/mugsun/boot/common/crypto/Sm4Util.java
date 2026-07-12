@@ -7,7 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 /**
- * SM4 国密对称加解密工具（字段加密用）。密钥由 {@link Sm4CryptoConfig} 启动时注入。
+ * SM4 国密对称加解密工具（字段加密用，ECB 确定性密文以支持等值查询、兼容历史数据）。
+ * 密钥由 {@link Sm4CryptoConfig} 启动时注入。接口/传输加密（CBC + 随机 IV）见 mugsun-core 的 ApiCryptoService。
  */
 public final class Sm4Util {
 

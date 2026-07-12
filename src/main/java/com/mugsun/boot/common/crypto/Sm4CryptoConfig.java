@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class Sm4CryptoConfig {
 
+	/** SM4 字段加密密钥（16 字节）；环境变量 MUGSUN_SM4_KEY 注入，勿硬编码生产密钥 */
 	@Value("${mugsun.crypto.sm4-key:mugsun-sm4-key16}")
 	private String sm4Key;
 

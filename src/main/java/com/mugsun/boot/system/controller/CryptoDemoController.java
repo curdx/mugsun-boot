@@ -21,14 +21,17 @@ import java.util.Map;
 @SaCheckLogin
 public class CryptoDemoController {
 
-	/** 回声：入参已由 @ApiDecrypt 解密为明文，返回值将由 @ApiEncrypt 加密为密文 */
+	/** 回声：入参已由 @ApiDecrypt 解密为明文，返回值将由 @ApiEncrypt 加密为密文；附国密摘要（SM3/SHA-256 随开关） */
 	@ApiDecrypt
 	@ApiEncrypt
 	@PostMapping("/echo")
 	public R<Map<String, Object>> echo(@RequestBody Map<String, Object> body) {
 		Map<String, Object> result = new HashMap<>();
+		String text = String.valueOf(body.get("text"));
 		result.put("received", body.get("text"));
 		result.put("echo", "服务端已解密收到并将加密返回：" + body.get("text"));
+		result.put("digest", com.mugsun.boot.common.crypto.GmDigestUtil.digest(text));
+		result.put("digestAlgo", com.mugsun.boot.common.crypto.GmDigestUtil.algorithm());
 		result.put("time", LocalDateTime.now().toString());
 		return R.data(result);
 	}

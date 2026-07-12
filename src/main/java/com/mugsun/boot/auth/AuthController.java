@@ -44,6 +44,7 @@ public class AuthController {
 	private final com.mugsun.boot.tenant.mapper.SysTenantPackageMapper tenantPackageMapper;
 	private final com.mugsun.boot.client.ClientService clientService;
 	private final com.mugsun.boot.tenant.TenantValidator tenantValidator;
+	private final com.mugsun.boot.common.crypto.GmCryptoConfig gmCryptoConfig;
 
 	public AuthController(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
 						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper,
@@ -55,7 +56,8 @@ public class AuthController {
 						  com.mugsun.boot.system.mapper.SysTenantMapper tenantMapper,
 						  com.mugsun.boot.tenant.mapper.SysTenantPackageMapper tenantPackageMapper,
 						  com.mugsun.boot.client.ClientService clientService,
-						  com.mugsun.boot.tenant.TenantValidator tenantValidator) {
+						  com.mugsun.boot.tenant.TenantValidator tenantValidator,
+						  com.mugsun.boot.common.crypto.GmCryptoConfig gmCryptoConfig) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
@@ -69,6 +71,25 @@ public class AuthController {
 		this.tenantPackageMapper = tenantPackageMapper;
 		this.clientService = clientService;
 		this.tenantValidator = tenantValidator;
+		this.gmCryptoConfig = gmCryptoConfig;
+	}
+
+	/** SM2 传输公钥：前端登录/改密/注册前取此公钥加密密码；gmEnabled=false 时前端明文传输 */
+	@GetMapping("/sm2-public-key")
+	public R<Map<String, Object>> sm2PublicKey() {
+		Map<String, Object> data = new java.util.HashMap<>();
+		data.put("gmEnabled", gmCryptoConfig.isGmEnabled());
+		data.put("publicKey", gmCryptoConfig.isGmEnabled()
+			? com.mugsun.boot.common.crypto.Sm2Util.publicKey() : null);
+		return R.data(data);
+	}
+
+	/** 传输密码解密：国密开关开启时按 SM2 解密（前端 sm-crypto 公钥加密），否则原样明文 */
+	private String decodePassword(String raw) {
+		if (raw == null || raw.isBlank() || !gmCryptoConfig.isGmEnabled()) {
+			return raw;
+		}
+		return com.mugsun.boot.common.crypto.Sm2Util.decrypt(raw);
 	}
 
 	/** 图形验证码：生成一张，答案入 Redis */
@@ -99,7 +120,14 @@ public class AuthController {
 		}
 		SysUser user = TenantContext.ignore(() ->
 			userMapper.selectOneByQuery(QueryWrapper.create().eq("tenant_id", tenantId).eq("username", username)));
-		if (user == null || !passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
+		String rawPassword;
+		try {
+			rawPassword = decodePassword(dto.getPassword());
+		} catch (Exception e) {
+			// SM2 解密失败与密码错误归一，避免暴露「密文格式/是否加密」的探测预言机
+			rawPassword = null;
+		}
+		if (user == null || rawPassword == null || !passwordEncoder.matches(rawPassword, user.getPassword())) {
 			loginLockService.recordFail(username);
 			saveLoginLog(username, request, client.getClientId(), tenantId, 0, "账号或密码错误");
 			throw new ServiceException("账号或密码错误");
@@ -157,8 +185,10 @@ public class AuthController {
 			|| dto.getPassword() == null || dto.getPassword().isBlank()) {
 			throw new ServiceException("用户名和密码不能为空");
 		}
+		// 传输密码 SM2 解密（国密开关开启时），后续校验/落库用明文
+		String rawPassword = decodePassword(dto.getPassword());
 		// 等保密码复杂度校验（min-length + 大小写/数字/特殊字符组合，策略可后台改）
-		securityPolicyService.validateComplexity(dto.getPassword());
+		securityPolicyService.validateComplexity(rawPassword);
 		String tenantId = TenantConstants.DEFAULT_TENANT_ID;
 		long exists = TenantContext.ignore(() -> userMapper.selectCountByQuery(
 			QueryWrapper.create().eq("tenant_id", tenantId).eq("username", dto.getUsername())));
@@ -168,7 +198,7 @@ public class AuthController {
 		SysUser user = new SysUser();
 		user.setUsername(dto.getUsername());
 		user.setNickname((dto.getNickname() == null || dto.getNickname().isBlank()) ? dto.getUsername() : dto.getNickname());
-		user.setPassword(passwordEncoder.encode(dto.getPassword()));
+		user.setPassword(passwordEncoder.encode(rawPassword));
 		user.setPhone(dto.getPhone());
 		user.setStatus(1);
 		user.setTenantId(tenantId);
@@ -388,13 +418,16 @@ public class AuthController {
 	@SaCheckLogin
 	public R<Void> updatePassword(@RequestBody UpdatePasswordDTO dto) {
 		SysUser user = TenantContext.ignore(() -> userMapper.selectOneById(StpUtil.getLoginIdAsLong()));
-		if (user == null || !passwordEncoder.matches(dto.oldPassword(), user.getPassword())) {
+		// 传输密码 SM2 解密（国密开关开启时）
+		String oldPassword = decodePassword(dto.oldPassword());
+		String newPassword = decodePassword(dto.newPassword());
+		if (user == null || !passwordEncoder.matches(oldPassword, user.getPassword())) {
 			throw new ServiceException("原密码错误");
 		}
 		// 等保：复杂度校验 + 历史密码防重
-		securityPolicyService.validateComplexity(dto.newPassword());
-		securityPolicyService.checkHistory(user.getId(), dto.newPassword());
-		String encoded = passwordEncoder.encode(dto.newPassword());
+		securityPolicyService.validateComplexity(newPassword);
+		securityPolicyService.checkHistory(user.getId(), newPassword);
+		String encoded = passwordEncoder.encode(newPassword);
 		user.setPassword(encoded);
 		userMapper.update(user);
 		securityPolicyService.logPassword(user.getId(), encoded);

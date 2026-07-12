@@ -105,8 +105,11 @@ mugsun:
   sms:
     show-code: true          # 开发回显短信验证码（生产须 false）
   crypto:
-    sm4-key: mugsun-sm4-key16
-    api-key: mugsun-api-key16
+    gm-enabled: ${MUGSUN_GM_ENABLED:true}          # 国密总开关（传输 SM2 / 摘要 SM3 一处切）
+    sm4-key: ${MUGSUN_SM4_KEY:mugsun-sm4-key16}     # SM4 字段加密密钥（生产经环境变量注入）
+    api-key: ${MUGSUN_API_KEY:mugsun-api-key16}
+    sm2-private-key: ${MUGSUN_SM2_PRIVATE_KEY:}     # SM2 传输私钥 hex（留空则启动生成并告警）
+    sm2-public-key: ${MUGSUN_SM2_PUBLIC_KEY:}       # SM2 传输公钥 hex（04+128）
   serial-number:
     provider: redis          # redis 自增（默认）/ db 行锁
   social:
