@@ -2,6 +2,8 @@ package com.mugsun.boot.system.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.IdUtil;
+import com.mugsun.boot.common.constant.FlowConstants;
+import com.mugsun.boot.common.constant.RoleConstants;
 import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.row.Db;
 import com.mybatisflex.core.row.Row;
@@ -12,7 +14,10 @@ import org.dromara.warm.flow.core.entity.Task;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -26,6 +31,14 @@ public class FlowService {
 
 	/** 抄送用户类型（warm-flow 引擎不识别，仅应用层读写；引擎办理人为 1/2/3） */
 	private static final String USER_TYPE_COPY = "C";
+
+	private final HandlerSelectService selectService;
+	private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
+	public FlowService(HandlerSelectService selectService, com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
+		this.selectService = selectService;
+		this.objectMapper = objectMapper;
+	}
 
 	// ==================== 列表读取 ====================
 
@@ -67,6 +80,7 @@ public class FlowService {
 
 	/** 实例历史流转（进度时间线） */
 	public List<Row> history(Long instanceId) {
+		assertInstanceAccess(instanceId);
 		return Db.selectListBySql(
 			"select node_code as \"nodeCode\", node_name as \"nodeName\", approver as \"approver\", "
 				+ "skip_type as \"skipType\", flow_status as \"flowStatus\", message as \"message\", "
@@ -76,20 +90,266 @@ public class FlowService {
 
 	/** 实例可退回的历史审批节点（供“退回指定节点”选择；排除开始/结束/网关） */
 	public List<Row> backNodes(Long instanceId) {
+		assertInstanceAccess(instanceId);
 		return Db.selectListBySql(
 			"select distinct node_code as \"nodeCode\", node_name as \"nodeName\" "
 				+ "from flow_his_task where instance_id = ? and node_type = 1 and coalesce(del_flag,'0') <> '1' "
-				+ "order by node_code", instanceId);
+				+ "order by length(node_code), node_code", instanceId);
+	}
+
+	/** 查询实例（含流程状态，含参与人访问校验） */
+	public Instance instance(Long instanceId) {
+		assertInstanceAccess(instanceId);
+		return FlowEngine.insService().getById(instanceId);
+	}
+
+	// ==================== 审批中心 ====================
+
+	/** 我发起：当前用户发起的流程实例 */
+	public List<Row> myStarted() {
+		return Db.selectListBySql(
+			"select i.id as \"instanceId\", i.business_id as \"businessId\", i.flow_status as \"flowStatus\", "
+				+ "i.node_name as \"nodeName\", d.flow_name as \"flowName\", i.create_time as \"createTime\" "
+				+ "from flow_instance i join flow_definition d on d.id = i.definition_id "
+				+ "where i.create_by = ? order by i.id desc", StpUtil.getLoginIdAsString());
+	}
+
+	/** 已办：当前用户办理过的流程（去重按实例，取最近一次办理） */
+	public List<Row> myDone() {
+		return Db.selectListBySql(
+			"select h.instance_id as \"instanceId\", i.business_id as \"businessId\", h.node_name as \"nodeName\", "
+				+ "h.skip_type as \"skipType\", i.flow_status as \"flowStatus\", d.flow_name as \"flowName\", "
+				+ "max(h.create_time) as \"createTime\" "
+				+ "from flow_his_task h join flow_instance i on i.id = h.instance_id "
+				+ "join flow_definition d on d.id = i.definition_id "
+				+ "where h.approver = ? and h.node_type = 1 and coalesce(h.del_flag,'0') <> '1' "
+				+ "group by h.instance_id, i.business_id, h.node_name, h.skip_type, i.flow_status, d.flow_name "
+				+ "order by max(h.create_time) desc", StpUtil.getLoginIdAsString());
+	}
+
+	/** 流程图进度：实例定义的各节点 + 状态（已过 passed / 当前 current / 驳回 rejected / 待处理 pending） */
+	public List<Map<String, Object>> progress(Long instanceId) {
+		Instance ins = FlowEngine.insService().getById(instanceId);
+		if (ins == null) {
+			throw new ServiceException("流程实例不存在");
+		}
+		assertInstanceAccess(instanceId);
+		Long defId = ins.getDefinitionId();
+		List<Row> nodes = Db.selectListBySql(
+			"select node_code as \"nodeCode\", node_name as \"nodeName\", node_type as \"nodeType\" "
+				+ "from flow_node where definition_id = ? and coalesce(del_flag,'0') <> '1' "
+				+ "order by node_type, length(node_code), node_code",
+			defId);
+		Set<String> current = codeSet("select node_code as \"v\" from flow_task "
+			+ "where instance_id = ? and coalesce(del_flag,'0') <> '1'", instanceId);
+		Set<String> passed = codeSet("select distinct node_code as \"v\" from flow_his_task "
+			+ "where instance_id = ? and skip_type = 'PASS' and coalesce(del_flag,'0') <> '1'", instanceId);
+		Set<String> rejected = codeSet("select distinct node_code as \"v\" from flow_his_task "
+			+ "where instance_id = ? and skip_type = 'REJECT' and coalesce(del_flag,'0') <> '1'", instanceId);
+		List<Map<String, Object>> result = new ArrayList<>();
+		for (Row n : nodes) {
+			String code = n.getString("nodeCode");
+			String status;
+			if (current.contains(code)) {
+				// 当前待办节点（含被退回到的节点）
+				status = "current";
+			} else if (passed.contains(code)) {
+				// 已通过优先于历史驳回：退回后又通过的节点呈现为已过
+				status = "passed";
+			} else if (rejected.contains(code)) {
+				status = "rejected";
+			} else {
+				status = "pending";
+			}
+			Map<String, Object> node = new LinkedHashMap<>();
+			node.put("nodeCode", code);
+			node.put("nodeName", n.getString("nodeName"));
+			node.put("nodeType", n.getString("nodeType"));
+			node.put("status", status);
+			result.add(node);
+		}
+		return result;
+	}
+
+	/** 下一节点审批人预测：当前任务通过后到达的下一节点及其解析出的候选审批人 */
+	public List<Map<String, Object>> nextApprovers(Long taskId) {
+		Task task = requireTask(taskId);
+		assertInstanceAccess(task.getInstanceId());
+		Instance ins = FlowEngine.insService().getById(task.getInstanceId());
+		String initiator = ins == null ? null : ins.getCreateBy();
+		List<Row> nexts = Db.selectListBySql(
+			"select next_node_code as \"code\" from flow_skip "
+				+ "where definition_id = ? and now_node_code = ? and (skip_type = 'PASS' or skip_type is null) "
+				+ "and coalesce(del_flag,'0') <> '1'", task.getDefinitionId(), task.getNodeCode());
+		List<Map<String, Object>> result = new ArrayList<>();
+		for (Row nx : nexts) {
+			String nextCode = nx.getString("code");
+			Row node = firstRow(
+				"select node_type as \"nt\", node_name as \"nn\", permission_flag as \"pf\" "
+					+ "from flow_node where definition_id = ? and node_code = ? and coalesce(del_flag,'0') <> '1'",
+				task.getDefinitionId(), nextCode);
+			if (node == null) {
+				continue;
+			}
+			Map<String, Object> item = new LinkedHashMap<>();
+			item.put("nodeCode", nextCode);
+			item.put("nodeName", node.getString("nn"));
+			if ("2".equals(node.getString("nt"))) {
+				item.put("end", true);
+				item.put("approvers", List.of());
+			} else {
+				String pf = node.getString("pf");
+				List<String> flags = pf == null ? List.of()
+					: List.of(pf.split(java.util.regex.Pattern.quote(FlowConstants.SEPARATOR)));
+				item.put("approvers", selectService.usernames(selectService.resolveHandlers(flags, initiator)));
+			}
+			result.add(item);
+		}
+		return result;
+	}
+
+	/** 通用审批弹窗按钮：当前用户对该任务可用的动作（buttonList 驱动前端按钮显隐） */
+	public List<String> taskButtons(Long taskId) {
+		Task task = FlowEngine.taskService().getById(taskId);
+		if (task == null) {
+			return List.of();
+		}
+		List<String> flags = userFlags();
+		List<String> handlers = Db.selectListBySql(
+			"select u.processed_by as \"v\" from flow_user u "
+				+ "where u.associated = ? and u.type in ('1','2','3') and coalesce(u.del_flag,'0') <> '1'", taskId)
+			.stream().map(r -> r.getString("v")).collect(Collectors.toList());
+		boolean assignee = handlers.stream().anyMatch(flags::contains);
+		if (!assignee) {
+			return List.of();
+		}
+		return List.of("pass", "reject", "rejectNode", "transfer", "depute",
+			"addSignature", "reductionSignature", "copy", "terminate");
+	}
+
+	private Set<String> codeSet(String sql, Object arg) {
+		return Db.selectListBySql(sql, arg).stream()
+			.map(r -> r.getString("v")).collect(Collectors.toSet());
+	}
+
+	private Row firstRow(String sql, Object... args) {
+		List<Row> rows = Db.selectListBySql(sql, args);
+		return rows.isEmpty() ? null : rows.get(0);
+	}
+
+	// ==================== 表单绑流程 ====================
+
+	/** 发起表单：流程码最新已发布定义的发起节点绑定表单（全字段可写，无预填数据） */
+	public Map<String, Object> startForm(String flowCode) {
+		Row def = firstRow("select id as \"id\" from flow_definition "
+			+ "where flow_code = ? and is_publish = 1 and coalesce(del_flag,'0') <> '1' order by version desc, id desc",
+			flowCode);
+		if (def == null) {
+			return Map.of("hasForm", false);
+		}
+		Row start = firstRow("select form_path as \"fp\" from flow_node "
+			+ "where definition_id = ? and node_type = 0 and coalesce(del_flag,'0') <> '1'", def.getLong("id"));
+		return formPayload(start == null ? null : start.getString("fp"), null, null);
+	}
+
+	/** 办理表单：任务节点绑定表单 + 实例已填数据 + 该节点字段级权限 */
+	public Map<String, Object> taskForm(Long taskId) {
+		Task task = requireTask(taskId);
+		assertInstanceAccess(task.getInstanceId());
+		Row node = firstRow("select form_path as \"fp\", ext as \"ext\" from flow_node "
+			+ "where definition_id = ? and node_code = ? and coalesce(del_flag,'0') <> '1'",
+			task.getDefinitionId(), task.getNodeCode());
+		if (node == null) {
+			return Map.of("hasForm", false);
+		}
+		Instance ins = FlowEngine.insService().getById(task.getInstanceId());
+		return formPayload(node.getString("fp"), ins == null ? null : ins.getVariableMap(),
+			parseFieldPerms(node.getString("ext")));
+	}
+
+	/** 查看表单：实例业务数据只读回显（发起节点表单 + 全字段 READ） */
+	public Map<String, Object> instanceForm(Long instanceId) {
+		Instance ins = FlowEngine.insService().getById(instanceId);
+		if (ins == null) {
+			throw new ServiceException("流程实例不存在");
+		}
+		assertInstanceAccess(instanceId);
+		Row start = firstRow("select form_path as \"fp\" from flow_node "
+			+ "where definition_id = ? and node_type = 0 and coalesce(del_flag,'0') <> '1'", ins.getDefinitionId());
+		Map<String, Object> payload = formPayload(start == null ? null : start.getString("fp"),
+			ins.getVariableMap(), null);
+		payload.put("readonly", true);
+		return payload;
+	}
+
+	/** 组装表单载荷：formKey → sys_form schema/option + 数据 + 字段权限 */
+	private Map<String, Object> formPayload(String formKey, Map<String, Object> data, Map<String, String> fieldPerms) {
+		Map<String, Object> r = new LinkedHashMap<>();
+		if (formKey == null || formKey.isBlank()) {
+			r.put("hasForm", false);
+			return r;
+		}
+		Row form = firstRow("select name as \"n\", form_schema as \"s\", form_option as \"o\" "
+			+ "from sys_form where form_key = ? and is_deleted = 0 and status = 1", formKey);
+		if (form == null || form.getString("s") == null) {
+			r.put("hasForm", false);
+			return r;
+		}
+		r.put("hasForm", true);
+		r.put("formKey", formKey);
+		r.put("formName", form.getString("n"));
+		r.put("schema", form.getString("s"));
+		r.put("option", form.getString("o"));
+		r.put("data", data == null ? Map.of() : data);
+		r.put("fieldPerms", fieldPerms == null ? Map.of() : fieldPerms);
+		return r;
+	}
+
+	private Map<String, String> parseFieldPerms(String ext) {
+		if (ext == null || ext.isBlank()) {
+			return Map.of();
+		}
+		try {
+			return objectMapper.readValue(ext, new com.fasterxml.jackson.core.type.TypeReference<Map<String, String>>() {
+			});
+		} catch (Exception e) {
+			return Map.of();
+		}
 	}
 
 	// ==================== 审批动作（引擎 API） ====================
 
-	/** 通过 */
-	public String pass(Long taskId, String message) {
-		requireTask(taskId);
-		Instance ins = FlowEngine.taskService().skip(taskId,
-			base().skipType("PASS").message(text(message, "同意")));
+	/** 通过：可携带办理阶段表单数据合并进流程变量（经 skip 内部 mergeVariable 持久化；写门控剔除只读/隐藏字段） */
+	public String pass(Long taskId, String message, Map<String, Object> variable) {
+		Task task = requireTask(taskId);
+		FlowParams params = base().skipType("PASS").message(text(message, "同意"));
+		Map<String, Object> safe = sanitizeVariable(task, variable);
+		if (!safe.isEmpty()) {
+			params.variable(safe);
+		}
+		Instance ins = FlowEngine.taskService().skip(taskId, params);
 		return ins.getFlowStatus();
+	}
+
+	/** 写门控：按节点字段权限剔除 READ/NONE 字段，防客户端绕过前端约束污染只读/隐藏字段 */
+	private Map<String, Object> sanitizeVariable(Task task, Map<String, Object> variable) {
+		if (variable == null || variable.isEmpty()) {
+			return Map.of();
+		}
+		Row node = firstRow("select ext as \"ext\" from flow_node "
+			+ "where definition_id = ? and node_code = ? and coalesce(del_flag,'0') <> '1'",
+			task.getDefinitionId(), task.getNodeCode());
+		Map<String, String> perms = node == null ? Map.of() : parseFieldPerms(node.getString("ext"));
+		if (perms.isEmpty()) {
+			return variable;
+		}
+		Map<String, Object> out = new LinkedHashMap<>(variable);
+		perms.forEach((field, perm) -> {
+			if (FlowConstants.FIELD_PERM_READ.equals(perm) || FlowConstants.FIELD_PERM_NONE.equals(perm)) {
+				out.remove(field);
+			}
+		});
+		return out;
 	}
 
 	/** 退回上一步（实例存活、回退，非终止作废） */
@@ -170,6 +430,43 @@ public class FlowService {
 			throw new ServiceException("任务不存在或已处理");
 		}
 		return t;
+	}
+
+	/**
+	 * 参与人访问校验（防越权读 IDOR）：仅 发起人 / 当前办理人 / 历史办理人 / 被抄送人 / 管理员 可查看该实例流程数据。
+	 * my-* 列表已按当前用户 scope，故仅按 instanceId/taskId 拉数据的读端点需此守卫。
+	 */
+	private void assertInstanceAccess(Long instanceId) {
+		if (instanceId == null) {
+			throw new ServiceException("流程实例不存在");
+		}
+		Instance ins = FlowEngine.insService().getById(instanceId);
+		if (ins == null) {
+			throw new ServiceException("流程实例不存在");
+		}
+		String me = uid();
+		if (me.equals(ins.getCreateBy())) {
+			return;
+		}
+		List<String> flags = userFlags();
+		if (flags.contains(RoleConstants.ADMIN)) {
+			return;
+		}
+		// 当前办理人（flow_user 关联本实例任务）或被抄送人（type='C' 关联实例）
+		String in = flags.stream().map(f -> "?").collect(Collectors.joining(","));
+		List<Object> args = new ArrayList<>(flags);
+		args.add(instanceId);
+		args.add(instanceId);
+		boolean participant = !Db.selectListBySql(
+			"select 1 from flow_user u where coalesce(u.del_flag,'0') <> '1' and u.processed_by in (" + in + ") "
+				+ "and (u.associated = ? or u.associated in (select id from flow_task where instance_id = ?)) limit 1",
+			args.toArray()).isEmpty();
+		// 历史办理人
+		boolean handledBefore = !Db.selectListBySql(
+			"select 1 from flow_his_task where instance_id = ? and approver = ? limit 1", instanceId, me).isEmpty();
+		if (!participant && !handledBefore) {
+			throw new ServiceException("无权查看该流程");
+		}
 	}
 
 	/** 引擎办理参数基座：当前办理人 + 权限标识集（ignore 默认 false → 引擎校验办理权限） */

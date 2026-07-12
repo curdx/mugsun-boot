@@ -24,4 +24,11 @@ public interface FlowConstants {
 
 	/** 节点 permissionFlag 多候选人分隔符（须与 warm-flow FlowCons.SPLIT_AT 一致，引擎按此拆分） */
 	String SEPARATOR = "@@";
+
+	/** 字段级权限·可写（默认，不处理） */
+	String FIELD_PERM_WRITE = "WRITE";
+	/** 字段级权限·只读（办理时禁用，值保留；写门控时剔除该字段防污染） */
+	String FIELD_PERM_READ = "READ";
+	/** 字段级权限·隐藏（办理时不渲染，不校验不提交；写门控时剔除该字段） */
+	String FIELD_PERM_NONE = "NONE";
 }

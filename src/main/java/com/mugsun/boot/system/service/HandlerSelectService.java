@@ -75,6 +75,55 @@ public class HandlerSelectService {
 		return byRole(RoleConstants.ADMIN);
 	}
 
+	/**
+	 * 完整解析办理人（静态前缀 + 发起人/部门负责人占位 + 兜底），供 assignment 监听器与下一审批人预测复用。
+	 * 输入可为原始 permissionFlag 拆分串（role:/dept:/...）或已过 convertPermissions 的列表（userId+占位）。
+	 */
+	public List<String> resolveHandlers(List<String> flags, String initiator) {
+		Set<String> resolved = new LinkedHashSet<>();
+		for (String p : resolveStatic(flags)) {
+			if (FlowConstants.PLACEHOLDER_INITIATOR.equals(p)) {
+				if (initiator != null) {
+					resolved.add(initiator);
+				}
+			} else if (FlowConstants.PLACEHOLDER_DEPT_LEADER.equals(p)) {
+				if (initiator != null) {
+					resolved.addAll(deptLeaderByUser(initiator));
+				}
+			} else {
+				resolved.add(p);
+			}
+		}
+		// 兜底①：空候选 → 超管；连超管都无 → 门控哨兵（fail-closed）
+		if (resolved.isEmpty()) {
+			resolved.addAll(fallbackHandlers());
+			if (resolved.isEmpty()) {
+				resolved.add(FlowConstants.GATE_SENTINEL);
+			}
+		}
+		// 兜底②：办理人仅发起人本人 → 追加其他超管，防自审自批卡死
+		if (initiator != null && resolved.size() == 1 && resolved.contains(initiator)) {
+			fallbackHandlers().stream().filter(id -> !id.equals(initiator)).forEach(resolved::add);
+		}
+		return new ArrayList<>(resolved);
+	}
+
+	/** 用户 id 集 → 显示用 [{id, name}]；非用户标识（哨兵/旧角色码）name 回退为标识本身 */
+	public List<java.util.Map<String, Object>> usernames(List<String> userIds) {
+		List<java.util.Map<String, Object>> result = new ArrayList<>();
+		for (String id : userIds) {
+			String name = id;
+			if (id != null && id.chars().allMatch(Character::isDigit)) {
+				List<String> n = column("select username as \"v\" from sys_user where id = ? and is_deleted = 0", asLong(id));
+				if (!n.isEmpty()) {
+					name = n.get(0);
+				}
+			}
+			result.add(java.util.Map.of("id", id, "name", name));
+		}
+		return result;
+	}
+
 	private List<String> column(String sql, Object arg) {
 		List<String> list = new ArrayList<>();
 		Db.selectListBySql(sql, arg).forEach(row -> {

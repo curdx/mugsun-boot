@@ -80,7 +80,7 @@ public class FlowController {
 		return R.data(ins.getId());
 	}
 
-	/** 发起指定流程码的实例（设计流程发起用）；可选 handlers=发起人自选的首个审批节点办理人 */
+	/** 发起指定流程码的实例（设计流程发起用）；可选 handlers=发起人自选的首个审批节点办理人、variable=发起业务数据 */
 	@PostMapping("/start-by/{flowCode}/{businessId}")
 	public R<Long> startBy(@PathVariable String flowCode, @PathVariable String businessId,
 						   @RequestBody(required = false) StartParam param) {
@@ -89,8 +89,32 @@ public class FlowController {
 			// 发起人自选：覆盖首个审批节点办理人
 			flowParams.nextHandler(param.handlers().toArray(new String[0]));
 		}
+		if (param != null && param.variable() != null && !param.variable().isEmpty()) {
+			// 发起携带业务数据 → 落 flow_instance.variable
+			flowParams.variable(param.variable());
+		}
 		Instance ins = FlowEngine.insService().start(businessId, flowParams);
 		return R.data(ins.getId());
+	}
+
+	// ==================== 表单绑流程 ====================
+
+	/** 发起表单：流程码的发起节点绑定表单（发起页填业务数据，全字段可写） */
+	@GetMapping("/form/start")
+	public R<Map<String, Object>> startForm(@RequestParam String flowCode) {
+		return R.data(flowService.startForm(flowCode));
+	}
+
+	/** 办理表单：任务所属节点绑定表单 + 已填数据 + 字段级权限（READ/WRITE/NONE） */
+	@GetMapping("/form/task")
+	public R<Map<String, Object>> taskForm(@RequestParam Long taskId) {
+		return R.data(flowService.taskForm(taskId));
+	}
+
+	/** 查看表单：实例业务数据只读回显（我发起/已办详情） */
+	@GetMapping("/form/instance")
+	public R<Map<String, Object>> instanceForm(@RequestParam Long instanceId) {
+		return R.data(flowService.instanceForm(instanceId));
 	}
 
 	// ==================== 待办 / 抄送 / 进度 ====================
@@ -119,19 +143,49 @@ public class FlowController {
 		return R.data(flowService.backNodes(instanceId));
 	}
 
-	/** 查询实例（含流程状态） */
+	/** 查询实例（含流程状态，含参与人访问校验） */
 	@GetMapping("/instance")
 	public R<Instance> instance(@RequestParam Long instanceId) {
-		return R.data(FlowEngine.insService().getById(instanceId));
+		return R.data(flowService.instance(instanceId));
+	}
+
+	/** 审批中心·我发起 */
+	@GetMapping("/my-started")
+	public R<List<Row>> myStarted() {
+		return R.data(flowService.myStarted());
+	}
+
+	/** 审批中心·已办 */
+	@GetMapping("/my-done")
+	public R<List<Row>> myDone() {
+		return R.data(flowService.myDone());
+	}
+
+	/** 流程图进度：各节点状态（已过/当前/驳回/待处理） */
+	@GetMapping("/progress")
+	public R<List<Map<String, Object>>> progress(@RequestParam Long instanceId) {
+		return R.data(flowService.progress(instanceId));
+	}
+
+	/** 下一节点审批人预测 */
+	@GetMapping("/next-approvers")
+	public R<List<Map<String, Object>>> nextApprovers(@RequestParam Long taskId) {
+		return R.data(flowService.nextApprovers(taskId));
+	}
+
+	/** 通用审批弹窗按钮（buttonList，按当前用户对该任务的可用动作） */
+	@GetMapping("/task-buttons")
+	public R<List<String>> taskButtons(@RequestParam Long taskId) {
+		return R.data(flowService.taskButtons(taskId));
 	}
 
 	// ==================== 审批动作（任务办理，鉴权由 warm-flow 办理人校验，豁免 RBAC 码守卫） ====================
 
-	/** 办理（通过） */
+	/** 办理（通过）：可携带办理阶段表单数据合并进流程变量 */
 	@RepeatSubmit
 	@PostMapping("/task/handle/{taskId}")
 	public R<String> handle(@PathVariable Long taskId, @RequestBody(required = false) ActionParam param) {
-		return R.data(flowService.pass(taskId, msg(param)));
+		return R.data(flowService.pass(taskId, msg(param), param == null ? null : param.variable()));
 	}
 
 	/** 退回上一步（修正：退回而非终止作废） */
@@ -199,7 +253,12 @@ public class FlowController {
 		codes.add("end");
 
 		int x = baseX;
-		nodeList.add(node(0, "start", "开始", null, null, x, y, edge("start", codes.get(1), "提交", x, y, x + step)));
+		boolean hasForm = req.formKey() != null && !req.formKey().isBlank();
+		Map<String, Object> startNode = node(0, "start", "开始", null, null, x, y, edge("start", codes.get(1), "提交", x, y, x + step));
+		if (hasForm) {
+			bindForm(startNode, req.formKey(), null);
+		}
+		nodeList.add(startNode);
 
 		for (int i = 0; i < n; i++) {
 			x = baseX + step * (i + 1);
@@ -208,7 +267,11 @@ public class FlowController {
 			String next = codes.get(i + 2);
 			String ratio = dn.nodeRatio() == null || dn.nodeRatio().isBlank() ? "0" : dn.nodeRatio();
 			String permissionFlag = permissionFlag(dn);
-			nodeList.add(node(1, code, dn.name(), permissionFlag, ratio, x, y, edge(code, next, "通过", x, y, x + step)));
+			Map<String, Object> an = node(1, code, dn.name(), permissionFlag, ratio, x, y, edge(code, next, "通过", x, y, x + step));
+			if (hasForm) {
+				bindForm(an, req.formKey(), dn.fieldPerms());
+			}
+			nodeList.add(an);
 		}
 
 		x = baseX + step * (n + 1);
@@ -245,6 +308,15 @@ public class FlowController {
 		return node;
 	}
 
+	/** 绑定业务表单到节点：formCustom='Y' + formPath=表单 key；审批节点附字段权限到 ext(JSON) */
+	private void bindForm(Map<String, Object> node, String formKey, Map<String, String> fieldPerms) throws Exception {
+		node.put("formCustom", "Y");
+		node.put("formPath", formKey);
+		if (fieldPerms != null && !fieldPerms.isEmpty()) {
+			node.put("ext", objectMapper.writeValueAsString(fieldPerms));
+		}
+	}
+
 	private Map<String, Object> edge(String from, String to, String name, int x, int y, int nextX) {
 		Map<String, Object> e = new LinkedHashMap<>();
 		e.put("nowNodeCode", from);
@@ -267,20 +339,24 @@ public class FlowController {
 		throw new ServiceException("审批节点「" + dn.name() + "」未配置候选人");
 	}
 
-	/** 流程设计请求 */
-	public record FlowDesign(String flowCode, String flowName, List<FlowDesignNode> nodes) {
+	/** 流程设计请求：流程码/名 + 绑定业务表单 formKey(可空) + 审批节点链 */
+	public record FlowDesign(String flowCode, String flowName, String formKey, List<FlowDesignNode> nodes) {
 	}
 
-	/** 审批节点：名称 + 候选人(多类型 storageId 前缀编码 role:/dept:/post:/user:/initiator/deptLeader) + 通过比例(0或签/100会签/1~99票签)；role 为旧单角色兼容位 */
-	public record FlowDesignNode(String name, List<String> candidates, String role, String nodeRatio) {
+	/**
+	 * 审批节点：名称 + 候选人(多类型 storageId 前缀编码 role:/dept:/post:/user:/initiator/deptLeader) +
+	 * 通过比例(0或签/100会签/1~99票签) + 字段级权限(字段名→READ/WRITE/NONE，办理时对绑定表单生效)；role 为旧单角色兼容位
+	 */
+	public record FlowDesignNode(String name, List<String> candidates, String role, String nodeRatio,
+								 Map<String, String> fieldPerms) {
 	}
 
-	/** 发起参数：发起人自选的首个审批节点办理人 */
-	public record StartParam(List<String> handlers) {
+	/** 发起参数：发起人自选的首个审批节点办理人 + 发起业务数据 */
+	public record StartParam(List<String> handlers, Map<String, Object> variable) {
 	}
 
-	/** 通用动作参数（审批意见） */
-	public record ActionParam(String message) {
+	/** 通用动作参数（审批意见 + 可选办理阶段表单数据） */
+	public record ActionParam(String message, Map<String, Object> variable) {
 	}
 
 	/** 退回指定节点参数 */
