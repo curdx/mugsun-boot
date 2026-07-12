@@ -5,6 +5,7 @@ import com.mugsun.boot.gen.entity.GenTable;
 import com.mugsun.boot.gen.mapper.GenColumnMapper;
 import com.mugsun.boot.gen.mapper.GenTableMapper;
 import com.mugsun.core.tool.exception.ServiceException;
+import com.mybatisflex.core.dialect.DbTypeUtil;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,11 +50,11 @@ public class DdlService {
 	/** 预览 DDL（不执行）：物理表不存在→建表；存在→同步（force 走 DROP+CREATE，否则增量 ADD/RENAME） */
 	public List<String> preview(Long tableId, boolean force) {
 		GenTable t = table(tableId);
-		boolean pg = isPg();
+		SqlDialect d = dialect();
 		if (!force && !physicalExists(validName(t.getTableName()))) {
-			return List.of(buildCreate(t, columns(tableId), pg));
+			return List.of(buildCreate(t, columns(tableId), d));
 		}
-		return buildSync(t, columns(tableId), force, pg);
+		return buildSync(t, columns(tableId), force, d);
 	}
 
 	/** 校验表名合法且非系统保护表（确认建模前置校验，避免落入无法建表的无效/越权配置） */
@@ -70,7 +71,7 @@ public class DdlService {
 		if (physicalExists(tn)) {
 			throw new ServiceException("物理表已存在，请改用同步：" + tn);
 		}
-		execute(List.of(buildCreate(t, columns(tableId), isPg())));
+		execute(List.of(buildCreate(t, columns(tableId), dialect())));
 	}
 
 	/** 增量/强制同步：执行 DDL，并在改名完成后清空 column_name_old */
@@ -80,14 +81,14 @@ public class DdlService {
 		String tn = validName(t.getTableName());
 		guardNotProtected(tn);
 		List<GenColumn> cols = columns(tableId);
-		boolean pg = isPg();
+		SqlDialect d = dialect();
 		if (force) {
-			execute(buildSync(t, cols, true, pg));
+			execute(buildSync(t, cols, true, d));
 		} else {
 			if (!physicalExists(tn)) {
 				throw new ServiceException("物理表不存在，请先建表：" + tn);
 			}
-			List<String> stmts = buildSync(t, cols, false, pg);
+			List<String> stmts = buildSync(t, cols, false, d);
 			if (stmts.isEmpty()) {
 				throw new ServiceException("无结构变更");
 			}
@@ -104,10 +105,10 @@ public class DdlService {
 
 	// ==================== DDL 构建 ====================
 
-	private String buildCreate(GenTable t, List<GenColumn> cols, boolean pg) {
+	private String buildCreate(GenTable t, List<GenColumn> cols, SqlDialect d) {
 		String tn = validName(t.getTableName());
 		List<String> lines = new ArrayList<>();
-		lines.add("id " + (pg ? "BIGINT" : "BIGINT") + " PRIMARY KEY");
+		lines.add("id " + d.bigintType() + " PRIMARY KEY");
 		for (GenColumn c : cols) {
 			String cn = c.getColumnName();
 			if (cn == null || AUDIT.contains(cn)) {
@@ -115,18 +116,18 @@ public class DdlService {
 			}
 			validName(cn);
 			String nn = isOne(c.getIsRequired()) ? " NOT NULL" : "";
-			lines.add(cn + " " + sqlType(c, pg) + nn);
+			lines.add(cn + " " + sqlType(c, d) + nn);
 		}
-		lines.add("create_time " + tsType(pg));
-		lines.add("update_time " + tsType(pg));
-		lines.add("is_deleted " + intType(pg) + " NOT NULL DEFAULT 0");
+		lines.add("create_time " + d.timestampType());
+		lines.add("update_time " + d.timestampType());
+		lines.add("is_deleted " + d.intType() + " NOT NULL DEFAULT 0");
 		return "CREATE TABLE " + tn + " (\n\t" + String.join(",\n\t", lines) + "\n)";
 	}
 
-	private List<String> buildSync(GenTable t, List<GenColumn> cols, boolean force, boolean pg) {
+	private List<String> buildSync(GenTable t, List<GenColumn> cols, boolean force, SqlDialect d) {
 		String tn = validName(t.getTableName());
 		if (force) {
-			return List.of("DROP TABLE IF EXISTS " + tn, buildCreate(t, cols, pg));
+			return List.of("DROP TABLE IF EXISTS " + tn, buildCreate(t, cols, d));
 		}
 		Map<String, String> physical = physicalColumns(tn);
 		Set<String> physSet = physical.keySet();
@@ -144,37 +145,20 @@ public class DdlService {
 			} else if (!hasNew) {
 				// 新增列须可空（存量行无值），is_deleted 例外给默认值
 				String def = "is_deleted".equals(cn) ? " NOT NULL DEFAULT 0" : "";
-				stmts.add("ALTER TABLE " + tn + " ADD COLUMN " + cn + " " + sqlType(c, pg) + def);
+				stmts.add("ALTER TABLE " + tn + " ADD COLUMN " + cn + " " + sqlType(c, d) + def);
 			}
 		}
 		return stmts;
 	}
 
-	/** Java 类型 → 方言 SQL 类型（长文本控件落 text） */
-	private String sqlType(GenColumn c, boolean pg) {
-		String jt = c.getJavaType() == null ? "String" : c.getJavaType();
-		return switch (jt) {
-			case "Integer", "Short", "Boolean" -> intType(pg);
-			case "Long" -> "BIGINT";
-			case "BigDecimal" -> pg ? "NUMERIC(18,4)" : "DECIMAL(18,4)";
-			case "Double", "Float" -> pg ? "FLOAT8" : "DOUBLE";
-			case "LocalDateTime", "Date", "Timestamp" -> tsType(pg);
-			case "LocalDate" -> "DATE";
-			default -> "textarea".equals(c.getHtmlType()) ? "TEXT" : "VARCHAR(255)";
-		};
-	}
-
-	private String intType(boolean pg) {
-		return pg ? "INT4" : "INT";
-	}
-
-	private String tsType(boolean pg) {
-		return pg ? "TIMESTAMP" : "DATETIME";
+	/** Java 类型 → 目标库 SQL 类型（长文本控件落大字段），差异全部收敛在 {@link SqlDialect} */
+	private String sqlType(GenColumn c, SqlDialect d) {
+		return d.columnType(c.getJavaType(), "textarea".equals(c.getHtmlType()));
 	}
 
 	// ==================== 执行 / 内省 ====================
 
-	/** DDL 事务化执行（PG DDL 事务安全，失败整体回滚） */
+	/** DDL 逐条执行，整体回滚（PG/金仓/MySQL 事务安全；Oracle 系/达梦 DDL 隐式提交，回滚仅覆盖未提交语句） */
 	private void execute(List<String> stmts) {
 		try (Connection c = dataSource.getConnection()) {
 			boolean auto = c.getAutoCommit();
@@ -204,10 +188,10 @@ public class DdlService {
 		Map<String, String> m = new LinkedHashMap<>();
 		try (Connection c = dataSource.getConnection()) {
 			DatabaseMetaData md = c.getMetaData();
-			try (ResultSet rs = md.getColumns(c.getCatalog(), c.getSchema(), tn.toLowerCase(), null)) {
-				while (rs.next()) {
-					m.put(rs.getString("COLUMN_NAME").toLowerCase(), rs.getString("TYPE_NAME"));
-				}
+			// 先按小写名内省（PG/MySQL 系）；空则回退大写（Oracle 系/达梦未加引号标识符按大写存储）
+			collectColumns(md, c, tn.toLowerCase(), m);
+			if (m.isEmpty()) {
+				collectColumns(md, c, tn.toUpperCase(), m);
 			}
 		} catch (SQLException e) {
 			throw new ServiceException("读取表结构失败：" + e.getMessage());
@@ -215,11 +199,20 @@ public class DdlService {
 		return m;
 	}
 
-	private boolean isPg() {
-		try (Connection c = dataSource.getConnection()) {
-			return c.getMetaData().getDatabaseProductName().toLowerCase().contains("postgre");
-		} catch (SQLException e) {
-			return true;
+	private void collectColumns(DatabaseMetaData md, Connection c, String tn, Map<String, String> out) throws SQLException {
+		try (ResultSet rs = md.getColumns(c.getCatalog(), c.getSchema(), tn, null)) {
+			while (rs.next()) {
+				out.put(rs.getString("COLUMN_NAME").toLowerCase(), rs.getString("TYPE_NAME"));
+			}
+		}
+	}
+
+	/** 目标库方言族：以 Flex {@code DbTypeUtil} 探测的 DbType 归族（PG/Oracle/MySQL 系），失败回退平台主库族 PG。 */
+	private SqlDialect dialect() {
+		try {
+			return SqlDialect.of(DbTypeUtil.getDbType(dataSource));
+		} catch (Exception e) {
+			return SqlDialect.POSTGRES;
 		}
 	}
 
