@@ -3,9 +3,10 @@ package com.mugsun.boot.system.controller;
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mugsun.boot.common.repeat.RepeatSubmit;
+import com.mugsun.boot.system.service.FlowService;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.tool.exception.ServiceException;
-import com.mybatisflex.core.row.Db;
 import com.mybatisflex.core.row.Row;
 import org.dromara.warm.flow.core.FlowEngine;
 import org.dromara.warm.flow.core.dto.FlowParams;
@@ -19,11 +20,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
- * 工作流治理：流程定义部署/发起 + 待办工作台（我的待办 / 办理 / 驳回 / 历史进度）。
- * 动作走 warm-flow 引擎，列表读取用原生 SQL 直连 flow_* 表。
+ * 工作流治理：流程定义部署/发起 + 待办工作台 + 审批动作全集（办理/退回/撤回/转办/委派/加减签/作废/抄送）。
+ * 审批动作委派 {@link FlowService} 走 warm-flow 引擎 API；防重办 {@link RepeatSubmit}。
  */
 @RestController
 @RequestMapping("/system/flow")
@@ -31,18 +31,17 @@ import java.util.stream.Collectors;
 public class FlowController {
 
 	private final ObjectMapper objectMapper;
+	private final FlowService flowService;
 
-	public FlowController(ObjectMapper objectMapper) {
+	public FlowController(ObjectMapper objectMapper, FlowService flowService) {
 		this.objectMapper = objectMapper;
+		this.flowService = flowService;
 	}
 
 	/** 流程定义列表 */
 	@GetMapping("/definitions")
 	public R<List<Row>> definitions() {
-		return R.data(Db.selectListBySql(
-			"select id as \"id\", flow_code as \"flowCode\", flow_name as \"flowName\", version as \"version\", "
-				+ "is_publish as \"isPublish\", create_time as \"createTime\" "
-				+ "from flow_definition where coalesce(del_flag, '0') <> '1' order by id desc"));
+		return R.data(flowService.definitions());
 	}
 
 	/** 部署：导入请假流程定义 JSON 并发布 */
@@ -56,7 +55,7 @@ public class FlowController {
 	}
 
 	/**
-	 * 图形设计部署：由结构化设计（流程码/名 + 审批节点[名称,审批角色]）生成 warm-flow 定义 JSON 并发布。
+	 * 图形设计部署：由结构化设计（流程码/名 + 审批节点[名称,审批角色,通过比例]）生成 warm-flow 定义 JSON 并发布。
 	 * 服务端组装 nodeList（开始→N个审批→结束）与坐标/连线，保证 JSON 合法。
 	 */
 	@PostMapping("/design")
@@ -89,6 +88,97 @@ public class FlowController {
 		return R.data(ins.getId());
 	}
 
+	// ==================== 待办 / 抄送 / 进度 ====================
+
+	/** 我的待办 */
+	@GetMapping("/my-todo")
+	public R<List<Row>> myTodo() {
+		return R.data(flowService.myTodo());
+	}
+
+	/** 我的抄送 */
+	@GetMapping("/my-copy")
+	public R<List<Row>> myCopy() {
+		return R.data(flowService.myCopy());
+	}
+
+	/** 实例历史流转（进度时间线） */
+	@GetMapping("/history")
+	public R<List<Row>> history(@RequestParam Long instanceId) {
+		return R.data(flowService.history(instanceId));
+	}
+
+	/** 可退回的历史审批节点（退回指定节点的选项） */
+	@GetMapping("/back-nodes")
+	public R<List<Row>> backNodes(@RequestParam Long instanceId) {
+		return R.data(flowService.backNodes(instanceId));
+	}
+
+	/** 查询实例（含流程状态） */
+	@GetMapping("/instance")
+	public R<Instance> instance(@RequestParam Long instanceId) {
+		return R.data(FlowEngine.insService().getById(instanceId));
+	}
+
+	// ==================== 审批动作（任务办理，鉴权由 warm-flow 办理人校验，豁免 RBAC 码守卫） ====================
+
+	/** 办理（通过） */
+	@RepeatSubmit
+	@PostMapping("/task/handle/{taskId}")
+	public R<String> handle(@PathVariable Long taskId, @RequestBody(required = false) ActionParam param) {
+		return R.data(flowService.pass(taskId, msg(param)));
+	}
+
+	/** 退回上一步（修正：退回而非终止作废） */
+	@RepeatSubmit
+	@PostMapping("/task/reject/{taskId}")
+	public R<String> reject(@PathVariable Long taskId, @RequestBody(required = false) ActionParam param) {
+		return R.data(flowService.rejectLast(taskId, msg(param)));
+	}
+
+	/** 退回指定历史节点 */
+	@RepeatSubmit
+	@PostMapping("/task/reject-node/{taskId}")
+	public R<String> rejectNode(@PathVariable Long taskId, @RequestBody RejectNodeParam param) {
+		return R.data(flowService.rejectToNode(taskId, param.nodeCode(), param.message()));
+	}
+
+	/** 撤回（发起人撤回实例） */
+	@RepeatSubmit
+	@PostMapping("/task/revoke/{instanceId}")
+	public R<String> revoke(@PathVariable Long instanceId, @RequestBody(required = false) ActionParam param) {
+		return R.data(flowService.revoke(instanceId, msg(param)));
+	}
+
+	/** 作废（终止实例） */
+	@RepeatSubmit
+	@PostMapping("/task/terminate/{taskId}")
+	public R<String> terminate(@PathVariable Long taskId, @RequestBody(required = false) ActionParam param) {
+		return R.data(flowService.terminate(taskId, msg(param)));
+	}
+
+	/** 转办/委派/加签/减签 单入口 */
+	@RepeatSubmit
+	@PostMapping("/task/operation/{taskId}")
+	public R<Void> operation(@PathVariable Long taskId, @RequestBody OperationParam param) {
+		flowService.taskOperation(taskId, param.op(), param.handlers(), param.message());
+		return R.success("操作成功");
+	}
+
+	/** 抄送 */
+	@RepeatSubmit
+	@PostMapping("/task/copy/{taskId}")
+	public R<Void> copy(@PathVariable Long taskId, @RequestBody CopyParam param) {
+		flowService.copyTo(taskId, param.userIds());
+		return R.success("已抄送");
+	}
+
+	private String msg(ActionParam param) {
+		return param == null ? null : param.message();
+	}
+
+	// ==================== 设计 JSON 组装 ====================
+
 	/** 由设计生成 warm-flow 定义 JSON：开始→审批节点链→结束，横向布局 */
 	private String buildFlowJson(FlowDesign req) throws Exception {
 		List<Map<String, Object>> nodeList = new ArrayList<>();
@@ -96,7 +186,6 @@ public class FlowController {
 		int baseX = 100;
 		int step = 160;
 		int y = 200;
-		// 各节点编码
 		List<String> codes = new ArrayList<>();
 		codes.add("start");
 		for (int i = 0; i < n; i++) {
@@ -104,22 +193,20 @@ public class FlowController {
 		}
 		codes.add("end");
 
-		// 开始节点
 		int x = baseX;
-		nodeList.add(node(0, "start", "开始", null, x, y, edge("start", codes.get(1), "提交", x, y, x + step)));
+		nodeList.add(node(0, "start", "开始", null, null, x, y, edge("start", codes.get(1), "提交", x, y, x + step)));
 
-		// 审批节点
 		for (int i = 0; i < n; i++) {
 			x = baseX + step * (i + 1);
 			FlowDesignNode dn = req.nodes().get(i);
 			String code = codes.get(i + 1);
 			String next = codes.get(i + 2);
-			nodeList.add(node(1, code, dn.name(), dn.role(), x, y, edge(code, next, "通过", x, y, x + step)));
+			String ratio = dn.nodeRatio() == null || dn.nodeRatio().isBlank() ? "0" : dn.nodeRatio();
+			nodeList.add(node(1, code, dn.name(), dn.role(), ratio, x, y, edge(code, next, "通过", x, y, x + step)));
 		}
 
-		// 结束节点
 		x = baseX + step * (n + 1);
-		Map<String, Object> end = node(2, "end", "结束", null, x, y, null);
+		Map<String, Object> end = node(2, "end", "结束", null, null, x, y, null);
 		end.put("skipList", new ArrayList<>());
 		nodeList.add(end);
 
@@ -133,7 +220,7 @@ public class FlowController {
 		return objectMapper.writeValueAsString(root);
 	}
 
-	private Map<String, Object> node(int type, String code, String name, String permissionFlag,
+	private Map<String, Object> node(int type, String code, String name, String permissionFlag, String nodeRatio,
 									 int x, int y, Map<String, Object> edge) {
 		Map<String, Object> node = new LinkedHashMap<>();
 		node.put("nodeType", type);
@@ -141,7 +228,7 @@ public class FlowController {
 		node.put("nodeName", name);
 		if (permissionFlag != null) {
 			node.put("permissionFlag", permissionFlag);
-			node.put("nodeRatio", "0");
+			node.put("nodeRatio", nodeRatio == null ? "0" : nodeRatio);
 		}
 		node.put("coordinate", x + "," + y + "|" + x + "," + y);
 		if (edge != null) {
@@ -166,69 +253,24 @@ public class FlowController {
 	public record FlowDesign(String flowCode, String flowName, List<FlowDesignNode> nodes) {
 	}
 
-	/** 审批节点：名称 + 审批角色码 */
-	public record FlowDesignNode(String name, String role) {
+	/** 审批节点：名称 + 审批角色码 + 通过比例（0 或签 / 100 会签 / 1~99 票签） */
+	public record FlowDesignNode(String name, String role, String nodeRatio) {
 	}
 
-
-	/** 我的待办：按当前用户的角色码/用户标识匹配任务办理人 */
-	@GetMapping("/my-todo")
-	public R<List<Row>> myTodo() {
-		List<String> flags = userFlags();
-		String in = flags.stream().map(f -> "?").collect(Collectors.joining(","));
-		Object[] args = flags.toArray();
-		return R.data(Db.selectListBySql(
-			"select t.id as \"taskId\", t.instance_id as \"instanceId\", t.node_name as \"nodeName\", "
-				+ "i.business_id as \"businessId\", i.flow_status as \"flowStatus\", d.flow_name as \"flowName\", "
-				+ "t.create_time as \"createTime\" "
-				+ "from flow_task t "
-				+ "join flow_user u on u.associated = t.id and u.type = '1' and coalesce(u.del_flag, '0') <> '1' "
-				+ "join flow_instance i on i.id = t.instance_id "
-				+ "join flow_definition d on d.id = t.definition_id "
-				+ "where coalesce(t.del_flag, '0') <> '1' and u.processed_by in (" + in + ") order by t.id desc", args));
+	/** 通用动作参数（审批意见） */
+	public record ActionParam(String message) {
 	}
 
-	/** 办理任务（审批通过） */
-	@PostMapping("/handle/{taskId}")
-	public R<String> handle(@PathVariable Long taskId) {
-		Instance ins = FlowEngine.taskService().skip(taskId,
-			FlowParams.build().skipType("PASS").handler(StpUtil.getLoginIdAsString())
-				.message("同意").ignore(true));
-		return R.data(ins.getFlowStatus());
+	/** 退回指定节点参数 */
+	public record RejectNodeParam(String nodeCode, String message) {
 	}
 
-	/** 驳回任务（终止实例） */
-	@PostMapping("/reject/{taskId}")
-	public R<String> reject(@PathVariable Long taskId) {
-		Instance ins = FlowEngine.taskService().termination(taskId,
-			FlowParams.build().handler(StpUtil.getLoginIdAsString()).message("驳回").ignore(true));
-		return R.data(ins.getFlowStatus());
+	/** 转办/委派/加减签参数 */
+	public record OperationParam(String op, List<String> handlers, String message) {
 	}
 
-	/** 实例历史流转（进度时间线） */
-	@GetMapping("/history")
-	public R<List<Row>> history(@RequestParam Long instanceId) {
-		return R.data(Db.selectListBySql(
-			"select node_name as \"nodeName\", approver as \"approver\", skip_type as \"skipType\", "
-				+ "flow_status as \"flowStatus\", message as \"message\", create_time as \"createTime\" "
-				+ "from flow_his_task where instance_id = ? and coalesce(del_flag, '0') <> '1' order by id asc", instanceId));
-	}
-
-	/** 查询实例（含流程状态） */
-	@GetMapping("/instance")
-	public R<Instance> instance(@RequestParam Long instanceId) {
-		return R.data(FlowEngine.insService().getById(instanceId));
-	}
-
-	/** 当前用户的办理人标识集合：角色码 + 用户 id */
-	private List<String> userFlags() {
-		List<String> flags = new ArrayList<>();
-		Db.selectListBySql(
-			"select r.role_code as \"roleCode\" from sys_user_role ur "
-				+ "join sys_role r on r.id = ur.role_id "
-				+ "where ur.user_id = ? and ur.is_deleted = 0", StpUtil.getLoginIdAsLong())
-			.forEach(row -> flags.add(String.valueOf(row.getString("roleCode"))));
-		flags.add(StpUtil.getLoginIdAsString());
-		return flags;
+	/** 抄送参数 */
+	public record CopyParam(List<String> userIds) {
 	}
 }
+

@@ -35,7 +35,9 @@ public final class PermissionModules {
 		"/system/form/submit-data", "/system/form/data",
 		"/system/help/view",
 		"/system/repeat",
-		"/system/crypto"
+		"/system/crypto",
+		// 工作流任务办理：鉴权由 warm-flow 办理人（permissionFlag）校验，被指派人方可办理，不套 RBAC 码
+		"/system/flow/task"
 	);
 
 	private PermissionModules() {
