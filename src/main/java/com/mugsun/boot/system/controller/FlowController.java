@@ -4,6 +4,7 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mugsun.boot.common.repeat.RepeatSubmit;
+import com.mugsun.boot.system.service.FlowGraphService;
 import com.mugsun.boot.system.service.FlowService;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.tool.exception.ServiceException;
@@ -32,10 +33,12 @@ public class FlowController {
 
 	private final ObjectMapper objectMapper;
 	private final FlowService flowService;
+	private final FlowGraphService flowGraphService;
 
-	public FlowController(ObjectMapper objectMapper, FlowService flowService) {
+	public FlowController(ObjectMapper objectMapper, FlowService flowService, FlowGraphService flowGraphService) {
 		this.objectMapper = objectMapper;
 		this.flowService = flowService;
+		this.flowGraphService = flowGraphService;
 	}
 
 	/** 流程定义列表 */
@@ -70,6 +73,65 @@ public class FlowController {
 		Definition def = FlowEngine.defService().importJson(json);
 		FlowEngine.defService().publish(def.getId());
 		return R.data(def.getId());
+	}
+
+	/**
+	 * 图形流程部署：由递归节点树（审批/条件分支/并行分支/会签）翻译成 warm-flow 定义 JSON 并发布。
+	 * 网关为引擎原生（排他 nodeType3 / 并行 nodeType4），条件边编译为 skipCondition。
+	 */
+	@PostMapping("/design-graph")
+	public R<Long> designGraph(@RequestBody FlowGraphService.GraphDesign req) {
+		String json = flowGraphService.buildJson(req);
+		Definition def = FlowEngine.defService().importJson(json);
+		FlowEngine.defService().publish(def.getId());
+		return R.data(def.getId());
+	}
+
+	// ==================== 流程定义管理（版本/发布/停用/分类，RBAC 管控） ====================
+
+	/** 发布定义 */
+	@PostMapping("/definition/publish/{id}")
+	public R<Void> publishDefinition(@PathVariable Long id) {
+		FlowEngine.defService().publish(id);
+		return R.success("已发布");
+	}
+
+	/** 取消发布（转未发布） */
+	@PostMapping("/definition/unpublish/{id}")
+	public R<Void> unpublishDefinition(@PathVariable Long id) {
+		FlowEngine.defService().unPublish(id);
+		return R.success("已取消发布");
+	}
+
+	/** 启用（激活） */
+	@PostMapping("/definition/active/{id}")
+	public R<Void> activeDefinition(@PathVariable Long id) {
+		FlowEngine.defService().active(id);
+		return R.success("已启用");
+	}
+
+	/** 停用（挂起，不再受理新发起） */
+	@PostMapping("/definition/suspend/{id}")
+	public R<Void> suspendDefinition(@PathVariable Long id) {
+		FlowEngine.defService().unActive(id);
+		return R.success("已停用");
+	}
+
+	/** 复制为新版本（在已发布版本基础上升版本编辑） */
+	@PostMapping("/definition/copy/{id}")
+	public R<Void> copyDefinition(@PathVariable Long id) {
+		FlowEngine.defService().copyDef(id);
+		return R.success("已复制新版本");
+	}
+
+	/** 删除定义 */
+	@PostMapping("/definition/remove")
+	public R<Void> removeDefinition(@RequestBody List<Long> ids) {
+		if (ids == null || ids.isEmpty()) {
+			throw new ServiceException("请选择要删除的定义");
+		}
+		FlowEngine.defService().removeDef(ids);
+		return R.success("已删除");
 	}
 
 	/** 发起流程实例（沿用请假流程码 leave，兼容旧入口） */

@@ -46,7 +46,8 @@ public class FlowService {
 	public List<Row> definitions() {
 		return Db.selectListBySql(
 			"select id as \"id\", flow_code as \"flowCode\", flow_name as \"flowName\", version as \"version\", "
-				+ "is_publish as \"isPublish\", create_time as \"createTime\" "
+				+ "category as \"category\", is_publish as \"isPublish\", activity_status as \"activityStatus\", "
+				+ "create_time as \"createTime\" "
 				+ "from flow_definition where coalesce(del_flag, '0') <> '1' order by id desc");
 	}
 
