@@ -48,16 +48,26 @@ public class OnlineService {
 		List<GenColumn> cols = columns(tableId);
 		Set<String> names = columnNames(cols);
 		String tableName = t.getTableName();
-		QueryWrapper qw = QueryWrapper.create().from(tableName).orderBy("id", false);
+		QueryWrapper qw = QueryWrapper.create().from(tableName);
+		// 用户排序：列名走白名单（表实际列）+ 方向校验，拦 orderBy 注入；缺省 id 降序
+		String sortField = query == null ? null : query.get("sortField");
+		if (sortField != null && !sortField.isBlank()) {
+			String col = com.mugsun.boot.security.SqlSafeUtil.safeColumn(sortField, names);
+			qw.orderBy(col, "ASC".equals(com.mugsun.boot.security.SqlSafeUtil.safeDirection(query.get("sortOrder"))));
+		} else {
+			qw.orderBy("id", false);
+		}
 		applyScope(qw, names);
 		for (GenColumn c : cols) {
 			if (isOne(c.getIsQuery()) && query != null) {
 				String v = query.get(c.getColumnName());
 				if (v != null && !v.isBlank()) {
+					// 列名来自 gen_column 元数据，仍过标识符校验（防元数据被污染的二阶注入）
+					String col = com.mugsun.boot.security.SqlSafeUtil.safeColumn(c.getColumnName(), names);
 					if ("LIKE".equalsIgnoreCase(c.getQueryType())) {
-						qw.and(c.getColumnName() + " LIKE ?", "%" + v + "%");
+						qw.and(col + " LIKE ?", "%" + v + "%");
 					} else {
-						qw.and(c.getColumnName() + " = ?", coerce(v, c.getJavaType()));
+						qw.and(col + " = ?", coerce(v, c.getJavaType()));
 					}
 				}
 			}

@@ -103,7 +103,8 @@ public class TenantDataSourceRegistry {
 		}
 		String key = KEY_PREFIX + cfg.getTenantCode();
 		HikariDataSource ds = new HikariDataSource();
-		ds.setJdbcUrl(cfg.getDsUrl());
+		// JDBC-RCE 防护：注入池前校验连接串，拦多方言高危参数/内嵌库 scheme（保护独立数据源攻击面）
+		ds.setJdbcUrl(com.mugsun.boot.security.JdbcUrlValidator.validate(cfg.getDsUrl()));
 		ds.setUsername(cfg.getDsUsername());
 		ds.setPassword(cfg.getDsPassword());
 		ds.setMaximumPoolSize(5);

@@ -17,9 +17,12 @@ import org.springframework.web.bind.annotation.*;
 public class SysOperLogController {
 
 	private final SysOperLogMapper operLogMapper;
+	private final com.mugsun.boot.log.OperationLogService operationLogService;
 
-	public SysOperLogController(SysOperLogMapper operLogMapper) {
+	public SysOperLogController(SysOperLogMapper operLogMapper,
+								com.mugsun.boot.log.OperationLogService operationLogService) {
 		this.operLogMapper = operLogMapper;
+		this.operationLogService = operationLogService;
 	}
 
 	@GetMapping("/page")
@@ -36,5 +39,13 @@ public class SysOperLogController {
 	@GetMapping("/detail")
 	public R<SysOperLog> detail(@RequestParam Long id) {
 		return R.data(operLogMapper.selectOneById(id));
+	}
+
+	/** 审计完整性验签：重算哈希链 + 验证 SM2 签名，检出篡改并定位首个被篡改记录。
+	 *  仅管理员可触发（防任意用户反复触发全量验签 DoS）；limit&gt;0 只校最近 N 条（有界内存）。 */
+	@cn.dev33.satoken.annotation.SaCheckPermission("sys:oper-log:verify")
+	@GetMapping("/verify")
+	public R<java.util.Map<String, Object>> verify(@RequestParam(required = false) Integer limit) {
+		return R.data(operationLogService.verify(limit));
 	}
 }

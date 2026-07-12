@@ -76,4 +76,23 @@ public final class Sm2Util {
 		// 不回显内部实现细节，仅给中性提示（防密文格式探测）
 		throw new com.mugsun.core.tool.exception.ServiceException("SM2 密文无效");
 	}
+
+	/** SM2 私钥签名（对 hex 数据）→ 签名 hex，供审计记录防伪造 */
+	public static String signHex(String dataHex) {
+		SM2 sm2 = SmUtil.sm2(privateKeyHex, publicKeyHex);
+		return sm2.signHex(dataHex);
+	}
+
+	/** SM2 公钥验签（hex 数据 + hex 签名）→ 是否有效 */
+	public static boolean verifyHex(String dataHex, String signHex) {
+		if (signHex == null || signHex.isBlank()) {
+			return false;
+		}
+		try {
+			SM2 sm2 = SmUtil.sm2(privateKeyHex, publicKeyHex);
+			return sm2.verifyHex(dataHex, signHex);
+		} catch (Exception e) {
+			return false;
+		}
+	}
 }

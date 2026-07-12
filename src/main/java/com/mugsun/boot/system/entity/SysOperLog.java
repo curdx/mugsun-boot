@@ -21,6 +21,34 @@ public class SysOperLog extends BaseEntity {
 	private String errorMsg;
 	/** 操作所属租户（@Async 落库经 TenantTaskDecorator 透传，异步不丢隔离） */
 	private String tenantId;
+	/** 防篡改：前一条哈希 / 本条 SM3 哈希 / 本条 SM2 签名 */
+	private String prevHash;
+	private String recordHash;
+	private String sign;
+
+	public String getPrevHash() {
+		return prevHash;
+	}
+
+	public void setPrevHash(String prevHash) {
+		this.prevHash = prevHash;
+	}
+
+	public String getRecordHash() {
+		return recordHash;
+	}
+
+	public void setRecordHash(String recordHash) {
+		this.recordHash = recordHash;
+	}
+
+	public String getSign() {
+		return sign;
+	}
+
+	public void setSign(String sign) {
+		this.sign = sign;
+	}
 
 	public String getTitle() {
 		return title;
