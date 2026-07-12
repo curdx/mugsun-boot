@@ -14,16 +14,19 @@ public class OpenApiConfig implements WebMvcConfigurer {
 	private final OAuthService oauthService;
 	private final OAuthLogService logService;
 	private final ObjectMapper objectMapper;
+	private final OpenApiSignService signService;
 
-	public OpenApiConfig(OAuthService oauthService, OAuthLogService logService, ObjectMapper objectMapper) {
+	public OpenApiConfig(OAuthService oauthService, OAuthLogService logService, ObjectMapper objectMapper,
+						 OpenApiSignService signService) {
 		this.oauthService = oauthService;
 		this.logService = logService;
 		this.objectMapper = objectMapper;
+		this.signService = signService;
 	}
 
 	@Override
 	public void addInterceptors(InterceptorRegistry registry) {
-		registry.addInterceptor(new OpenApiInterceptor(oauthService, logService, objectMapper))
+		registry.addInterceptor(new OpenApiInterceptor(oauthService, logService, objectMapper, signService))
 			.addPathPatterns("/open/**");
 	}
 }

@@ -17,11 +17,14 @@ public class OpenApiInterceptor implements HandlerInterceptor {
 	private final OAuthService oauthService;
 	private final OAuthLogService logService;
 	private final ObjectMapper objectMapper;
+	private final OpenApiSignService signService;
 
-	public OpenApiInterceptor(OAuthService oauthService, OAuthLogService logService, ObjectMapper objectMapper) {
+	public OpenApiInterceptor(OAuthService oauthService, OAuthLogService logService, ObjectMapper objectMapper,
+							  OpenApiSignService signService) {
 		this.oauthService = oauthService;
 		this.logService = logService;
 		this.objectMapper = objectMapper;
+		this.signService = signService;
 	}
 
 	@Override
@@ -37,6 +40,12 @@ public class OpenApiInterceptor implements HandlerInterceptor {
 		if (info == null) {
 			logService.record("-", path, required, 0, ip, "令牌无效或已过期");
 			return reject(response, HttpServletResponse.SC_UNAUTHORIZED, "令牌无效或已过期");
+		}
+		// 签名 + 防重放（HMAC + nonce + timestamp）：拦篡改/重放
+		String signError = signService.verify(request, info.clientId());
+		if (signError != null) {
+			logService.record(info.clientId(), path, required, 0, ip, signError);
+			return reject(response, HttpServletResponse.SC_UNAUTHORIZED, signError);
 		}
 		if (required != null && !info.scopes().contains(required)) {
 			logService.record(info.clientId(), path, required, 0, ip, "缺少授权范围：" + required);
