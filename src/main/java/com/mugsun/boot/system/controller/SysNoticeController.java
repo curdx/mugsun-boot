@@ -4,6 +4,7 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.IdUtil;
+import com.mugsun.boot.common.constant.WsConstants;
 import com.mugsun.boot.datascope.DataScopeContext;
 import com.mugsun.boot.system.entity.SysDept;
 import com.mugsun.boot.system.entity.SysNotice;
@@ -15,15 +16,23 @@ import com.mugsun.boot.system.mapper.SysNoticeMapper;
 import com.mugsun.boot.system.mapper.SysNoticeReadMapper;
 import com.mugsun.boot.system.mapper.SysNoticeScopeMapper;
 import com.mugsun.boot.system.mapper.SysUserMapper;
+import com.mugsun.boot.tenant.TenantContext;
+import com.mugsun.boot.websocket.WsFrame;
+import com.mugsun.boot.websocket.WsMessageSender;
 import com.mugsun.core.tool.api.R;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.row.Db;
 import com.mybatisflex.core.row.Row;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -38,19 +47,24 @@ public class SysNoticeController {
 
 	private static final String PERM_MANAGE = "sys:notice:manage";
 
+	private static final Logger log = LoggerFactory.getLogger(SysNoticeController.class);
+
 	private final SysNoticeMapper noticeMapper;
 	private final SysNoticeScopeMapper scopeMapper;
 	private final SysNoticeReadMapper readMapper;
 	private final SysUserMapper userMapper;
 	private final SysDeptMapper deptMapper;
+	private final WsMessageSender wsMessageSender;
 
 	public SysNoticeController(SysNoticeMapper noticeMapper, SysNoticeScopeMapper scopeMapper,
-							   SysNoticeReadMapper readMapper, SysUserMapper userMapper, SysDeptMapper deptMapper) {
+							   SysNoticeReadMapper readMapper, SysUserMapper userMapper, SysDeptMapper deptMapper,
+							   WsMessageSender wsMessageSender) {
 		this.noticeMapper = noticeMapper;
 		this.scopeMapper = scopeMapper;
 		this.readMapper = readMapper;
 		this.userMapper = userMapper;
 		this.deptMapper = deptMapper;
+		this.wsMessageSender = wsMessageSender;
 	}
 
 	// ============ 管理端 ============
@@ -89,7 +103,7 @@ public class SysNoticeController {
 		return R.data(notice);
 	}
 
-	/** 新增/更新：主体 + 可见范围（先删旧再插新） */
+	/** 新增/更新：主体 + 可见范围（先删旧再插新）；全员可见公告提交后实时推送在线用户 */
 	@PostMapping("/submit")
 	@SaCheckPermission(PERM_MANAGE)
 	@Transactional(rollbackFor = Exception.class)
@@ -112,6 +126,10 @@ public class SysNoticeController {
 				scope.setScopeId(item.scopeId());
 				scopeMapper.insertSelective(scope);
 			}
+		}
+		// 实时推送仅覆盖全员可见公告：指定范围公告不推（避免标题泄露给范围外用户），由前端轮询未读数兜底
+		if (Integer.valueOf(1).equals(notice.getAllVisible())) {
+			pushNoticeNew(notice);
 		}
 		return R.success("操作成功");
 	}
@@ -198,6 +216,37 @@ public class SysNoticeController {
 	}
 
 	// ============ 内部工具 ============
+
+	/** 公告实时推送：本方法在事务内被调用，注册提交后推送；推送失败不影响主流程 */
+	private void pushNoticeNew(SysNotice notice) {
+		// 更新场景入参可能不带租户编号，回退当前会话租户；仍无（超管查看全部租户）则跳过
+		String tenantId = notice.getTenantId() != null ? notice.getTenantId() : TenantContext.current();
+		if (tenantId == null) {
+			return;
+		}
+		Map<String, Object> content = new LinkedHashMap<>();
+		content.put("noticeId", notice.getId());
+		content.put("title", notice.getTitle());
+		WsFrame frame = WsFrame.of(WsConstants.NOTICE_NEW, content);
+		Runnable push = () -> {
+			try {
+				wsMessageSender.sendToTenant(tenantId, frame);
+			} catch (Exception e) {
+				log.warn("公告实时推送失败 noticeId={}", notice.getId(), e);
+			}
+		};
+		// 提交后再推，避免事务回滚后用户收到不存在的公告
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					push.run();
+				}
+			});
+		} else {
+			push.run();
+		}
+	}
 
 	/** 当前用户部门（优先取已激活的数据权限上下文，兜底查库） */
 	private Long deptIdOf(Long userId) {

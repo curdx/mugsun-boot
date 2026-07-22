@@ -1,14 +1,18 @@
 package com.mugsun.boot.auth;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.session.SaSession;
 import cn.dev33.satoken.session.SaTerminalInfo;
 import cn.dev33.satoken.stp.StpUtil;
 import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.mapper.SysUserMapper;
+import com.mugsun.boot.websocket.WsMessageSender;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.tool.exception.ServiceException;
 import com.mugsun.boot.tenant.TenantContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,14 +39,28 @@ public class OnlineController {
 
 	private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-	private final SysUserMapper userMapper;
+	private static final Logger log = LoggerFactory.getLogger(OnlineController.class);
 
-	public OnlineController(SysUserMapper userMapper) {
+	/** 强制下线帧携带的提示语 */
+	private static final String FORCE_OFFLINE_REASON = "您的账号已被管理员强制下线";
+
+	/** 在线会话查询权限码：列表含 tokenValue 明文（供踢单端），必须收紧到持码管理员，独立于在线表单域前缀 */
+	private static final String PERM_LIST = "sys:session:list";
+
+	/** 强制下线权限码：显式声明替代兜底派生码，与查询同域管理 */
+	private static final String PERM_KICKOUT = "sys:session:kickout";
+
+	private final SysUserMapper userMapper;
+	private final WsMessageSender wsMessageSender;
+
+	public OnlineController(SysUserMapper userMapper, WsMessageSender wsMessageSender) {
 		this.userMapper = userMapper;
+		this.wsMessageSender = wsMessageSender;
 	}
 
-	/** 在线会话列表：遍历所有账号会话，展开每个终端为一行 */
+	/** 在线会话列表：遍历所有账号会话，展开每个终端为一行（含 tokenValue 明文，仅持码管理员可见） */
 	@GetMapping("/list")
+	@SaCheckPermission(PERM_LIST)
 	public R<List<Map<String, Object>>> list() {
 		List<Map<String, Object>> rows = new ArrayList<>();
 		List<String> sessionIds = StpUtil.searchSessionId("", 0, -1, false);
@@ -69,19 +87,31 @@ public class OnlineController {
 		return R.data(rows);
 	}
 
-	/** 强制下线：传 tokenValue 踢单端；传 loginId 踢该账号全部端 */
+	/** 强制下线：传 tokenValue 踢单端；传 loginId 踢该账号全部端；踢人后同步断开实时推送连接 */
 	@PostMapping("/kickout")
+	@SaCheckPermission(PERM_KICKOUT)
 	public R<Void> kickout(@RequestBody Map<String, String> body) {
 		String token = body.get("tokenValue");
 		String loginId = body.get("loginId");
 		if (token != null && !token.isBlank()) {
 			StpUtil.kickoutByTokenValue(token);
+			wsMessageSender.closeUser(null, token, FORCE_OFFLINE_REASON);
 		} else if (loginId != null && !loginId.isBlank()) {
 			StpUtil.kickout(loginId);
+			closePushSessions(loginId);
 		} else {
 			throw new ServiceException("缺少 tokenValue 或 loginId");
 		}
 		return R.success("已强制下线");
+	}
+
+	/** 断开该账号全部端的推送连接；loginId 非数字（非常规账号）或断开失败时跳过，不影响踢人主流程 */
+	private void closePushSessions(String loginId) {
+		try {
+			wsMessageSender.closeUser(Long.valueOf(loginId), null, FORCE_OFFLINE_REASON);
+		} catch (Exception e) {
+			log.warn("断开推送连接失败 loginId={}", loginId, e);
+		}
 	}
 
 	private SysUser resolveUser(Object loginId) {

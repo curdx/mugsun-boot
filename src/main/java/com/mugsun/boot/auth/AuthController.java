@@ -161,6 +161,8 @@ public class AuthController {
 		if (maxOnline == null || maxOnline <= 0) {
 			return;
 		}
+		// 此处不做 WebSocket 强制下线联动：抢占登录踢的是最旧端，若按账号广播会误伤刚登录的新端；
+		// 被踢旧端的推送连接随令牌失效由前端重连逻辑自然回收
 		java.util.List<String> tokens = StpUtil.getTokenValueListByLoginId(userId);
 		int excess = tokens.size() - maxOnline;
 		for (int i = 0; i < excess; i++) {

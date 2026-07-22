@@ -4,13 +4,10 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import com.mugsun.boot.message.entity.SysMessage;
-import com.mugsun.boot.message.entity.SysMessageTemplate;
 import com.mugsun.boot.message.entity.SysMessageUser;
 import com.mugsun.boot.message.mapper.SysMessageMapper;
-import com.mugsun.boot.message.mapper.SysMessageTemplateMapper;
 import com.mugsun.boot.message.mapper.SysMessageUserMapper;
 import com.mugsun.core.tool.api.R;
-import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.springframework.web.bind.annotation.*;
@@ -31,49 +28,20 @@ public class MessageController {
 
 	private final SysMessageMapper messageMapper;
 	private final SysMessageUserMapper messageUserMapper;
-	private final SysMessageTemplateMapper templateMapper;
+	private final MessageService messageService;
 
 	public MessageController(SysMessageMapper messageMapper, SysMessageUserMapper messageUserMapper,
-							 SysMessageTemplateMapper templateMapper) {
+							 MessageService messageService) {
 		this.messageMapper = messageMapper;
 		this.messageUserMapper = messageUserMapper;
-		this.templateMapper = templateMapper;
+		this.messageService = messageService;
 	}
 
-	/** 发送站内信：可选模板 + 占位替换 → 建消息主体 + 逐收件人未读记录 */
+	/** 发送站内信：可选模板 + 占位替换 → 建消息主体 + 逐收件人未读记录（落库后实时推送在线收件人） */
 	@PostMapping("/send")
 	@SaCheckPermission("sys:message:manage")
 	public R<Void> send(@RequestBody MessageSendDTO dto) {
-		if (dto.getRecipientIds() == null || dto.getRecipientIds().isEmpty()) {
-			throw new ServiceException("请选择收件人");
-		}
-		String title = dto.getTitle();
-		String content = dto.getContent();
-		if (dto.getTemplateId() != null) {
-			SysMessageTemplate tpl = templateMapper.selectOneById(dto.getTemplateId());
-			if (tpl != null) {
-				title = tpl.getTitle();
-				content = tpl.getContent();
-			}
-		}
-		title = render(title, dto.getParams());
-		content = render(content, dto.getParams());
-		if (title == null || title.isBlank()) {
-			throw new ServiceException("消息标题不能为空");
-		}
-		SysMessage message = new SysMessage();
-		message.setTitle(title);
-		message.setContent(content);
-		message.setType(dto.getType() == null || dto.getType().isBlank() ? "system" : dto.getType());
-		message.setSenderId(StpUtil.getLoginIdAsLong());
-		messageMapper.insertSelective(message);
-		dto.getRecipientIds().stream().distinct().forEach(uid -> {
-			SysMessageUser mu = new SysMessageUser();
-			mu.setMessageId(message.getId());
-			mu.setUserId(uid);
-			mu.setIsRead(0);
-			messageUserMapper.insertSelective(mu);
-		});
+		messageService.send(dto);
 		return R.success("发送成功");
 	}
 
@@ -155,19 +123,5 @@ public class MessageController {
 				r.setSendTime(m.getCreateTime());
 			}
 		});
-	}
-
-	private String render(String template, Map<String, String> params) {
-		if (template == null) {
-			return null;
-		}
-		String result = template;
-		if (params != null) {
-			for (Map.Entry<String, String> e : params.entrySet()) {
-				result = result.replace("${" + e.getKey() + "}", e.getValue() == null ? "" : e.getValue());
-			}
-		}
-		// 清除未提供的占位，避免 ${xxx} 字面泄漏
-		return result.replaceAll("\\$\\{[^}]*}", "");
 	}
 }

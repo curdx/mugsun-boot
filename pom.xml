@@ -80,6 +80,11 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-redis</artifactId>
 		</dependency>
+		<!-- WebSocket 实时推送（站内信/公告/强制下线） -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-websocket</artifactId>
+		</dependency>
 		<!-- Sa-Token 会话落 Redis（Jackson JSON）：解决重启掉线，版本由 mugsun-bom 纳管 -->
 		<dependency>
 			<groupId>cn.dev33</groupId>

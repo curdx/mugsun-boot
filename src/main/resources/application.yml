@@ -112,6 +112,8 @@ mugsun:
     sm2-public-key: ${MUGSUN_SM2_PUBLIC_KEY:}       # SM2 传输公钥 hex（04+128）
   serial-number:
     provider: redis          # redis 自增（默认）/ db 行锁
+  websocket:
+    sender-type: redis       # 推送扇出：local=单机直发（仅本地调试）/ redis=集群经 Redis Pub/Sub 扇出
   social:
     enabled: true
     # 本地 mock 授权页（后端端点，dev 联调）
