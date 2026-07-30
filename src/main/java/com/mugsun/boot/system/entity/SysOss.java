@@ -1,10 +1,13 @@
 package com.mugsun.boot.system.entity;
 
+import com.mugsun.boot.common.crypto.Sm4TypeHandler;
 import com.mugsun.core.mybatis.base.BaseEntity;
+import com.mybatisflex.annotation.Column;
 import com.mybatisflex.annotation.Table;
 
 /**
- * 对象存储配置
+ * 对象存储配置：category 固定键（local/minio/aliyun）映射 Java 配置类，禁类名入库；
+ * AK/SK 凭据 SM4 密文落库、查询自动解密。
  */
 @Table("sys_oss")
 public class SysOss extends BaseEntity {
@@ -13,7 +16,11 @@ public class SysOss extends BaseEntity {
 	private String ossCode;
 	private String category;
 	private String endpoint;
+	/** 访问密钥：SM4 密文落库、查询自动解密 */
+	@Column(typeHandler = Sm4TypeHandler.class)
 	private String accessKey;
+	/** 密钥：SM4 密文落库、查询自动解密；管理端 page/detail 不回传 */
+	@Column(typeHandler = Sm4TypeHandler.class)
 	private String secretKey;
 	private String bucketName;
 	private String domain;
