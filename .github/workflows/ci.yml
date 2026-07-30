@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout mugsun-core
+        uses: actions/checkout@v4
+        with:
+          repository: curdx/mugsun-core
+          path: mugsun-core
+
+      - name: Checkout mugsun-boot
+        uses: actions/checkout@v4
+        with:
+          path: mugsun-boot
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Install mugsun-core
+        working-directory: mugsun-core
+        run: mvn -B install -DskipTests
+
+      - name: Verify mugsun-boot
+        working-directory: mugsun-boot
+        run: mvn -B verify
