@@ -87,6 +87,14 @@ class MonitorApiTest extends AbstractIntegrationTest {
 		ResponseEntity<String> docs = get("/v3/api-docs", null);
 		assertThat(docs.getStatusCode().value()).isEqualTo(200);
 		assertThat(docs.getBody()).contains("openapi");
+
+		// 不存在 URL → 404 映射（HTTP/R code 均 404）且不落错误日志（笔误/扫描器流量非系统故障）
+		ResponseEntity<String> notFound = get("/system/no-such-endpoint-typo", adminToken);
+		assertThat(notFound.getStatusCode().value()).isEqualTo(404);
+		assertThat(readBody(notFound).path("code").asInt()).isEqualTo(404);
+		String nfTrace = notFound.getHeaders().getFirst(MonitorConstants.TRACE_HEADER);
+		sleep(1500);
+		assertThat(errorRows(nfTrace)).as("404 资源不存在不应落错误日志").isEmpty();
 	}
 
 	// ============ ② 错误日志：受检异常落库、trace_id 与响应头一致、栈顶四元组 ============
