@@ -27,6 +27,10 @@ spring:
       mail.smtp.connectiontimeout: 3000
       mail.smtp.timeout: 3000
 management:
+  # 邮件为尽力而为通道：默认关闭 mail 健康指标，避免占位/未配真实 SMTP 时 /actuator/health 聚合恒 503（配真实 SMTP 后可开启）
+  health:
+    mail:
+      enabled: false
   endpoints:
     web:
       exposure:
