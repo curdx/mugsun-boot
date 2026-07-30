@@ -6,6 +6,7 @@ import com.mugsun.boot.system.mapper.SysSmsCodeMapper;
 import com.mugsun.boot.system.mapper.SysSmsMapper;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mugsun.boot.tenant.TenantContext;
+import com.mugsun.core.tool.exception.ServiceException;
 import org.dromara.sms4j.aliyun.config.AlibabaConfig;
 import org.dromara.sms4j.api.entity.SmsResponse;
 import org.dromara.sms4j.core.datainterface.SmsReadConfig;
@@ -107,6 +108,29 @@ public class SmsService {
 				return list;
 			}
 		};
+	}
+
+	/**
+	 * 通用文本短信发送（统一通知调度用）：无启用配置或下发未成功即抛异常——
+	 * 与验证码的降级日志语义相反，调度侧须拿到真实回执（FAILURE 留痕 + 重试）。
+	 */
+	public void sendText(String phone, String text) {
+		SysSms sms = TenantContext.ignore(() ->
+			smsMapper.selectOneByQuery(QueryWrapper.create().eq("status", 1).orderBy("id", false)));
+		if (sms == null) {
+			throw new ServiceException("无启用短信配置");
+		}
+		try {
+			SmsFactory.createSmsBlend(readConfigOf(sms));
+			SmsResponse resp = SmsFactory.getSmsBlend(sms.getSmsCode()).sendMessage(phone, text);
+			if (resp == null || !resp.isSuccess()) {
+				throw new ServiceException("短信下发未成功(凭证占位或网关拒绝): " + sms.getSmsCode());
+			}
+		} catch (ServiceException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new ServiceException("短信通道异常: " + e.getMessage());
+		}
 	}
 
 	/** 校验验证码：命中未过期记录则通过并作废 */

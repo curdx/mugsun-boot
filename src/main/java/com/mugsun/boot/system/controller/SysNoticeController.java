@@ -5,6 +5,7 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.IdUtil;
 import com.mugsun.boot.common.constant.WsConstants;
+import com.mugsun.boot.common.tx.AfterCommit;
 import com.mugsun.boot.datascope.DataScopeContext;
 import com.mugsun.boot.system.entity.SysDept;
 import com.mugsun.boot.system.entity.SysNotice;
@@ -27,8 +28,6 @@ import com.mybatisflex.core.row.Row;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -236,16 +235,7 @@ public class SysNoticeController {
 			}
 		};
 		// 提交后再推，避免事务回滚后用户收到不存在的公告
-		if (TransactionSynchronizationManager.isSynchronizationActive()) {
-			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-				@Override
-				public void afterCommit() {
-					push.run();
-				}
-			});
-		} else {
-			push.run();
-		}
+		AfterCommit.execute(push);
 	}
 
 	/** 当前用户部门（优先取已激活的数据权限上下文，兜底查库） */

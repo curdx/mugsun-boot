@@ -2,6 +2,7 @@ package com.mugsun.boot.mail;
 
 import com.mugsun.boot.mail.entity.SysMailTemplate;
 import com.mugsun.boot.mail.mapper.SysMailTemplateMapper;
+import com.mugsun.boot.notify.NotifyTemplateRenderer;
 import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.slf4j.Logger;
@@ -15,6 +16,7 @@ import java.util.Map;
 
 /**
  * 邮件发送：按模板 ${key} 占位渲染后发送；无 SMTP 凭证时降级为日志（同短信）。
+ * <p>渲染收编统一渲染器 {@link NotifyTemplateRenderer}（缺参 fail-fast，取代原"未提供占位原样保留"）。
  */
 @Service
 public class MailService {
@@ -23,13 +25,16 @@ public class MailService {
 
 	private final JavaMailSender mailSender;
 	private final SysMailTemplateMapper templateMapper;
+	private final NotifyTemplateRenderer renderer;
 
 	@Value("${spring.mail.username:noreply@mugsun.com}")
 	private String from;
 
-	public MailService(JavaMailSender mailSender, SysMailTemplateMapper templateMapper) {
+	public MailService(JavaMailSender mailSender, SysMailTemplateMapper templateMapper,
+					   NotifyTemplateRenderer renderer) {
 		this.mailSender = mailSender;
 		this.templateMapper = templateMapper;
+		this.renderer = renderer;
 	}
 
 	/** 按模板发送，返回渲染后内容（便于调试/降级展示） */
@@ -38,8 +43,8 @@ public class MailService {
 		if (tpl == null) {
 			throw new ServiceException("邮件模板不存在: " + code);
 		}
-		String content = render(tpl.getContent(), params);
-		send(to, render(tpl.getSubject(), params), content);
+		String content = renderer.render(tpl.getContent(), params);
+		send(to, renderer.render(tpl.getSubject(), params), content);
 		return content;
 	}
 
@@ -56,15 +61,5 @@ public class MailService {
 		} catch (Exception e) {
 			log.warn("邮件发送失败(降级为日志) to={} subject={} content={} err={}", to, subject, content, e.getMessage());
 		}
-	}
-
-	private String render(String template, Map<String, String> params) {
-		String result = template;
-		if (params != null) {
-			for (Map.Entry<String, String> e : params.entrySet()) {
-				result = result.replace("${" + e.getKey() + "}", e.getValue() == null ? "" : e.getValue());
-			}
-		}
-		return result;
 	}
 }

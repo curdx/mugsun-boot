@@ -23,6 +23,8 @@ public class SysUser extends BaseEntity {
 	private Long deptId;
 	private Long postId;
 	private String tenantId;
+	/** 邮箱：通知邮件渠道联系方式 */
+	private String email;
 	/** 手机号：明文存储，按角色决策 明文/脱敏/不可见（@ColumnMask 自定义类型 + RoleAwareMaskProcessor） */
 	@AuditField("手机号")
 	@ColumnMask(FieldMaskConstants.TYPE_USER_PHONE)
@@ -87,6 +89,14 @@ public class SysUser extends BaseEntity {
 
 	public void setTenantId(String tenantId) {
 		this.tenantId = tenantId;
+	}
+
+	public String getEmail() {
+		return email;
+	}
+
+	public void setEmail(String email) {
+		this.email = email;
 	}
 
 	public String getPhone() {

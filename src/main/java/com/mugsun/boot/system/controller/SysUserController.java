@@ -4,9 +4,13 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import com.mugsun.boot.common.constant.FieldMaskConstants;
+import com.mugsun.boot.common.constant.NotifyConstants;
+import com.mugsun.boot.common.tx.AfterCommit;
 import com.mugsun.boot.datascope.DataScope;
 import com.mugsun.boot.log.AuditService;
 import com.mugsun.boot.log.OperationLog;
+import com.mugsun.boot.notify.api.NotifyReceiver;
+import com.mugsun.boot.notify.api.NotifySendApi;
 import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.entity.SysUserRole;
 import com.mugsun.boot.system.excel.SysUserExcel;
@@ -19,6 +23,8 @@ import com.mugsun.core.web.excel.ExcelUtil;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -33,23 +39,28 @@ import java.util.List;
 @SaCheckLogin
 public class SysUserController {
 
+	private static final Logger log = LoggerFactory.getLogger(SysUserController.class);
+
 	private final SysUserMapper userMapper;
 	private final PasswordEncoder passwordEncoder;
 	private final AuditService auditService;
 	private final SysUserRoleMapper userRoleMapper;
 	private final com.mugsun.boot.security.SecurityPolicyService securityPolicyService;
 	private final com.mugsun.boot.tenant.TenantValidator tenantValidator;
+	private final NotifySendApi notifySendApi;
 
 	public SysUserController(SysUserMapper userMapper, PasswordEncoder passwordEncoder, AuditService auditService,
 							 SysUserRoleMapper userRoleMapper,
 							 com.mugsun.boot.security.SecurityPolicyService securityPolicyService,
-							 com.mugsun.boot.tenant.TenantValidator tenantValidator) {
+							 com.mugsun.boot.tenant.TenantValidator tenantValidator,
+							 NotifySendApi notifySendApi) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.auditService = auditService;
 		this.userRoleMapper = userRoleMapper;
 		this.securityPolicyService = securityPolicyService;
 		this.tenantValidator = tenantValidator;
+		this.notifySendApi = notifySendApi;
 	}
 
 	@GetMapping("/page")
@@ -112,6 +123,7 @@ public class SysUserController {
 			user.setPassword(passwordEncoder.encode(raw));
 			userMapper.insert(user);
 			securityPolicyService.logPassword(user.getId(), user.getPassword());
+			notifyWelcome(user);
 		} else {
 			// 审计前后镜像恒脱敏读：与操作者角色无关，敏感字段永不落明文入审计
 			SysUser before = com.mugsun.boot.common.mask.FieldMaskContext.maskedRead(() -> userMapper.selectOneById(user.getId()));
@@ -180,6 +192,24 @@ public class SysUserController {
 			inserted++;
 		}
 		return R.success("导入完成，新增 " + inserted + " 条");
+	}
+
+	/** 新用户欢迎通知：提交后按统一模板多渠道 fan-out；通知失败不阻断建用户（记日志） */
+	private void notifyWelcome(SysUser user) {
+		Long userId = user.getId();
+		String name = user.getNickname() == null || user.getNickname().isBlank()
+			? user.getUsername() : user.getNickname();
+		String email = user.getEmail();
+		String phone = user.getPhone();
+		AfterCommit.execute(() -> {
+			try {
+				notifySendApi.send(NotifyConstants.TEMPLATE_WELCOME,
+					java.util.List.of(NotifyReceiver.of(userId, name, email, phone)),
+					java.util.Map.of("name", name));
+			} catch (Exception e) {
+				log.warn("新用户欢迎通知发送失败 userId={} err={}", userId, e.getMessage());
+			}
+		});
 	}
 
 	/** 重置密码为默认 123456（批量） */
