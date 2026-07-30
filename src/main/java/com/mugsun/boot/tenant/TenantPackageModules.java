@@ -72,11 +72,12 @@ public final class TenantPackageModules {
 		"/system/message/remove"
 	);
 
-	/** 平台超管专属路径（租户/套餐/数据源管理），非平台租户访问一律拒绝 */
+	/** 平台超管专属路径（租户/套餐/数据源/服务监控管理），非平台租户访问一律拒绝 */
 	private static final List<String> PLATFORM_ONLY_PREFIXES = List.of(
 		"/system/tenant",
 		"/system/tenant-package",
-		"/system/tenant-datasource"
+		"/system/tenant-datasource",
+		"/system/monitor"
 	);
 
 	private TenantPackageModules() {

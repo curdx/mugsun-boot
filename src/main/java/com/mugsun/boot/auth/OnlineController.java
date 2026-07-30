@@ -5,6 +5,7 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.session.SaSession;
 import cn.dev33.satoken.session.SaTerminalInfo;
 import cn.dev33.satoken.stp.StpUtil;
+import com.mugsun.boot.common.constant.MonitorConstants;
 import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.mapper.SysUserMapper;
 import com.mugsun.boot.websocket.WsMessageSender;
@@ -80,6 +81,11 @@ public class OnlineController {
 				row.put("tokenValue", terminal.getTokenValue());
 				row.put("tokenMask", mask(terminal.getTokenValue()));
 				row.put("deviceType", terminal.getDeviceType());
+				// 登录时经 SaLoginParameter.terminalExtra 落终端的 IP/UA（G90 补展示，机制不动）
+				Object ip = terminal.getExtra(MonitorConstants.TERMINAL_EXTRA_IP);
+				Object ua = terminal.getExtra(MonitorConstants.TERMINAL_EXTRA_UA);
+				row.put("ip", ip == null ? "-" : ip.toString());
+				row.put("userAgent", ua == null ? "-" : ua.toString());
 				row.put("loginTime", format(terminal.getCreateTime()));
 				rows.add(row);
 			}

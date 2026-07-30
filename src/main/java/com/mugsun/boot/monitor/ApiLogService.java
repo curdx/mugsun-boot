@@ -1,0 +1,41 @@
+package com.mugsun.boot.monitor;
+
+import com.mugsun.boot.monitor.entity.SysApiLog;
+import com.mugsun.boot.monitor.mapper.SysApiLogMapper;
+import com.mugsun.boot.tenant.TenantContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+
+/**
+ * 访问日志异步落库（虚拟线程执行器）：全量请求流量，轻表无哈希链——
+ * 刻意不复用 sys_oper_log 落库路径（其 SM3 哈希链 synchronized 串行点无法承受全量 GET 流量）。
+ */
+@Service
+public class ApiLogService {
+
+	private static final Logger log = LoggerFactory.getLogger(ApiLogService.class);
+
+	private final SysApiLogMapper apiLogMapper;
+
+	public ApiLogService(SysApiLogMapper apiLogMapper) {
+		this.apiLogMapper = apiLogMapper;
+	}
+
+	@Async
+	public void saveAsync(SysApiLog record) {
+		try {
+			// 有租户上下文（经 TenantTaskDecorator 透传）→ 正常落库并打租户标
+			apiLogMapper.insertSelective(record);
+		} catch (Exception e) {
+			try {
+				// 无租户上下文（如未认证请求）→ 忽略隔离补插，保证访问日志不丢（tenant_id 空）
+				TenantContext.ignore(() -> apiLogMapper.insertSelective(record));
+			} catch (Exception ex) {
+				// 访问日志是尽力而为通道：落库失败只告警，绝不反噬请求链路
+				log.warn("访问日志落库失败 uri={}：{}", record.getRequestUri(), ex.getMessage());
+			}
+		}
+	}
+}

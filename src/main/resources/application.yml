@@ -34,7 +34,17 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # prometheus/metrics 由 ActuatorAuthFilter 门控（登录 + sys:monitor:list）；health/info 保持公开
+        include: health,info,metrics,prometheus
+  # Boot 3.5 起 management.defaults.metrics.export.enabled 默认视为 false，Prometheus 注册表须显式开启
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+# 日志行级别段注入 traceId（TraceIdFilter 写入 MDC；选 yml 而非 logback.xml：项目无 logback 配置先例，yml 为配置约定）
+logging:
+  pattern:
+    level: "%5p [%X{traceId}]"
 sa-token:
   token-name: Authorization
   timeout: 2592000

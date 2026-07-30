@@ -4,6 +4,7 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.IdUtil;
 import com.mugsun.boot.common.constant.ClientConstants;
+import com.mugsun.boot.common.constant.MonitorConstants;
 import com.mugsun.boot.common.constant.RoleConstants;
 import com.mugsun.boot.common.constant.TenantConstants;
 import com.mugsun.boot.system.entity.SysLoginLog;
@@ -145,10 +146,12 @@ public class AuthController {
 			}
 			return R.data(resp);
 		}
-		// 按 client 策略：令牌有效期 + 设备类型
+		// 按 client 策略：令牌有效期 + 设备类型；登录 IP/UA 落终端扩展数据（在线用户展示用，机制不动仅补展示）
 		StpUtil.login(user.getId(), new cn.dev33.satoken.stp.parameter.SaLoginParameter()
 			.setDeviceType(client.getClientId())
-			.setTimeout(client.getTokenTimeout() == null ? 2592000 : client.getTokenTimeout()));
+			.setTimeout(client.getTokenTimeout() == null ? 2592000 : client.getTokenTimeout())
+			.setTerminalExtra(MonitorConstants.TERMINAL_EXTRA_IP, ip)
+			.setTerminalExtra(MonitorConstants.TERMINAL_EXTRA_UA, truncateUa(request)));
 		StpUtil.getSession().set(TenantContext.TENANT_SESSION_KEY, user.getTenantId());
 		// 按 client 策略：单账号最大在线终端数（超出踢最旧）
 		enforceMaxOnline(user.getId(), client.getMaxOnline());
@@ -172,10 +175,12 @@ public class AuthController {
 
 	/** 双因子二次校验：验证码正确才发 token */
 	@PostMapping("/two-factor")
-	public R<Map<String, Object>> twoFactor(@RequestBody Map<String, String> body) {
+	public R<Map<String, Object>> twoFactor(@RequestBody Map<String, String> body, HttpServletRequest request) {
 		Long userId = twoFactorService.verify(body.get("twoFactorToken"), body.get("code"));
 		SysUser user = TenantContext.ignore(() -> userMapper.selectOneById(userId));
-		StpUtil.login(userId);
+		StpUtil.login(userId, new cn.dev33.satoken.stp.parameter.SaLoginParameter()
+			.setTerminalExtra(MonitorConstants.TERMINAL_EXTRA_IP, request.getRemoteAddr())
+			.setTerminalExtra(MonitorConstants.TERMINAL_EXTRA_UA, truncateUa(request)));
 		StpUtil.getSession().set(TenantContext.TENANT_SESSION_KEY, user.getTenantId());
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
 	}
@@ -255,7 +260,9 @@ public class AuthController {
 			throw new ServiceException(smsTenantInvalid);
 		}
 		loginLockService.clear(phone);
-		StpUtil.login(user.getId());
+		StpUtil.login(user.getId(), new cn.dev33.satoken.stp.parameter.SaLoginParameter()
+			.setTerminalExtra(MonitorConstants.TERMINAL_EXTRA_IP, request.getRemoteAddr())
+			.setTerminalExtra(MonitorConstants.TERMINAL_EXTRA_UA, truncateUa(request)));
 		StpUtil.getSession().set(TenantContext.TENANT_SESSION_KEY, user.getTenantId());
 		saveLoginLog(user.getUsername(), request, ClientConstants.DEFAULT_CLIENT_ID, user.getTenantId(), 1, "短信登录成功");
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
@@ -318,14 +325,20 @@ public class AuthController {
 		SysLoginLog log = new SysLoginLog();
 		log.setUsername(username);
 		log.setIp(request.getRemoteAddr());
-		String ua = request.getHeader("User-Agent");
-		log.setUserAgent(ua != null && ua.length() > 500 ? ua.substring(0, 500) : ua);
+		log.setUserAgent(truncateUa(request));
 		log.setDevice(device);
 		log.setTenantId(tenantId);
 		log.setStatus(status);
 		log.setMsg(msg);
 		log.setLoginTime(LocalDateTime.now());
 		TenantContext.ignore(() -> loginLogMapper.insertSelective(log));
+	}
+
+	/** UA 截断（登录日志/终端扩展数据共用，超 500 截断） */
+	private String truncateUa(HttpServletRequest request) {
+		String ua = request.getHeader("User-Agent");
+		return ua != null && ua.length() > MonitorConstants.UA_MAX_LEN
+			? ua.substring(0, MonitorConstants.UA_MAX_LEN) : ua;
 	}
 
 	@PostMapping("/logout")
