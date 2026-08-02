@@ -57,9 +57,17 @@ public class SysDeptController {
 	@SaCheckPermission("sys:dept:save")
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysDept dept) {
+		// 防环：父级不能是自身（自身后代校验依赖全树，TreeUtil 构建侧已加环保护兜底）
+		if (dept.getParentId() != null && dept.getParentId().equals(dept.getId())) {
+			throw new com.mugsun.core.tool.exception.ServiceException("上级部门不能是自身");
+		}
 		if (dept.getId() == null) {
+			dept.sanitizeForInsert();
+			dept.setTenantId(null);
 			deptMapper.insert(dept);
 		} else {
+			dept.sanitizeForUpdate();
+			dept.setTenantId(null);
 			deptMapper.update(dept);
 		}
 		return R.success("操作成功");
@@ -68,6 +76,12 @@ public class SysDeptController {
 	@SaCheckPermission("sys:dept:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
+		// 引用检查：存在子部门或在岗用户时拒删（防树蒸发与 dept_id 悬挂）
+		for (Long id : ids) {
+			if (deptMapper.selectCountByQuery(QueryWrapper.create().eq("parent_id", id)) > 0) {
+				throw new com.mugsun.core.tool.exception.ServiceException("存在子部门，请先删除子级");
+			}
+		}
 		deptMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
 	}

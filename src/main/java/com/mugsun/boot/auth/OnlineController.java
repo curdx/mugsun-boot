@@ -45,7 +45,7 @@ public class OnlineController {
 	/** 强制下线帧携带的提示语 */
 	private static final String FORCE_OFFLINE_REASON = "您的账号已被管理员强制下线";
 
-	/** 在线会话查询权限码：列表含 tokenValue 明文（供踢单端），必须收紧到持码管理员，独立于在线表单域前缀 */
+	/** 在线会话查询权限码：列表按终端展开（仅 tokenMask 展示，明文令牌永不下发），持码管理员可见，独立于在线表单域前缀 */
 	private static final String PERM_LIST = "sys:session:list";
 
 	/** 强制下线权限码：显式声明替代兜底派生码，与查询同域管理 */
@@ -59,7 +59,8 @@ public class OnlineController {
 		this.wsMessageSender = wsMessageSender;
 	}
 
-	/** 在线会话列表：遍历所有账号会话，展开每个终端为一行（含 tokenValue 明文，仅持码管理员可见） */
+	/** 在线会话列表：遍历所有账号会话，展开每个终端为一行。
+	 *  安全红线：tokenValue 永不明文下发（明文即会话凭据，泄露=会话冒用），踢单端由前端回传 loginId+deviceType+tokenMask 服务端解析。 */
 	@GetMapping("/list")
 	@SaCheckPermission(PERM_LIST)
 	public R<List<Map<String, Object>>> list() {
@@ -78,7 +79,6 @@ public class OnlineController {
 				row.put("username", user == null ? "-" : user.getUsername());
 				row.put("nickname", user == null ? "-"
 					: (user.getNickname() == null ? user.getUsername() : user.getNickname()));
-				row.put("tokenValue", terminal.getTokenValue());
 				row.put("tokenMask", mask(terminal.getTokenValue()));
 				row.put("deviceType", terminal.getDeviceType());
 				// 登录时经 SaLoginParameter.terminalExtra 落终端的 IP/UA（G90 补展示，机制不动）
@@ -93,20 +93,34 @@ public class OnlineController {
 		return R.data(rows);
 	}
 
-	/** 强制下线：传 tokenValue 踢单端；传 loginId 踢该账号全部端；踢人后同步断开实时推送连接 */
+	/** 强制下线：传 loginId+deviceType(+tokenMask) 踢单端（服务端按会话终端解析真实 token，前端从不持有明文）；
+	 *  仅传 loginId 踢该账号全部端；踢人后同步断开实时推送连接 */
 	@PostMapping("/kickout")
 	@SaCheckPermission(PERM_KICKOUT)
 	public R<Void> kickout(@RequestBody Map<String, String> body) {
-		String token = body.get("tokenValue");
 		String loginId = body.get("loginId");
-		if (token != null && !token.isBlank()) {
-			StpUtil.kickoutByTokenValue(token);
-			wsMessageSender.closeUser(null, token, FORCE_OFFLINE_REASON);
-		} else if (loginId != null && !loginId.isBlank()) {
+		String deviceType = body.get("deviceType");
+		String tokenMask = body.get("tokenMask");
+		if (loginId == null || loginId.isBlank()) {
+			throw new ServiceException("缺少 loginId");
+		}
+		if (deviceType == null || deviceType.isBlank()) {
 			StpUtil.kickout(loginId);
 			closePushSessions(loginId);
-		} else {
-			throw new ServiceException("缺少 tokenValue 或 loginId");
+			return R.success("已强制下线");
+		}
+		// 踢单端：在该账号会话终端中按 deviceType(+tokenMask) 定位，服务端取真实 tokenValue 踢出
+		SaSession session = StpUtil.getSessionByLoginId(loginId, false);
+		if (session == null) {
+			return R.success("已强制下线");
+		}
+		for (SaTerminalInfo terminal : session.terminalListCopy()) {
+			boolean deviceMatch = deviceType.equals(String.valueOf(terminal.getDeviceType()));
+			boolean maskMatch = tokenMask == null || tokenMask.isBlank() || mask(terminal.getTokenValue()).equals(tokenMask);
+			if (deviceMatch && maskMatch) {
+				StpUtil.kickoutByTokenValue(terminal.getTokenValue());
+				wsMessageSender.closeUser(null, terminal.getTokenValue(), FORCE_OFFLINE_REASON);
+			}
 		}
 		return R.success("已强制下线");
 	}

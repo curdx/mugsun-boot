@@ -9,6 +9,9 @@ public class RegisterDTO {
 	private String password;
 	private String nickname;
 	private String phone;
+	/** 图形验证码（防批量注册，与登录同机制） */
+	private String captchaUuid;
+	private String captchaCode;
 
 	public String getUsername() {
 		return username;
@@ -40,5 +43,21 @@ public class RegisterDTO {
 
 	public void setPhone(String phone) {
 		this.phone = phone;
+	}
+
+	public String getCaptchaUuid() {
+		return captchaUuid;
+	}
+
+	public void setCaptchaUuid(String captchaUuid) {
+		this.captchaUuid = captchaUuid;
+	}
+
+	public String getCaptchaCode() {
+		return captchaCode;
+	}
+
+	public void setCaptchaCode(String captchaCode) {
+		this.captchaCode = captchaCode;
 	}
 }

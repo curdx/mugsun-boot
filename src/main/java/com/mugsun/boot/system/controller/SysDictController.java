@@ -68,9 +68,14 @@ public class SysDictController {
 		if (dict.getDictKey() == null) {
 			dict.setDictKey("");
 		}
+		if (dict.getParentId() != null && dict.getParentId().equals(dict.getId())) {
+			throw new com.mugsun.core.tool.exception.ServiceException("上级字典不能是自身");
+		}
 		if (dict.getId() == null) {
+			dict.sanitizeForInsert();
 			dictMapper.insertSelective(dict);
 		} else {
+			dict.sanitizeForUpdate();
 			dictMapper.update(dict);
 		}
 		dictService.evict(dict.getCode());
@@ -80,6 +85,11 @@ public class SysDictController {
 	@SaCheckPermission("sys:dict:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
+		for (Long id : ids) {
+			if (dictMapper.selectCountByQuery(com.mybatisflex.core.query.QueryWrapper.create().eq("parent_id", id)) > 0) {
+				throw new com.mugsun.core.tool.exception.ServiceException("存在子级字典，请先删除子级");
+			}
+		}
 		ids.forEach(id -> {
 			SysDict dict = dictMapper.selectOneById(id);
 			dictMapper.deleteById(id);

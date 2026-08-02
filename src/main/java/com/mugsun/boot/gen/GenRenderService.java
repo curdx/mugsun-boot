@@ -146,12 +146,12 @@ public class GenRenderService {
 		return result;
 	}
 
-	/** 打包 zip：路径→内容，解压即入工程目录 */
+	/** 打包 zip：路径→内容，解压即入工程目录；entry 名强制归一化并拒绝穿越（防投毒元数据构造 ../ 写任意文件） */
 	public byte[] zip(Long tableId) {
 		ByteArrayOutputStream bos = new ByteArrayOutputStream();
 		try (ZipOutputStream zos = new ZipOutputStream(bos)) {
 			for (Product p : generate(tableId)) {
-				zos.putNextEntry(new ZipEntry(p.path()));
+				zos.putNextEntry(new ZipEntry(safeEntryName(p.path())));
 				zos.write(p.content().getBytes(StandardCharsets.UTF_8));
 				zos.closeEntry();
 			}
@@ -159,6 +159,16 @@ public class GenRenderService {
 			throw new IllegalStateException("打包失败", e);
 		}
 		return bos.toByteArray();
+	}
+
+	/** zip entry 名安全校验：归一化后拒绝对路径/../ 穿越段（zip slip 防线，产物路径由元数据拼接） */
+	private String safeEntryName(String path) {
+		String normalized = java.nio.file.Paths.get(path).normalize().toString().replace('\\', '/');
+		if (normalized.startsWith("/") || normalized.startsWith("..") || normalized.contains("/../")
+			|| normalized.matches("^[A-Za-z]:.*")) {
+			throw new IllegalStateException("非法产物路径：" + path);
+		}
+		return normalized;
 	}
 
 	/** 由元数据构建 Enjoy 数据模型 */

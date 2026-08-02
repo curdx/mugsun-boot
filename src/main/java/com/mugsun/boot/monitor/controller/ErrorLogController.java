@@ -48,7 +48,7 @@ public class ErrorLogController {
 		if (traceId != null && !traceId.isBlank()) {
 			query.and("trace_id = ?", traceId);
 		}
-		return R.data(errorLogMapper.paginate(pageNum, pageSize, query));
+		return R.data(errorLogMapper.paginate(pageNum, Math.min(pageSize, 500), query));
 	}
 
 	@GetMapping("/detail")
@@ -74,6 +74,10 @@ public class ErrorLogController {
 		SysErrorLog record = errorLogMapper.selectOneById(id);
 		if (record == null) {
 			throw new ServiceException("错误日志不存在");
+		}
+		// 乐观流转：仅待处理（0）可认领，已处理记录不被他人重复覆盖（留痕 handle_user/note 不被改写）
+		if (record.getStatus() != null && record.getStatus() != 0) {
+			throw new ServiceException("该记录已被处理");
 		}
 		SysErrorLog update = new SysErrorLog();
 		update.setId(id);

@@ -46,7 +46,32 @@ public class DataInitializer implements CommandLineRunner {
 	@Override
 	public void run(String... args) {
 		// 启动初始化写平台租户表，无会话上下文——经中心忽略入口显式声明，规避 fail-closed
-		TenantContext.ignore(this::seed);
+		TenantContext.ignore(() -> {
+			seed();
+			reanchorSeedMenus();
+			return null;
+		});
+	}
+
+	/**
+	 * 种子按钮/授权重锚（幂等）：V39/V45/V46 迁移含硬编码雪花 ID，全新环境播种菜单 ID 不同会悬空——
+	 * 启动时按业务键（permission/role_code）把种子菜单挂回真实父菜单、授权挂回 datatest 角色。
+	 */
+	private void reanchorSeedMenus() {
+		com.mybatisflex.core.row.Db.updateBySql(
+			"UPDATE sys_menu SET parent_id = (SELECT id FROM sys_menu WHERE permission = 'sys:user:list' AND is_deleted = 0 LIMIT 1) "
+				+ "WHERE permission IN ('sys:user:add','sys:user:edit','sys:user:remove','sys:user:grant','sys:user:reset',"
+				+ "'sys:user:phone','sys:user:phone:plain','sys:user:idcard','sys:user:idcard:plain') AND is_deleted = 0 "
+				+ "AND EXISTS (SELECT 1 FROM sys_menu WHERE permission = 'sys:user:list' AND is_deleted = 0)");
+		com.mybatisflex.core.row.Db.updateBySql(
+			"UPDATE sys_menu SET parent_id = (SELECT parent_id FROM sys_menu WHERE permission = 'sys:user:list' AND is_deleted = 0 LIMIT 1) "
+				+ "WHERE permission = 'sys:gen:list' AND is_deleted = 0 "
+				+ "AND EXISTS (SELECT 1 FROM sys_menu WHERE permission = 'sys:user:list' AND is_deleted = 0)");
+		com.mybatisflex.core.row.Db.updateBySql(
+			"UPDATE sys_role_menu SET role_id = (SELECT id FROM sys_role WHERE role_code = 'datatest' AND is_deleted = 0 LIMIT 1) "
+				+ "WHERE menu_id IN (SELECT id FROM sys_menu WHERE permission IN ('sys:user:add','sys:user:phone') AND is_deleted = 0) "
+				+ "AND is_deleted = 0 AND role_id NOT IN (SELECT id FROM sys_role) "
+				+ "AND EXISTS (SELECT 1 FROM sys_role WHERE role_code = 'datatest' AND is_deleted = 0)");
 	}
 
 	private void seed() {

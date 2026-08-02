@@ -80,8 +80,16 @@ public class GlobalSearchController {
 			out.add(item("role", "角色", r.getRoleName(), r.getRoleCode(), "/system/role"));
 		}
 
-		// 通知公告（业务数据）
+		// 通知公告（业务数据）：与「我的通知」同口径可见范围（all_visible 或命中本人/本部门），防定向公告标题经联想旁路
 		QueryWrapper nq = QueryWrapper.create().like("title", kw).orderBy("id", false).limit(PER_TYPE_LIMIT);
+		if (!cn.dev33.satoken.stp.StpUtil.hasPermission("sys:notice:manage")) {
+			Long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
+			com.mugsun.boot.system.entity.SysUser me = userMapper.selectOneById(userId);
+			Long deptId = me == null ? null : me.getDeptId();
+			nq.and("(all_visible = 1 or id in (select notice_id from sys_notice_scope "
+				+ "where is_deleted = 0 and ((scope_type = 1 and scope_id = ?) or (scope_type = 2 and scope_id = ?))))",
+				userId, deptId == null ? -1L : deptId);
+		}
 		for (SysNotice n : noticeMapper.selectListByQuery(nq)) {
 			out.add(item("notice", "通知", n.getTitle(), null, "/system/notice"));
 		}

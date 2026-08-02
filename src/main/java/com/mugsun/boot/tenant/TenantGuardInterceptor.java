@@ -43,7 +43,11 @@ public class TenantGuardInterceptor implements HandlerInterceptor {
 
 		// 1) 平台超管专属路径：仅平台超管可访问（平台租户内的无角色用户亦拒）
 		if (TenantPackageModules.isPlatformOnly(path) && !isSuperAdmin) {
-			throw new ForbiddenException("仅平台超管可操作租户管理");
+			throw new ForbiddenException("仅平台超管可访问平台级资源");
+		}
+		// 1b) 平台超管专属写路径：菜单/字典/参数为平台全局表，非 GET 写请求仅平台超管（GET 只读放行）
+		if (!"GET".equals(request.getMethod()) && TenantPackageModules.isPlatformWrite(path) && !isSuperAdmin) {
+			throw new ForbiddenException("仅平台超管可修改平台全局配置");
 		}
 		// 平台租户不受生命周期/套餐/一致性限制（其专属路径已在上一步按超管门控）；异常空会话交回权限层
 		if (isPlatformTenant || sessionTenant == null || sessionTenant.isBlank()) {

@@ -34,35 +34,58 @@ public class MessageService {
 	private final SysMessageMapper messageMapper;
 	private final SysMessageUserMapper messageUserMapper;
 	private final SysMessageTemplateMapper templateMapper;
+	private final com.mugsun.boot.system.mapper.SysUserMapper userMapper;
 	private final WsMessageSender wsMessageSender;
 	private final NotifyTemplateRenderer renderer;
 
 	public MessageService(SysMessageMapper messageMapper, SysMessageUserMapper messageUserMapper,
 						  SysMessageTemplateMapper templateMapper, WsMessageSender wsMessageSender,
-						  NotifyTemplateRenderer renderer) {
+						  NotifyTemplateRenderer renderer,
+						  com.mugsun.boot.system.mapper.SysUserMapper userMapper) {
 		this.messageMapper = messageMapper;
 		this.messageUserMapper = messageUserMapper;
 		this.templateMapper = templateMapper;
 		this.wsMessageSender = wsMessageSender;
 		this.renderer = renderer;
+		this.userMapper = userMapper;
 	}
 
 	/** 发送站内信：可选模板 + 占位替换 → 建消息主体 + 逐收件人未读记录 → 实时推送在线收件人 */
 	public void send(MessageSendDTO dto) {
+		// 收件人归属校验：仅允许发往本租户用户（防跨租户钓鱼投递 + 跨租户 WS 实时弹窗）
+		assertRecipientsInTenant(dto.getRecipientIds());
 		doSend(dto, StpUtil.getLoginIdAsLong());
 	}
 
-	/** 系统通知发送（统一调度站内信渠道用）：异步线程无登录会话，发送人置空 */
+	/** 收件人必须全部属于当前租户（Flex 租户条件自动过滤，count 不符即含越界/不存在收件人） */
+	private void assertRecipientsInTenant(List<Long> recipientIds) {
+		if (recipientIds == null || recipientIds.isEmpty()) {
+			return;
+		}
+		List<Long> ids = recipientIds.stream().distinct().toList();
+		long count = userMapper.selectCountByQuery(
+			com.mybatisflex.core.query.QueryWrapper.create().in("id", ids));
+		if (count != ids.size()) {
+			throw new ServiceException("收件人包含不存在或不属于本租户的用户");
+		}
+	}
+
+	/** 系统通知发送（统一调度站内信渠道用）：异步线程无登录会话，发送人置空；
+	 *  内容已经统一调度侧渲染完毕，此处直发不再二次渲染（防参数值含 ${} 字面量时误抽占位致投递失败） */
 	public void sendSystem(String title, String content, String type, List<Long> recipientIds) {
 		MessageSendDTO dto = new MessageSendDTO();
 		dto.setTitle(title);
 		dto.setContent(content);
 		dto.setType(type);
 		dto.setRecipientIds(recipientIds);
-		doSend(dto, null);
+		doSend(dto, null, true);
 	}
 
 	private void doSend(MessageSendDTO dto, Long senderId) {
+		doSend(dto, senderId, false);
+	}
+
+	private void doSend(MessageSendDTO dto, Long senderId, boolean skipRender) {
 		if (dto.getRecipientIds() == null || dto.getRecipientIds().isEmpty()) {
 			throw new ServiceException("请选择收件人");
 		}
@@ -75,8 +98,10 @@ public class MessageService {
 				content = tpl.getContent();
 			}
 		}
-		title = renderer.render(title, dto.getParams());
-		content = renderer.render(content, dto.getParams());
+		if (!skipRender) {
+			title = renderer.render(title, dto.getParams());
+			content = renderer.render(content, dto.getParams());
+		}
 		if (title == null || title.isBlank()) {
 			throw new ServiceException("消息标题不能为空");
 		}

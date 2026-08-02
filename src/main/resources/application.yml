@@ -114,27 +114,24 @@ liteflow:
 mugsun:
   captcha:
     enabled: true
-    show-code: true
+    show-code: false         # 验证码回显仅 dev profile 开启（生产开启=防爆破体系架空）
     expire-seconds: 300
   sms:
-    show-code: true          # 开发回显短信验证码（生产须 false）
+    show-code: false         # 短信验证码回显仅 dev profile 开启（生产开启=未认证接管任意账号）
   crypto:
     gm-enabled: ${MUGSUN_GM_ENABLED:true}          # 国密总开关（传输 SM2 / 摘要 SM3 一处切）
-    sm4-key: ${MUGSUN_SM4_KEY:mugsun-sm4-key16}     # SM4 字段加密密钥（生产经环境变量注入）
-    api-key: ${MUGSUN_API_KEY:mugsun-api-key16}
+    sm4-key: ${MUGSUN_SM4_KEY:}                     # SM4 字段加密密钥（生产必须环境变量注入，缺省拒绝启动明文提示）
+    api-key: ${MUGSUN_API_KEY:}                     # 接口加解密 SM4 密钥（同上）
+    strict-keys: ${MUGSUN_STRICT_KEYS:false}        # 生产 true：密钥缺失即拒绝启动
     sm2-private-key: ${MUGSUN_SM2_PRIVATE_KEY:}     # SM2 传输私钥 hex（留空则启动生成并告警）
     sm2-public-key: ${MUGSUN_SM2_PUBLIC_KEY:}       # SM2 传输公钥 hex（04+128）
+    sign-private-key: ${MUGSUN_SIGN_PRIVATE_KEY:}   # 审计签名 SM2 私钥（与传输分离，生产必须固定注入）
+    sign-public-key: ${MUGSUN_SIGN_PUBLIC_KEY:}     # 审计签名 SM2 公钥
   serial-number:
     provider: redis          # redis 自增（默认）/ db 行锁
   websocket:
     sender-type: redis       # 推送扇出：local=单机直发（仅本地调试）/ redis=集群经 Redis Pub/Sub 扇出
   social:
-    enabled: true
-    # 本地 mock 授权页（后端端点，dev 联调）
-    mock-authorize-url: http://localhost:8080/auth/social/mock-authorize
-    type:
-      # 本地 mock 来源：无真实凭证即可端到端验证社交登录全链路（含 hash 路由回调，须引号避免 # 被当注释）
-      mock:
-        client-id: mock-client
-        client-secret: mock-secret
-        redirect-uri: "http://localhost:3006/#/auth/social-callback?source=mock"
+    enabled: ${MUGSUN_SOCIAL_ENABLED:true}
+    # mock 社交来源仅 dev profile 配置（身份固定=后门，主配置绝不携带）
+    mock-enabled: ${MUGSUN_SOCIAL_MOCK:false}

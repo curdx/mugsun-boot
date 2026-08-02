@@ -32,8 +32,9 @@ import java.util.Set;
 @Service
 public class DdlService {
 
-	/** 受保护的系统表前缀（不可重建/删除，且新建不得占用） */
-	private static final Set<String> PROTECTED = Set.of("sys_", "gen_", "flyway_", "flow_", "qrtz_", "blade_", "act_");
+	/** 受保护的系统表前缀（不可重建/删除，且新建不得占用）；biz_/help_/viz_/ai_ 为平台既有业务域，同样禁碰 */
+	private static final Set<String> PROTECTED = Set.of("sys_", "gen_", "flyway_", "flow_", "qrtz_", "blade_", "act_",
+		"biz_", "help_", "viz_", "ai_");
 	/** 审计列由引擎统一维护，建表时显式补齐，不随业务列重复渲染 */
 	private static final Set<String> AUDIT = Set.of("id", "create_time", "update_time", "is_deleted");
 
@@ -74,12 +75,15 @@ public class DdlService {
 		execute(List.of(buildCreate(t, columns(tableId), dialect())));
 	}
 
-	/** 增量/强制同步：执行 DDL，并在改名完成后清空 column_name_old */
+	/** 增量/强制同步：执行 DDL，并在改名完成后清空 column_name_old；force 重建毁数据，仅平台超管 */
 	@Transactional(rollbackFor = Exception.class)
 	public void syncTable(Long tableId, boolean force) {
 		GenTable t = table(tableId);
 		String tn = validName(t.getTableName());
 		guardNotProtected(tn);
+		if (force && !com.mugsun.boot.tenant.TenantContext.isPlatformSuperAdmin()) {
+			throw new ServiceException("强制重建将清空数据，仅平台超管可执行");
+		}
 		List<GenColumn> cols = columns(tableId);
 		SqlDialect d = dialect();
 		if (force) {
@@ -118,6 +122,8 @@ public class DdlService {
 			String nn = isOne(c.getIsRequired()) ? " NOT NULL" : "";
 			lines.add(cn + " " + sqlType(c, d) + nn);
 		}
+		// 租户隔离列（平台铁律）：低代码建表默认携带，在线表单按物理列强制过滤（可空 = 平台共享语义仅平台超管写入）
+		lines.add("tenant_id " + (d == SqlDialect.ORACLE ? "VARCHAR2(12)" : "VARCHAR(12)"));
 		lines.add("create_time " + d.timestampType());
 		lines.add("update_time " + d.timestampType());
 		lines.add("is_deleted " + d.intType() + " NOT NULL DEFAULT 0");
@@ -225,7 +231,8 @@ public class DdlService {
 		return name;
 	}
 
-	private void guardNotProtected(String tn) {
+	/** 表名保护校验（public：元数据写入侧复用——gen 元数据是 在线表单/DDL/渲染 三链信任根，受保护表一律拒） */
+	public static void guardNotProtected(String tn) {
 		String low = tn.toLowerCase();
 		for (String p : PROTECTED) {
 			if (low.startsWith(p)) {

@@ -31,10 +31,12 @@ public class OnlineService {
 
 	private final GenTableMapper tableMapper;
 	private final GenColumnMapper columnMapper;
+	private final javax.sql.DataSource dataSource;
 
-	public OnlineService(GenTableMapper tableMapper, GenColumnMapper columnMapper) {
+	public OnlineService(GenTableMapper tableMapper, GenColumnMapper columnMapper, javax.sql.DataSource dataSource) {
 		this.tableMapper = tableMapper;
 		this.columnMapper = columnMapper;
+		this.dataSource = dataSource;
 	}
 
 	/** 表单元数据：表 + 字段配置，供前端运行时渲染 */
@@ -46,7 +48,7 @@ public class OnlineService {
 	public Page<Row> page(Long tableId, long pageNum, long pageSize, Map<String, String> query) {
 		GenTable t = table(tableId);
 		List<GenColumn> cols = columns(tableId);
-		Set<String> names = columnNames(cols);
+		Set<String> names = physicalNames(t.getTableName());
 		String tableName = t.getTableName();
 		QueryWrapper qw = QueryWrapper.create().from(tableName);
 		// 用户排序：列名走白名单（表实际列）+ 方向校验，拦 orderBy 注入；缺省 id 降序
@@ -72,15 +74,15 @@ public class OnlineService {
 				}
 			}
 		}
-		return Db.paginate(tableName, pageNum, pageSize, qw);
+		return Db.paginate(tableName, pageNum, Math.min(pageSize, 500), qw);
 	}
 
 	/** 运行时详情（与 page 同口径附加租户 + 逻辑删除范围，防跨租户/越删读） */
 	public Row detail(Long tableId, Object id) {
 		GenTable t = table(tableId);
-		Set<String> names = columnNames(columns(tableId));
+		Set<String> names = physicalNames(t.getTableName());
 		String tableName = t.getTableName();
-		QueryWrapper qw = QueryWrapper.create().from(tableName).where("id = ?", Long.valueOf(id.toString()));
+		QueryWrapper qw = QueryWrapper.create().from(tableName).where("id = ?", parseId(id));
 		applyScope(qw, names);
 		List<Row> rows = Db.selectListByQuery(tableName, qw);
 		return rows.isEmpty() ? null : rows.get(0);
@@ -90,11 +92,11 @@ public class OnlineService {
 	public void save(Long tableId, Map<String, Object> data) {
 		GenTable t = table(tableId);
 		List<GenColumn> cols = columns(tableId);
-		Set<String> names = columnNames(cols);
+		Set<String> names = physicalNames(t.getTableName());
 		String tableName = t.getTableName();
 		Object id = data.get("id");
 		boolean isNew = id == null || id.toString().isBlank();
-		Row row = isNew ? new Row() : Row.ofKey("id", Long.valueOf(id.toString()));
+		Row row = isNew ? new Row() : Row.ofKey("id", parseId(id));
 		for (GenColumn c : cols) {
 			if (isOne(c.getIsEdit()) && data.containsKey(c.getColumnName())) {
 				row.set(c.getColumnName(), data.get(c.getColumnName()));
@@ -114,7 +116,7 @@ public class OnlineService {
 			Db.insert(tableName, row);
 		} else {
 			// 编辑前校验目标行在当前租户 / 未删除范围内，防跨租户改
-			QueryWrapper scope = QueryWrapper.create().from(tableName).where("id = ?", Long.valueOf(id.toString()));
+			QueryWrapper scope = QueryWrapper.create().from(tableName).where("id = ?", parseId(id));
 			applyScope(scope, names);
 			if (Db.selectListByQuery(tableName, scope).isEmpty()) {
 				throw new IllegalArgumentException("记录不存在或无权限：" + id);
@@ -132,19 +134,21 @@ public class OnlineService {
 			return;
 		}
 		GenTable t = table(tableId);
-		Set<String> names = columnNames(columns(tableId));
+		Set<String> names = physicalNames(t.getTableName());
 		String tableName = t.getTableName();
-		if (!names.contains("is_deleted")) {
-			Db.deleteBatchByIds(tableName, "id", ids);
-			return;
-		}
 		String placeholders = ids.stream().map(i -> "?").collect(Collectors.joining(","));
-		String sql = "UPDATE " + tableName + " SET is_deleted = 1 WHERE id IN (" + placeholders + ")";
 		List<Object> params = new ArrayList<>(ids);
+		String tenantClause = "";
 		if (names.contains("tenant_id") && TenantContext.current() != null) {
-			sql += " AND tenant_id = ?";
+			tenantClause = " AND tenant_id = ?";
 			params.add(TenantContext.current());
 		}
+		if (!names.contains("is_deleted")) {
+			Db.updateBySql("DELETE FROM " + tableName + " WHERE id IN (" + placeholders + ")" + tenantClause,
+				params.toArray());
+			return;
+		}
+		String sql = "UPDATE " + tableName + " SET is_deleted = 1 WHERE id IN (" + placeholders + ")" + tenantClause;
 		Db.updateBySql(sql, params.toArray());
 	}
 
@@ -158,25 +162,57 @@ public class OnlineService {
 		}
 	}
 
+	/** 元数据读取统一闸：标识符合法性 + 平台保护表黑名单（防存量被投毒元数据流入运行时） */
 	private GenTable table(Long tableId) {
 		GenTable t = tableMapper.selectOneById(tableId);
 		if (t == null) {
 			throw new IllegalArgumentException("在线表单不存在：" + tableId);
 		}
+		if (!com.mugsun.boot.gen.GenNaming.isIdentifier(t.getTableName())) {
+			throw new IllegalArgumentException("非法表名：" + t.getTableName());
+		}
+		com.mugsun.boot.gen.DdlService.guardNotProtected(t.getTableName());
 		return t;
+	}
+
+	/** 物理表实际列名（JDBC 内省）：租户/逻辑删除判定以物理结构为准，不信元数据（防元数据缺列绕过隔离） */
+	private Set<String> physicalNames(String tableName) {
+		Set<String> names = new HashSet<>();
+		try (java.sql.Connection c = dataSource.getConnection()) {
+			java.sql.DatabaseMetaData md = c.getMetaData();
+			try (java.sql.ResultSet rs = md.getColumns(c.getCatalog(), c.getSchema(), tableName.toLowerCase(), null)) {
+				while (rs.next()) {
+					names.add(rs.getString("COLUMN_NAME").toLowerCase());
+				}
+			}
+			if (names.isEmpty()) {
+				try (java.sql.ResultSet rs = md.getColumns(c.getCatalog(), c.getSchema(), tableName.toUpperCase(), null)) {
+					while (rs.next()) {
+						names.add(rs.getString("COLUMN_NAME").toLowerCase());
+					}
+				}
+			}
+		} catch (java.sql.SQLException e) {
+			throw new IllegalStateException("读取表结构失败：" + e.getMessage());
+		}
+		if (names.isEmpty()) {
+			throw new IllegalArgumentException("物理表不存在：" + tableName);
+		}
+		return names;
+	}
+
+	/** id 解析（非法 id 统一参数错误，防 NumberFormatException 落 500） */
+	private Long parseId(Object id) {
+		try {
+			return Long.valueOf(id.toString());
+		} catch (NumberFormatException e) {
+			throw new IllegalArgumentException("非法 id：" + id);
+		}
 	}
 
 	private List<GenColumn> columns(Long tableId) {
 		return columnMapper.selectListByQuery(
 			QueryWrapper.create().eq("table_id", tableId).orderBy("sort", true));
-	}
-
-	private Set<String> columnNames(List<GenColumn> cols) {
-		Set<String> s = new HashSet<>();
-		for (GenColumn c : cols) {
-			s.add(c.getColumnName());
-		}
-		return s;
 	}
 
 	private boolean isOne(Integer v) {

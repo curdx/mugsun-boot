@@ -26,13 +26,23 @@ public class JobController {
 
 	private static final String PROCESSOR = "com.mugsun.boot.job.DemoProcessor";
 
+	/** PowerJob OpenAPI 地址/凭据外置（默认本地联调值，生产经环境变量覆盖） */
+	@org.springframework.beans.factory.annotation.Value("${powerjob.openapi.address:${powerjob.worker.server-address:127.0.0.1:7700}}")
+	private String serverAddress;
+
+	@org.springframework.beans.factory.annotation.Value("${powerjob.openapi.app-name:${powerjob.worker.app-name:mugsun}}")
+	private String appName;
+
+	@org.springframework.beans.factory.annotation.Value("${powerjob.openapi.password:${POWERJOB_OPENAPI_PASSWORD:mugsun}}")
+	private String password;
+
 	private volatile PowerJobClient client;
 
 	private PowerJobClient client() {
 		if (client == null) {
 			synchronized (this) {
 				if (client == null) {
-					client = new PowerJobClient("127.0.0.1:7700", "mugsun", "mugsun");
+					client = new PowerJobClient(serverAddress, appName, password);
 				}
 			}
 		}

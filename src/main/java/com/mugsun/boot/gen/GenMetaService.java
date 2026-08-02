@@ -44,6 +44,8 @@ public class GenMetaService {
 	/** 导入库表为元数据配置：内省列 → 推断默认 → 落 gen_table + gen_column（已存在则重建列，表级配置沿用/更新） */
 	@Transactional(rollbackFor = Exception.class)
 	public Long importTable(String tableName, String moduleName, String basePackage, String tablePrefix, String author) {
+		// 保护表黑名单：sys_/flow_/biz_ 等平台表禁入低代码通道（在线表单/DDL 消费链信任 gen 元数据）
+		com.mugsun.boot.gen.DdlService.guardNotProtected(tableName);
 		Table meta = introspect(tableName);
 		if (meta == null) {
 			throw new IllegalArgumentException("表不存在：" + tableName);
@@ -189,9 +191,12 @@ public class GenMetaService {
 		return tableMapper.selectListByQuery(QueryWrapper.create().orderBy("id", false));
 	}
 
-	/** 读取某表的元数据配置（表 + 字段，字段按 sort 升序） */
+	/** 读取某表的元数据配置（表 + 字段，字段按 sort 升序）；表不存在返空（防 NPE 500） */
 	public Map<String, Object> config(Long tableId) {
 		GenTable table = tableMapper.selectOneById(tableId);
+		if (table == null) {
+			throw new com.mugsun.core.tool.exception.ServiceException("表配置不存在");
+		}
 		List<GenColumn> columns = columnMapper.selectListByQuery(
 			QueryWrapper.create().eq("table_id", tableId).orderBy("sort", true));
 		return Map.of("table", table, "columns", columns);
@@ -200,6 +205,11 @@ public class GenMetaService {
 	/** 保存表级 + 字段级在线配置（字段 upsert：无 id 新增列、有 id 更新，支撑动态建表加字段/改名） */
 	@Transactional(rollbackFor = Exception.class)
 	public void saveConfig(GenTable table, List<GenColumn> columns) {
+		if (table == null || table.getId() == null) {
+			throw new com.mugsun.core.tool.exception.ServiceException("表配置不存在");
+		}
+		// 元数据是三条消费链（在线表单/DDL/代码渲染）的信任根：表名/包名/模块名等全部强校验，防投毒
+		validateTableMeta(table);
 		validateColumnNames(columns);
 		tableMapper.update(table);
 		if (columns != null) {
@@ -212,6 +222,30 @@ public class GenMetaService {
 					columnMapper.update(col);
 				}
 			}
+		}
+	}
+
+	/** 表级元数据白名单校验：表名标识符+非保护表、包名/模块名/业务名/作者/实体名格式（产物路径与代码注入防线） */
+	private void validateTableMeta(GenTable table) {
+		if (!GenNaming.isIdentifier(table.getTableName())) {
+			throw new com.mugsun.core.tool.exception.ServiceException("非法表名：" + table.getTableName());
+		}
+		com.mugsun.boot.gen.DdlService.guardNotProtected(table.getTableName());
+		if (table.getBasePackage() != null && !table.getBasePackage().isBlank()
+			&& !table.getBasePackage().matches("^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*){1,6}$")) {
+			throw new com.mugsun.core.tool.exception.ServiceException("非法基础包名：" + table.getBasePackage());
+		}
+		if (table.getModuleName() != null && !table.getModuleName().isBlank()
+			&& !table.getModuleName().matches("^[a-z][a-z0-9-]{0,30}$")) {
+			throw new com.mugsun.core.tool.exception.ServiceException("非法模块名：" + table.getModuleName());
+		}
+		if (table.getBusinessName() != null && !table.getBusinessName().isBlank()
+			&& !table.getBusinessName().matches("^[a-z][a-z0-9]{0,30}$")) {
+			throw new com.mugsun.core.tool.exception.ServiceException("非法业务名：" + table.getBusinessName());
+		}
+		if (table.getEntityName() != null && !table.getEntityName().isBlank()
+			&& !table.getEntityName().matches("^[A-Z][A-Za-z0-9]{0,60}$")) {
+			throw new com.mugsun.core.tool.exception.ServiceException("非法实体名：" + table.getEntityName());
 		}
 	}
 
@@ -263,7 +297,8 @@ public class GenMetaService {
 		return table.getId();
 	}
 
-	/** 校验列名/旧列名为合法标识符，杜绝非法名落入元数据（防 DDL 注入 + 无效配置残留） */
+	/** 校验列名/旧列名为合法标识符，杜绝非法名落入元数据（防 DDL 注入 + 无效配置残留）；
+	 *  javaField/dictType 同为渲染产物注入面，按格式白名单校验 */
 	private void validateColumnNames(List<GenColumn> columns) {
 		if (columns == null) {
 			return;
@@ -275,6 +310,14 @@ public class GenMetaService {
 			if (c.getColumnNameOld() != null && !c.getColumnNameOld().isBlank()
 				&& !GenNaming.isIdentifier(c.getColumnNameOld())) {
 				throw new com.mugsun.core.tool.exception.ServiceException("非法旧列名：" + c.getColumnNameOld());
+			}
+			if (c.getJavaField() != null && !c.getJavaField().isBlank()
+				&& !c.getJavaField().matches("^[a-z][A-Za-z0-9]{0,60}$")) {
+				throw new com.mugsun.core.tool.exception.ServiceException("非法 Java 字段名：" + c.getJavaField());
+			}
+			if (c.getDictType() != null && !c.getDictType().isBlank()
+				&& !c.getDictType().matches("^[a-z][a-z0-9_]{0,60}$")) {
+				throw new com.mugsun.core.tool.exception.ServiceException("非法字典码：" + c.getDictType());
 			}
 		}
 	}

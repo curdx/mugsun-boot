@@ -55,17 +55,18 @@ public class ActuatorAuthFilter extends OncePerRequestFilter {
 		chain.doFilter(request, response);
 	}
 
-	/** 段感知匹配：/actuator/prometheus 与 /actuator/metrics/**（指标名路径段）均受控 */
+	/** fail-closed：/actuator/** 默认全部需登录+监控权限码，仅 health/info 公开白名单（G1 探活契约）——
+	 *  未来运维向 exposure.include 追加 env/heapdump 等敏感端点也不会裸奔 */
 	private boolean isGuarded(String uri) {
-		if (uri == null) {
+		if (uri == null || !uri.startsWith("/actuator")) {
 			return false;
 		}
-		for (String prefix : MonitorConstants.ACTUATOR_GUARDED) {
-			if (uri.equals(prefix) || uri.startsWith(prefix + "/")) {
-				return true;
+		for (String pub : MonitorConstants.ACTUATOR_PUBLIC) {
+			if (uri.equals(pub) || uri.startsWith(pub + "/")) {
+				return false;
 			}
 		}
-		return false;
+		return true;
 	}
 
 	private void write(HttpServletResponse response, int status, R<Void> body) throws IOException {

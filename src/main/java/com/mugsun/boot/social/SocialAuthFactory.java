@@ -26,12 +26,20 @@ public class SocialAuthFactory {
 	}
 
 	public AuthRequest getAuthRequest(String source) {
+		// 总开关：社交登录未启用时一切来源拒绝（修复 enabled 死开关）
+		if (!properties.isEnabled()) {
+			throw new ServiceException("第三方登录未启用");
+		}
 		String key = source == null ? "" : source.toLowerCase();
 		SocialProperties.ClientConfig cfg = properties.getType().get(key);
 		if (cfg == null) {
 			throw new ServiceException("不支持或未配置的第三方登录来源：" + source);
 		}
 		if ("mock".equals(key)) {
+			// mock provider 仅 dev 联调：身份固定，生产开启即后门，独立开关缺省关闭
+			if (!properties.isMockEnabled()) {
+				throw new ServiceException("mock 社交来源未启用");
+			}
 			AuthConfig authConfig = AuthConfig.builder()
 				.clientId(cfg.getClientId())
 				.clientSecret(cfg.getClientSecret())

@@ -35,24 +35,32 @@ public class WorkbenchController {
 		this.shortcutMapper = shortcutMapper;
 	}
 
-	/** 概览：统计卡计数 + 图表聚合数据 */
+	/** 概览：统计卡计数 + 图表聚合数据（按当前租户隔离；超管「查看全部」视图才给全平台口径） */
 	@GetMapping("/overview")
 	public R<Map<String, Object>> overview() {
+		String tenant = com.mugsun.boot.tenant.TenantContext.current();
 		Map<String, Object> data = new LinkedHashMap<>();
-		data.put("userCount", count("sys_user"));
-		data.put("deptCount", count("sys_dept"));
-		data.put("roleCount", count("sys_role"));
+		data.put("userCount", count("sys_user", tenant));
+		data.put("deptCount", count("sys_dept", tenant));
+		data.put("roleCount", count("sys_role", tenant));
 		data.put("todoCount", todoCount());
 		data.put("noticeUnread", noticeUnread());
 
 		Map<String, Object> charts = new LinkedHashMap<>();
 		// 白名单聚合 SQL（预置常量，杜绝注入），返回 [{name,value}]
-		charts.put("userStatus", Db.selectListBySql(
-			"SELECT CASE status WHEN 1 THEN '启用' ELSE '停用' END AS name, count(*) AS value "
-				+ "FROM sys_user WHERE is_deleted = 0 GROUP BY status ORDER BY status"));
-		charts.put("tenantUser", Db.selectListBySql(
-			"SELECT COALESCE(tenant_id, '未分配') AS name, count(*) AS value "
-				+ "FROM sys_user WHERE is_deleted = 0 GROUP BY tenant_id ORDER BY tenant_id"));
+		if (tenant == null) {
+			charts.put("userStatus", Db.selectListBySql(
+				"SELECT CASE status WHEN 1 THEN '启用' ELSE '停用' END AS name, count(*) AS value "
+					+ "FROM sys_user WHERE is_deleted = 0 GROUP BY status ORDER BY status"));
+			// 逐租户分布属平台级视图，仅超管「查看全部」可见（租户编号+规模为敏感运营数据）
+			charts.put("tenantUser", Db.selectListBySql(
+				"SELECT COALESCE(tenant_id, '未分配') AS name, count(*) AS value "
+					+ "FROM sys_user WHERE is_deleted = 0 GROUP BY tenant_id ORDER BY tenant_id"));
+		} else {
+			charts.put("userStatus", Db.selectListBySql(
+				"SELECT CASE status WHEN 1 THEN '启用' ELSE '停用' END AS name, count(*) AS value "
+					+ "FROM sys_user WHERE is_deleted = 0 AND tenant_id = ? GROUP BY status ORDER BY status", tenant));
+		}
 		data.put("charts", charts);
 		return R.data(data);
 	}
@@ -77,21 +85,31 @@ public class WorkbenchController {
 		return R.success("保存成功");
 	}
 
-	/** 逻辑未删计数（表名为常量字面量，非用户输入） */
-	private long count(String table) {
-		Row row = Db.selectOneBySql("select count(*) as c from " + table + " where is_deleted = 0");
+	/** 逻辑未删计数（表名为常量字面量，非用户输入）；tenant 非空时按租户过滤 */
+	private long count(String table, String tenant) {
+		Row row = tenant == null
+			? Db.selectOneBySql("select count(*) as c from " + table + " where is_deleted = 0")
+			: Db.selectOneBySql("select count(*) as c from " + table + " where is_deleted = 0 and tenant_id = ?", tenant);
 		return row == null ? 0 : row.getLong("c");
 	}
 
-	/** 我的待办数（与 FlowController.myTodo 同口径：按角色码/用户标识匹配办理人） */
+	/** 我的待办数（与 FlowController.myTodo 同口径：按角色码/用户标识匹配办理人 + 实例按发起人租户隔离） */
 	private long todoCount() {
 		List<String> flags = userFlags();
 		String in = flags.stream().map(f -> "?").collect(Collectors.joining(","));
+		String tenant = com.mugsun.boot.tenant.TenantContext.current();
+		List<Object> args = new ArrayList<>(flags);
+		String tenantSql = "";
+		if (tenant != null) {
+			tenantSql = " and i.create_by in (select cast(id as varchar) from sys_user where tenant_id = ? and is_deleted = 0)";
+			args.add(tenant);
+		}
 		Row row = Db.selectOneBySql(
 			"select count(*) as c from flow_task t "
 				+ "join flow_user u on u.associated = t.id and u.type = '1' and coalesce(u.del_flag, '0') <> '1' "
-				+ "where coalesce(t.del_flag, '0') <> '1' and u.processed_by in (" + in + ")",
-			flags.toArray());
+				+ "join flow_instance i on i.id = t.instance_id "
+				+ "where coalesce(t.del_flag, '0') <> '1' and u.processed_by in (" + in + ")" + tenantSql,
+			args.toArray());
 		return row == null ? 0 : row.getLong("c");
 	}
 

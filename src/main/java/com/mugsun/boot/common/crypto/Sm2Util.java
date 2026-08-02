@@ -17,6 +17,9 @@ public final class Sm2Util {
 
 	private static volatile String privateKeyHex;
 	private static volatile String publicKeyHex;
+	/** 审计签名密钥（与传输密钥分离；未独立注入时回退传输密钥） */
+	private static volatile String signPrivateKeyHex;
+	private static volatile String signPublicKeyHex;
 
 	private Sm2Util() {
 	}
@@ -25,6 +28,15 @@ public final class Sm2Util {
 	static void init(String privHex, String pubHex) {
 		privateKeyHex = privHex;
 		publicKeyHex = pubHex;
+		// 缺省回退：签名密钥跟随传输密钥
+		signPrivateKeyHex = privHex;
+		signPublicKeyHex = pubHex;
+	}
+
+	/** 审计签名密钥独立注入（与传输密钥生命周期解耦） */
+	static void initSign(String privHex, String pubHex) {
+		signPrivateKeyHex = privHex;
+		signPublicKeyHex = pubHex;
 	}
 
 	/** 生成一对 SM2 密钥（hex），[0]=私钥 d(64hex)、[1]=公钥 04+128hex 未压缩点 */
@@ -77,19 +89,19 @@ public final class Sm2Util {
 		throw new com.mugsun.core.tool.exception.ServiceException("SM2 密文无效");
 	}
 
-	/** SM2 私钥签名（对 hex 数据）→ 签名 hex，供审计记录防伪造 */
+	/** SM2 私钥签名（对 hex 数据）→ 签名 hex，供审计记录防伪造（用审计签名密钥，与传输解耦） */
 	public static String signHex(String dataHex) {
-		SM2 sm2 = SmUtil.sm2(privateKeyHex, publicKeyHex);
+		SM2 sm2 = SmUtil.sm2(signPrivateKeyHex, signPublicKeyHex);
 		return sm2.signHex(dataHex);
 	}
 
-	/** SM2 公钥验签（hex 数据 + hex 签名）→ 是否有效 */
+	/** SM2 公钥验签（hex 数据 + hex 签名）→ 是否有效（用审计签名密钥，与传输解耦） */
 	public static boolean verifyHex(String dataHex, String signHex) {
 		if (signHex == null || signHex.isBlank()) {
 			return false;
 		}
 		try {
-			SM2 sm2 = SmUtil.sm2(privateKeyHex, publicKeyHex);
+			SM2 sm2 = SmUtil.sm2(signPrivateKeyHex, signPublicKeyHex);
 			return sm2.verifyHex(dataHex, signHex);
 		} catch (Exception e) {
 			return false;

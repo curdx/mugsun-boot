@@ -45,22 +45,47 @@ public class HandlerSelectService {
 		return new ArrayList<>(ids);
 	}
 
-	/** 某角色码下全部用户 id */
+	/** 某角色码下全部用户 id（按当前租户收口：角色码跨租户同名，候选人解析不得跨租户派单） */
 	public List<String> byRole(String roleCode) {
+		String tenant = com.mugsun.boot.tenant.TenantContext.current();
+		if (tenant == null) {
+			return column("select u.id as \"v\" from sys_user u "
+				+ "join sys_user_role ur on ur.user_id = u.id and ur.is_deleted = 0 "
+				+ "join sys_role r on r.id = ur.role_id and r.is_deleted = 0 "
+				+ "where r.role_code = ? and u.is_deleted = 0", roleCode);
+		}
 		return column("select u.id as \"v\" from sys_user u "
 			+ "join sys_user_role ur on ur.user_id = u.id and ur.is_deleted = 0 "
 			+ "join sys_role r on r.id = ur.role_id and r.is_deleted = 0 "
-			+ "where r.role_code = ? and u.is_deleted = 0", roleCode);
+			+ "where r.role_code = ? and u.is_deleted = 0 and u.tenant_id = '" + tenantSql(tenant) + "'", roleCode);
 	}
 
-	/** 某部门下全部用户 id */
+	/** 某部门下全部用户 id（按当前租户收口） */
 	public List<String> byDept(String deptId) {
-		return column("select id as \"v\" from sys_user where dept_id = ? and is_deleted = 0", asLong(deptId));
+		String tenant = com.mugsun.boot.tenant.TenantContext.current();
+		if (tenant == null) {
+			return column("select id as \"v\" from sys_user where dept_id = ? and is_deleted = 0", asLong(deptId));
+		}
+		return column("select id as \"v\" from sys_user where dept_id = ? and is_deleted = 0 and tenant_id = '"
+			+ tenantSql(tenant) + "'", asLong(deptId));
 	}
 
-	/** 某岗位下全部用户 id */
+	/** 某岗位下全部用户 id（按当前租户收口） */
 	public List<String> byPost(String postId) {
-		return column("select id as \"v\" from sys_user where post_id = ? and is_deleted = 0", asLong(postId));
+		String tenant = com.mugsun.boot.tenant.TenantContext.current();
+		if (tenant == null) {
+			return column("select id as \"v\" from sys_user where post_id = ? and is_deleted = 0", asLong(postId));
+		}
+		return column("select id as \"v\" from sys_user where post_id = ? and is_deleted = 0 and tenant_id = '"
+			+ tenantSql(tenant) + "'", asLong(postId));
+	}
+
+	/** 租户号转义（仅容许字母数字，防注入；租户号由服务端会话解析非用户输入） */
+	private String tenantSql(String tenant) {
+		if (!tenant.matches("^[A-Za-z0-9]+$")) {
+			throw new IllegalStateException("非法租户号");
+		}
+		return tenant;
 	}
 
 	/** 某用户所在部门的负责人 id（sys_dept.leader_id） */

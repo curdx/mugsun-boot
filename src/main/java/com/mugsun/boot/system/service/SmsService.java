@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Random;
@@ -31,17 +32,23 @@ public class SmsService {
 
 	private static final Logger log = LoggerFactory.getLogger(SmsService.class);
 
+	/** 发送节流锁键前缀（同号 60s 一码） */
+	private static final String THROTTLE_KEY = "mugsun:sms:throttle:";
+
 	private final SysSmsCodeMapper smsCodeMapper;
 	private final SysSmsMapper smsMapper;
+	private final org.springframework.data.redis.core.StringRedisTemplate redis;
 	private final Random random = new Random();
 
 	/** 开发环境回显验证码（生产须 false） */
-	@Value("${mugsun.sms.show-code:true}")
+	@Value("${mugsun.sms.show-code:false}")
 	private boolean showCode;
 
-	public SmsService(SysSmsCodeMapper smsCodeMapper, SysSmsMapper smsMapper) {
+	public SmsService(SysSmsCodeMapper smsCodeMapper, SysSmsMapper smsMapper,
+					  org.springframework.data.redis.core.StringRedisTemplate redis) {
 		this.smsCodeMapper = smsCodeMapper;
 		this.smsMapper = smsMapper;
+		this.redis = redis;
 	}
 
 	/** 是否回显验证码（开发便于联调，生产关闭） */
@@ -56,8 +63,13 @@ public class SmsService {
 		return rec == null ? null : rec.getCode();
 	}
 
-	/** 发送验证码：生成 6 位码落库，按启用短信配置下发，未就绪则降级日志 */
+	/** 发送验证码：同号 60s 节流（防短信轰炸），发新作废旧码（任意时刻仅一码有效） */
 	public void sendCode(String phone) {
+		Boolean first = redis.opsForValue().setIfAbsent(THROTTLE_KEY + phone, "1", Duration.ofSeconds(60));
+		if (!Boolean.TRUE.equals(first)) {
+			throw new ServiceException("发送过于频繁，请 60 秒后再试");
+		}
+		smsCodeMapper.deleteByQuery(QueryWrapper.create().eq("phone", phone));
 		String code = String.valueOf(100000 + random.nextInt(900000));
 		SysSmsCode entity = new SysSmsCode();
 		entity.setPhone(phone);

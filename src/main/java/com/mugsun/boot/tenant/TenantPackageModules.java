@@ -64,6 +64,7 @@ public final class TenantPackageModules {
 		"/system/flow/history",
 		"/system/notice/my",
 		"/system/notice/read",
+		"/system/feedback/submit",
 		"/system/message/my",
 		"/system/message/recent",
 		"/system/message/unread-count",
@@ -72,12 +73,55 @@ public final class TenantPackageModules {
 		"/system/message/remove"
 	);
 
-	/** 平台超管专属路径（租户/套餐/数据源/服务监控管理），非平台租户访问一律拒绝 */
+	/**
+	 * 平台超管专属路径（全方法）：平台级基础设施与全局配置的管理面，非平台超管访问一律拒绝。
+	 * 判定依据：表无 tenant_id（平台全局）或资源属平台基础设施（会话/存储/缓存/调度/密钥），
+	 * 租户管理员持通配 {@code *} 亦不得触达（生产安全红线，对抗审查实证类）。
+	 */
 	private static final List<String> PLATFORM_ONLY_PREFIXES = List.of(
 		"/system/tenant",
 		"/system/tenant-package",
 		"/system/tenant-datasource",
-		"/system/monitor"
+		"/system/monitor",
+		// 平台基础设施
+		"/system/online",
+		"/system/oss",
+		"/system/cache",
+		"/system/job",
+		"/system/api-key",
+		"/system/client",
+		"/system/sms",
+		// 平台全局配置（表无 tenant_id）
+		"/system/notify",
+		"/system/mail-template",
+		"/system/message-template",
+		"/system/report",
+		"/system/data-audit",
+		"/system/oauth-log",
+		// 演示端点（平台级演示，非租户功能）
+		"/system/crypto",
+		"/system/repeat",
+		// 流程定义设计器（平台级定义；运行时 my-todo/history/task 等个人端点不受影响）
+		"/system/flow/definitions",
+		"/system/flow/deploy",
+		"/system/flow/design",
+		"/system/flow/design-graph",
+		"/system/flow/definition",
+		// 反馈管理面（个人提交 /system/feedback/submit 不受影响）
+		"/system/feedback/page",
+		"/system/feedback/detail",
+		"/system/feedback/status",
+		"/system/feedback/remove"
+	);
+
+	/**
+	 * 平台超管专属「写」路径：GET 只读放行（租户管理员授权 UI/字典运行时依赖菜单树等只读数据），
+	 * 非 GET 写请求仅平台超管——sys_menu/sys_dict/sys_param 为平台全局表，租户不得改写。
+	 */
+	private static final List<String> PLATFORM_WRITE_PREFIXES = List.of(
+		"/system/menu",
+		"/system/dict",
+		"/system/param"
 	);
 
 	private TenantPackageModules() {
@@ -86,6 +130,11 @@ public final class TenantPackageModules {
 	/** 是否平台超管专属路径 */
 	public static boolean isPlatformOnly(String path) {
 		return matchesAny(path, PLATFORM_ONLY_PREFIXES);
+	}
+
+	/** 是否平台超管专属「写」路径（GET 只读放行，写操作仅平台超管） */
+	public static boolean isPlatformWrite(String path) {
+		return matchesAny(path, PLATFORM_WRITE_PREFIXES);
 	}
 
 	/**

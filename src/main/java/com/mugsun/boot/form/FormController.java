@@ -31,12 +31,14 @@ public class FormController {
 	}
 
 	@GetMapping("/page")
+	@cn.dev33.satoken.annotation.SaCheckPermission("sys:form:list")
 	public R<Page<SysForm>> page(@RequestParam(defaultValue = "1") long pageNum,
 								 @RequestParam(defaultValue = "10") long pageSize) {
-		return R.data(formMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("id", false)));
+		return R.data(formMapper.paginate(pageNum, Math.min(pageSize, 500), QueryWrapper.create().orderBy("id", false)));
 	}
 
 	@GetMapping("/detail")
+	@cn.dev33.satoken.annotation.SaCheckPermission("sys:form:list")
 	public R<SysForm> detail(@RequestParam Long id) {
 		return R.data(formMapper.selectOneById(id));
 	}
@@ -92,12 +94,15 @@ public class FormController {
 		return R.success("提交成功");
 	}
 
-	/** 填报记录 */
+	/** 填报记录：按填报人收口（管理侧经 form 管理权限看全量，普通用户仅见本人填报） */
 	@GetMapping("/data/{formKey}")
 	public R<Page<SysFormData>> data(@PathVariable String formKey,
 									 @RequestParam(defaultValue = "1") long pageNum,
 									 @RequestParam(defaultValue = "10") long pageSize) {
-		return R.data(formDataMapper.paginate(pageNum, pageSize,
-			QueryWrapper.create().eq("form_key", formKey).orderBy("id", false)));
+		QueryWrapper query = QueryWrapper.create().eq("form_key", formKey).orderBy("id", false);
+		if (!StpUtil.hasPermission("sys:form:list")) {
+			query.and("submitter = ?", StpUtil.getLoginIdAsLong());
+		}
+		return R.data(formDataMapper.paginate(pageNum, Math.min(pageSize, 500), query));
 	}
 }

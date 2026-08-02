@@ -44,7 +44,7 @@ public class ApiLogController {
 		if (uri != null && !uri.isBlank()) {
 			query.and("request_uri like ?", "%" + uri + "%");
 		}
-		return R.data(apiLogMapper.paginate(pageNum, pageSize, query));
+		return R.data(apiLogMapper.paginate(pageNum, Math.min(pageSize, 500), query));
 	}
 
 	@GetMapping("/detail")

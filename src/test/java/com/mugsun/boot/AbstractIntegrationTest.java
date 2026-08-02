@@ -32,7 +32,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>数据全部落在容器随机端口，绝不触达本机 5432/6379 的开发环境。
  * <p>复刻前端真实登录链路：取验证码（开发回显）→ 取 SM2 公钥 → sm-crypto 同构加密（C1C3C2、无 04 前缀）→ 登录换 token。
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+	properties = {
+		// 测试链路复刻前端真实登录：验证码/短信码回显仅测试环境开启（生产配置恒 false）
+		"mugsun.captcha.show-code=true",
+		"mugsun.sms.show-code=true",
+		"mugsun.crypto.sm4-key=mugsun-test-sm4k16",
+		"mugsun.crypto.api-key=mugsun-test-apk16"
+	})
 public abstract class AbstractIntegrationTest {
 
 	/** 平台超管租户编号 */

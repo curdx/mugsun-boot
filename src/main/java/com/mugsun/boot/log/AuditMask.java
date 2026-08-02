@@ -13,8 +13,11 @@ import java.util.regex.Pattern;
 public final class AuditMask {
 
 	private static final int MAX_LEN = 2000;
+	// 名单与 ApiParamMask 同源：密码/密钥/令牌/凭据类 + PII（手机号/身份证）+ 验证码类（一次性码亦不落明文）
 	private static final String SENSITIVE_KEYS = "password|oldPassword|newPassword|dsPassword|pwd|passwd|"
-		+ "secret|clientSecret|apiKey|accessToken|refreshToken|token|credential|credentials|privateKey|sign";
+		+ "secret|clientSecret|client_secret|apiKey|accessToken|access_token|refreshToken|refresh_token|"
+		+ "token|credential|credentials|privateKey|sign|"
+		+ "phone|mobile|idCard|idcard|id_card|code|smsCode|captchaCode|captcha_code";
 	private static final Pattern MASK = Pattern.compile(
 		"(?i)(\"(?:" + SENSITIVE_KEYS + ")\"\\s*:\\s*)\"[^\"]*\"");
 

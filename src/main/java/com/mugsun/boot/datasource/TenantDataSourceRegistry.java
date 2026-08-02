@@ -65,15 +65,17 @@ public class TenantDataSourceRegistry {
 			try {
 				register(cfg);
 			} catch (Exception e) {
-				log.warn("租户数据源 {} 注册失败（探活未通过），跳过：{}", cfg.getTenantCode(), e.getMessage());
+				// 启用但未注册成功：该租户将静默回落主库（数据分裂面），error 级告警要求运维介入
+				log.error("租户数据源 {} 注册失败（探活未通过），该租户请求将回落主库：{}", cfg.getTenantCode(), e.getMessage());
 			}
 		}
 		log.info("租户独立数据源加载完成，共 {} 个", activeTenants.size());
 	}
 
 	/**
-	 * 一次性回填：把存量明文密码重加密为 SM4 密文（读原始列绕过 TypeHandler，
-	 * 用 {@code encrypt(decrypt(raw)) != raw} 判定明文——密文自解自加还原、明文则不等，仅明文行被改写，幂等）。
+	 * 一次性回填：把存量明文密码重加密为 SM4 密文。
+	 * 仅以「密文形态」判定（合法 Base64 且分组整数倍）：密文形态的行一律不动——
+	 * 旧启发式 encrypt(decrypt(raw))!=raw 在密钥失配时会给密文逐层包裹（洋葱加密）永久毁数据，已废弃。
 	 */
 	private void encryptLegacyPasswords() {
 		try {
@@ -81,11 +83,11 @@ public class TenantDataSourceRegistry {
 				Db.selectListBySql("SELECT id, ds_password FROM sys_tenant_datasource WHERE is_deleted = 0"));
 			for (Row r : rows) {
 				String raw = r.getString("ds_password");
-				if (raw == null || raw.isEmpty()) {
+				if (raw == null || raw.isEmpty() || Sm4Util.looksLikeCipher(raw)) {
 					continue;
 				}
-				String cipher = Sm4Util.encrypt(Sm4Util.decrypt(raw));
-				if (cipher != null && !cipher.equals(raw)) {
+				String cipher = Sm4Util.encrypt(raw);
+				if (cipher != null) {
 					TenantContext.ignore(() -> Db.updateBySql(
 						"UPDATE sys_tenant_datasource SET ds_password = ? WHERE id = ?", cipher, r.get("id")));
 					log.info("回填加密租户数据源密码：id={}", r.get("id"));

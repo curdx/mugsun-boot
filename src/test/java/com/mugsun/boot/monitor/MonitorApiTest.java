@@ -211,15 +211,16 @@ class MonitorApiTest extends AbstractIntegrationTest {
 		assertThat(after.getHandleUser()).isNotBlank();
 		assertThat(after.getHandleTime()).isNotNull();
 
-		// 1 → 2（已忽略）
+		// 已处理记录不可被重复认领覆盖（乐观流转：仅待处理可认领）
 		done.put("status", MonitorConstants.ERROR_STATUS_IGNORED);
 		done.put("note", "重复异常忽略");
-		assertThat(readBody(post("/system/error-log/handle", done, adminToken)).path("code").asInt()).isEqualTo(200);
+		assertThat(readBody(post("/system/error-log/handle", done, adminToken)).path("code").asInt())
+			.isNotEqualTo(200);
 		SysErrorLog ignored = TenantContext.ignore(() -> errorLogMapper.selectOneById(boomErrorId));
-		assertThat(ignored.getStatus()).isEqualTo(MonitorConstants.ERROR_STATUS_IGNORED);
+		assertThat(ignored.getStatus()).isEqualTo(MonitorConstants.ERROR_STATUS_DONE);
 
-		// 管理端分页可按状态过滤
-		JsonNode page = readBody(get("/system/error-log/page?pageNum=1&pageSize=10&status=2", adminToken));
+		// 管理端分页可按状态过滤（认领后 status=1 可见）
+		JsonNode page = readBody(get("/system/error-log/page?pageNum=1&pageSize=10&status=1", adminToken));
 		assertThat(page.path("code").asInt()).isEqualTo(200);
 		assertThat(page.path("data").path("totalRow").asLong()).isGreaterThanOrEqualTo(1);
 	}
@@ -263,9 +264,14 @@ class MonitorApiTest extends AbstractIntegrationTest {
 		String token = loginAdmin();
 		JsonNode list = readBody(get("/system/online/list", token));
 		assertThat(list.path("code").asInt()).isEqualTo(200);
+		// 安全红线：tokenValue 永不下发明文（仅 tokenMask 展示）
+		for (JsonNode row : list.path("data")) {
+			assertThat(row.has("tokenValue")).isFalse();
+		}
 		JsonNode mine = null;
 		for (JsonNode row : list.path("data")) {
-			if (token.equals(row.path("tokenValue").asText())) {
+			if ("admin".equals(row.path("username").asText())
+				&& "127.0.0.1".equals(row.path("ip").asText())) {
 				mine = row;
 				break;
 			}
@@ -298,7 +304,9 @@ class MonitorApiTest extends AbstractIntegrationTest {
 		LocalDateTime expired = LocalDateTime.now().minusDays(40);
 		Db.updateBySql("UPDATE sys_api_log SET create_time = ? WHERE id = ?", expired, oldApi.getId());
 		Db.updateBySql("UPDATE sys_error_log SET create_time = ? WHERE id = ?", expired, oldError.getId());
-		Db.updateBySql("UPDATE sys_oper_log SET create_time = ? WHERE id = ?", expired, oldOper.getId());
+		// oper_log 保留期独立于 api/error（默认 180 天，等保留证）：40 天应保留，200 天才清理
+		Db.updateBySql("UPDATE sys_oper_log SET create_time = ? WHERE id = ?",
+			LocalDateTime.now().minusDays(200), oldOper.getId());
 
 		logCleanJob.cleanExpired();
 

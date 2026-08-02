@@ -33,10 +33,16 @@ public class FeedbackController {
 		if (feedback.getContent() == null || feedback.getContent().isBlank()) {
 			throw new ServiceException("反馈内容不能为空");
 		}
+		// 附件地址仅允许 http(s)（管理端以裸 href 渲染，javascript: 伪协议即存储型 XSS 钓管理员）
+		if (feedback.getAttachUrl() != null && !feedback.getAttachUrl().isBlank()
+			&& !feedback.getAttachUrl().startsWith("http://") && !feedback.getAttachUrl().startsWith("https://")) {
+			throw new ServiceException("附件地址不合法");
+		}
 		// 提交人与状态由服务端定，忽略客户端 id
 		feedback.setId(null);
 		feedback.setUserId(StpUtil.getLoginIdAsLong());
 		feedback.setStatus(0);
+		feedback.sanitizeForInsert();
 		feedbackMapper.insertSelective(feedback);
 		return R.success("提交成功");
 	}

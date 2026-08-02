@@ -21,6 +21,7 @@ import com.mugsun.boot.tenant.TenantContext;
 import com.mugsun.boot.websocket.WsFrame;
 import com.mugsun.boot.websocket.WsMessageSender;
 import com.mugsun.core.tool.api.R;
+import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.row.Db;
@@ -81,24 +82,26 @@ public class SysNoticeController {
 		return R.data(noticeMapper.paginate(pageNum, pageSize, query));
 	}
 
-	/** 置顶公告列表 */
+	/** 置顶公告列表（非管理端用户同样按可见范围过滤，防定向公告标题经 top 旁路泄露） */
 	@GetMapping("/top")
 	public R<List<SysNotice>> top() {
-		return R.data(noticeMapper.selectListByQuery(
-			QueryWrapper.create().eq("is_top", 1).orderBy("id", false)));
+		QueryWrapper query = QueryWrapper.create().eq("is_top", 1).orderBy("id", false);
+		applyVisibleScope(query);
+		return R.data(noticeMapper.selectListByQuery(query));
 	}
 
-	/** 详情：附可见范围明细（回显穿梭框） */
+	/** 详情：附可见范围明细（回显穿梭框）；非管理端越范围访问按不存在处理（防遍历 id 读定向公告） */
 	@GetMapping("/detail")
 	public R<SysNotice> detail(@RequestParam Long id) {
 		SysNotice notice = noticeMapper.selectOneById(id);
-		if (notice != null) {
-			notice.setScopeList(scopeMapper
-				.selectListByQuery(QueryWrapper.create().eq("notice_id", id))
-				.stream()
-				.map(s -> new SysNotice.NoticeScopeItem(s.getScopeType(), s.getScopeId()))
-				.toList());
+		if (notice == null || !visibleToMe(id)) {
+			return R.data(null);
 		}
+		notice.setScopeList(scopeMapper
+			.selectListByQuery(QueryWrapper.create().eq("notice_id", id))
+			.stream()
+			.map(s -> new SysNotice.NoticeScopeItem(s.getScopeType(), s.getScopeId()))
+			.toList());
 		return R.data(notice);
 	}
 
@@ -110,9 +113,21 @@ public class SysNoticeController {
 		if (notice.getAllVisible() == null) {
 			notice.setAllVisible(1);
 		}
+		// 租户归属服务端裁定：新增置 null 交 Flex 填当前租户；更新以库内存量行为准（防请求体伪造 tenantId 跨租户注入公告/广播）
+		String authoritativeTenant;
 		if (notice.getId() == null) {
+			notice.sanitizeForInsert();
+			notice.setTenantId(null);
 			noticeMapper.insertSelective(notice);
+			authoritativeTenant = notice.getTenantId();
 		} else {
+			SysNotice exist = noticeMapper.selectOneById(notice.getId());
+			if (exist == null) {
+				throw new ServiceException("公告不存在");
+			}
+			authoritativeTenant = exist.getTenantId();
+			notice.sanitizeForUpdate();
+			notice.setTenantId(null);
 			noticeMapper.update(notice);
 		}
 		Long noticeId = notice.getId();
@@ -128,7 +143,7 @@ public class SysNoticeController {
 		}
 		// 实时推送仅覆盖全员可见公告：指定范围公告不推（避免标题泄露给范围外用户），由前端轮询未读数兜底
 		if (Integer.valueOf(1).equals(notice.getAllVisible())) {
-			pushNoticeNew(notice);
+			pushNoticeNew(notice, authoritativeTenant);
 		}
 		return R.success("操作成功");
 	}
@@ -167,24 +182,21 @@ public class SysNoticeController {
 		if (category != null && !category.isBlank()) {
 			query.eq("category", category);
 		}
-		if (!StpUtil.hasPermission(PERM_MANAGE)) {
-			Long userId = StpUtil.getLoginIdAsLong();
-			Long deptId = deptIdOf(userId);
-			query.and("(all_visible = 1 or id in (select notice_id from sys_notice_scope "
-				+ "where is_deleted = 0 and ((scope_type = 1 and scope_id = ?) or (scope_type = 2 and scope_id = ?))))",
-				userId, deptId == null ? -1L : deptId);
-		}
+		applyVisibleScope(query);
 		query.orderBy("is_top", false).orderBy("id", false);
-		Page<SysNotice> page = noticeMapper.paginate(pageNum, pageSize, query);
+		Page<SysNotice> page = noticeMapper.paginate(pageNum, Math.min(pageSize, 500), query);
 		fillReadFlag(page.getRecords());
 		return R.data(page);
 	}
 
-	/** 标记已读（幂等 upsert）：首读 view_uv+1，每读 view_pv+1、read_count+1 */
+	/** 标记已读（幂等 upsert）：首读 view_uv+1，每读 view_pv+1、read_count+1；通知须存在且当前用户可见 */
 	@PostMapping("/read/{noticeId}")
 	@Transactional(rollbackFor = Exception.class)
 	public R<Void> read(@PathVariable Long noticeId) {
 		Long userId = StpUtil.getLoginIdAsLong();
+		if (!visibleToMe(noticeId)) {
+			throw new ServiceException("通知不存在");
+		}
 		// 原子 upsert，RETURNING xmax=0 精确区分「首次插入」与「已存在再读」，据此累计 UV
 		Row row = Db.selectOneBySql(
 			"insert into sys_notice_read (id, notice_id, user_id, read_count, first_time, last_time, create_time, update_time, is_deleted) "
@@ -203,23 +215,53 @@ public class SysNoticeController {
 	@GetMapping("/my/unread-count")
 	public R<Long> myUnreadCount() {
 		Long userId = StpUtil.getLoginIdAsLong();
-		Long deptId = deptIdOf(userId);
 		QueryWrapper query = QueryWrapper.create();
-		if (!StpUtil.hasPermission(PERM_MANAGE)) {
-			query.and("(all_visible = 1 or id in (select notice_id from sys_notice_scope "
-				+ "where is_deleted = 0 and ((scope_type = 1 and scope_id = ?) or (scope_type = 2 and scope_id = ?))))",
-				userId, deptId == null ? -1L : deptId);
-		}
+		applyVisibleScope(query);
 		query.and("id not in (select notice_id from sys_notice_read where is_deleted = 0 and user_id = ?)", userId);
 		return R.data(noticeMapper.selectCountByQuery(query));
 	}
 
 	// ============ 内部工具 ============
 
-	/** 公告实时推送：本方法在事务内被调用，注册提交后推送；推送失败不影响主流程 */
-	private void pushNoticeNew(SysNotice notice) {
-		// 更新场景入参可能不带租户编号，回退当前会话租户；仍无（超管查看全部租户）则跳过
-		String tenantId = notice.getTenantId() != null ? notice.getTenantId() : TenantContext.current();
+	/** 可见范围条件（非管理端）：all_visible=1 或命中本人/本部门范围；管理端不附加 */
+	private void applyVisibleScope(QueryWrapper query) {
+		if (StpUtil.hasPermission(PERM_MANAGE)) {
+			return;
+		}
+		Long userId = StpUtil.getLoginIdAsLong();
+		Long deptId = deptIdOf(userId);
+		query.and("(all_visible = 1 or id in (select notice_id from sys_notice_scope "
+			+ "where is_deleted = 0 and ((scope_type = 1 and scope_id = ?) or (scope_type = 2 and scope_id = ?))))",
+			userId, deptId == null ? -1L : deptId);
+	}
+
+	/** 当前用户是否可见该通知（存在 + 租户内 + 可见范围）；管理端恒可见 */
+	private boolean visibleToMe(Long noticeId) {
+		if (noticeId == null) {
+			return false;
+		}
+		SysNotice notice = noticeMapper.selectOneById(noticeId);
+		if (notice == null) {
+			return false;
+		}
+		if (StpUtil.hasPermission(PERM_MANAGE)) {
+			return true;
+		}
+		if (Integer.valueOf(1).equals(notice.getAllVisible())) {
+			return true;
+		}
+		Long userId = StpUtil.getLoginIdAsLong();
+		Long deptId = deptIdOf(userId);
+		return scopeMapper.selectCountByQuery(QueryWrapper.create().eq("notice_id", noticeId)
+			.and("((scope_type = 1 and scope_id = ?) or (scope_type = 2 and scope_id = ?))",
+				userId, deptId == null ? -1L : deptId)) > 0;
+	}
+
+	/** 公告实时推送：本方法在事务内被调用，注册提交后推送；推送失败不影响主流程。
+	 *  租户以落库权威值为准（不信任请求体），防跨租户广播注入。 */
+	private void pushNoticeNew(SysNotice notice, String authoritativeTenant) {
+		// 无权威租户（超管查看全部租户的边界场景）则跳过
+		String tenantId = authoritativeTenant != null ? authoritativeTenant : TenantContext.current();
 		if (tenantId == null) {
 			return;
 		}

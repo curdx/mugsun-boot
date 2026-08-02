@@ -78,7 +78,8 @@ public class MailNotifyChannel implements MessageChannel {
 				if (!fp.equals(fingerprint)) {
 					this.sender = build(cfg);
 					this.fingerprint = fp;
-					log.info("邮件渠道发送器已按配置重建 fp={}", fp.replaceAll(":[^:]*$", ":***"));
+					// 指纹为 host|port|username|secret 竖线分隔：只脱敏末段 secret，勿整串落明文密码
+					log.info("邮件渠道发送器已按配置重建 fp={}", fp.replaceAll("\\|[^|]*$", "|***"));
 				}
 			}
 		}

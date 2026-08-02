@@ -65,6 +65,7 @@ public class GenController {
 
 	/** 已导入的表配置列表 */
 	@GetMapping("/list")
+	@SaCheckPermission("sys:gen:list")
 	public R<List<GenTable>> list() {
 		return R.data(metaService.list());
 	}
@@ -79,6 +80,7 @@ public class GenController {
 
 	/** 读取某表元数据配置（表级 + 字段级） */
 	@GetMapping("/meta")
+	@SaCheckPermission("sys:gen:list")
 	public R<Map<String, Object>> meta(@RequestParam Long tableId) {
 		return R.data(metaService.config(tableId));
 	}

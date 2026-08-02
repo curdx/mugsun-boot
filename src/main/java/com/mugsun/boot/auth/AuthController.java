@@ -46,6 +46,8 @@ public class AuthController {
 	private final com.mugsun.boot.client.ClientService clientService;
 	private final com.mugsun.boot.tenant.TenantValidator tenantValidator;
 	private final com.mugsun.boot.common.crypto.GmCryptoConfig gmCryptoConfig;
+	private final com.mugsun.boot.social.SocialProperties socialProperties;
+	private final com.mugsun.boot.websocket.WsMessageSender wsMessageSender;
 
 	public AuthController(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
 						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper,
@@ -58,7 +60,9 @@ public class AuthController {
 						  com.mugsun.boot.tenant.mapper.SysTenantPackageMapper tenantPackageMapper,
 						  com.mugsun.boot.client.ClientService clientService,
 						  com.mugsun.boot.tenant.TenantValidator tenantValidator,
-						  com.mugsun.boot.common.crypto.GmCryptoConfig gmCryptoConfig) {
+						  com.mugsun.boot.common.crypto.GmCryptoConfig gmCryptoConfig,
+						  com.mugsun.boot.social.SocialProperties socialProperties,
+						  com.mugsun.boot.websocket.WsMessageSender wsMessageSender) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
@@ -73,6 +77,8 @@ public class AuthController {
 		this.clientService = clientService;
 		this.tenantValidator = tenantValidator;
 		this.gmCryptoConfig = gmCryptoConfig;
+		this.socialProperties = socialProperties;
+		this.wsMessageSender = wsMessageSender;
 	}
 
 	/** SM2 传输公钥：前端登录/改密/注册前取此公钥加密密码；gmEnabled=false 时前端明文传输 */
@@ -93,6 +99,23 @@ public class AuthController {
 		return com.mugsun.boot.common.crypto.Sm2Util.decrypt(raw);
 	}
 
+	/** 登录通道统一闸门：停用账号（status≠1）禁止一切方式登录并留痕（停用=封号，与踢会话联动） */
+	private void assertUserLoginable(SysUser user, String username, HttpServletRequest request, String clientId) {
+		if (user.getStatus() == null || user.getStatus() != 1) {
+			saveLoginLog(username, request, clientId, user.getTenantId(), 0, "账号已停用");
+			throw new ServiceException("账号已停用，请联系管理员");
+		}
+	}
+
+	/** SM2 解密归一化：解密失败（明文/坏密文/格式错）一律报中性参数错误，不暴露密文内部细节 */
+	private String decodePasswordNormalized(String raw) {
+		try {
+			return decodePassword(raw);
+		} catch (Exception e) {
+			throw new ServiceException("请求参数无效");
+		}
+	}
+
 	/** 图形验证码：生成一张，答案入 Redis */
 	@GetMapping("/captcha")
 	public R<CaptchaVO> captcha() {
@@ -111,14 +134,10 @@ public class AuthController {
 		if (Integer.valueOf(1).equals(client.getCaptchaEnabled())) {
 			captchaService.verify(dto.getCaptchaUuid(), dto.getCaptchaCode());
 		}
-		loginLockService.assertNotLocked(username);
 		String tenantId = (dto.getTenantId() == null || dto.getTenantId().isBlank()) ? TenantConstants.DEFAULT_TENANT_ID : dto.getTenantId();
-		// 登录层租户生命周期校验：停用/过期/不存在的租户禁止登录（平台租户 000000 短路放行）
-		String tenantInvalid = tenantValidator.validate(tenantId);
-		if (tenantInvalid != null) {
-			saveLoginLog(username, request, client.getClientId(), tenantId, 0, tenantInvalid);
-			throw new ServiceException(tenantInvalid);
-		}
+		// 锁定按「租户+账号」维度：多租户同名账号（各租户 admin）独立计数，防跨租户连锁锁死
+		String lockKey = loginLockService.keyOf(tenantId, username);
+		loginLockService.assertNotLocked(lockKey);
 		SysUser user = TenantContext.ignore(() ->
 			userMapper.selectOneByQuery(QueryWrapper.create().eq("tenant_id", tenantId).eq("username", username)));
 		String rawPassword;
@@ -129,14 +148,22 @@ public class AuthController {
 			rawPassword = null;
 		}
 		if (user == null || rawPassword == null || !passwordEncoder.matches(rawPassword, user.getPassword())) {
-			loginLockService.recordFail(username);
+			loginLockService.recordFail(lockKey);
 			saveLoginLog(username, request, client.getClientId(), tenantId, 0, "账号或密码错误");
 			throw new ServiceException("账号或密码错误");
 		}
-		loginLockService.clear(username);
+		// 租户生命周期校验后置（密码通过后才判定），避免「租户不存在/停用」成为租户枚举预言机
+		String tenantInvalid = tenantValidator.validate(tenantId);
+		if (tenantInvalid != null) {
+			saveLoginLog(username, request, client.getClientId(), tenantId, 0, tenantInvalid);
+			throw new ServiceException(tenantInvalid);
+		}
+		// 停用账号禁止登录（停用=封号语义，全通道统一）
+		assertUserLoginable(user, username, request, client.getClientId());
+		loginLockService.clear(lockKey);
 		// 双因子登录（默认关闭）：密码通过后下发二次验证码，暂不发 token
 		if (twoFactorService.isEnabled()) {
-			String[] challenge = twoFactorService.challenge(user.getId(), null);
+			String[] challenge = twoFactorService.challenge(user.getId(), twoFactorContact(user));
 			saveLoginLog(username, request, client.getClientId(), user.getTenantId(), 1, "登录待二次验证");
 			java.util.Map<String, Object> resp = new java.util.HashMap<>();
 			resp.put("twoFactorRequired", true);
@@ -178,11 +205,22 @@ public class AuthController {
 	public R<Map<String, Object>> twoFactor(@RequestBody Map<String, String> body, HttpServletRequest request) {
 		Long userId = twoFactorService.verify(body.get("twoFactorToken"), body.get("code"));
 		SysUser user = TenantContext.ignore(() -> userMapper.selectOneById(userId));
+		assertUserLoginable(user, user.getUsername(), request, ClientConstants.DEFAULT_CLIENT_ID);
 		StpUtil.login(userId, new cn.dev33.satoken.stp.parameter.SaLoginParameter()
 			.setTerminalExtra(MonitorConstants.TERMINAL_EXTRA_IP, request.getRemoteAddr())
 			.setTerminalExtra(MonitorConstants.TERMINAL_EXTRA_UA, truncateUa(request)));
 		StpUtil.getSession().set(TenantContext.TENANT_SESSION_KEY, user.getTenantId());
+		saveLoginLog(user.getUsername(), request, ClientConstants.DEFAULT_CLIENT_ID, user.getTenantId(), 1, "双因子登录成功");
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
+	}
+
+	/** 双因子收件地址解析：sms 渠道取手机号，其余取邮箱（V53 起 sys_user 有 email 列） */
+	private String twoFactorContact(SysUser user) {
+		String channel = securityPolicyService.getTwoFactorChannel();
+		if ("sms".equals(channel)) {
+			return user.getPhone();
+		}
+		return user.getEmail();
 	}
 
 	/** 自助注册：用户名唯一 + BCrypt + 默认租户，建号后可登录 */
@@ -192,8 +230,14 @@ public class AuthController {
 			|| dto.getPassword() == null || dto.getPassword().isBlank()) {
 			throw new ServiceException("用户名和密码不能为空");
 		}
-		// 传输密码 SM2 解密（国密开关开启时），后续校验/落库用明文
-		String rawPassword = decodePassword(dto.getPassword());
+		// 图形验证码前置（防批量注册/手机号冒注）
+		captchaService.verify(dto.getCaptchaUuid(), dto.getCaptchaCode());
+		// 手机号格式校验（短信登录按号取人，脏号即冒注/混淆面）
+		if (dto.getPhone() != null && !dto.getPhone().isBlank() && !dto.getPhone().matches("^1\\d{10}$")) {
+			throw new ServiceException("手机号格式不正确");
+		}
+		// 传输密码 SM2 解密（国密开关开启时），解密失败归一为参数无效（不暴露密文细节）
+		String rawPassword = decodePasswordNormalized(dto.getPassword());
 		// 等保密码复杂度校验（min-length + 大小写/数字/特殊字符组合，策略可后台改）
 		securityPolicyService.validateComplexity(rawPassword);
 		String tenantId = TenantConstants.DEFAULT_TENANT_ID;
@@ -240,18 +284,20 @@ public class AuthController {
 		// 图形验证码前置（等保：短信登录也需图形码，防短信轰炸/枚举）
 		captchaService.verify(body.get("captchaUuid"), body.get("captchaCode"));
 		// 纳入失败锁定（按手机号维度）
-		loginLockService.assertNotLocked(phone);
+		String lockKey = loginLockService.keyOf("phone", phone);
+		loginLockService.assertNotLocked(lockKey);
 		if (!smsService.verifyCode(phone, code)) {
-			loginLockService.recordFail(phone);
+			loginLockService.recordFail(lockKey);
 			saveLoginLog(phone, request, ClientConstants.DEFAULT_CLIENT_ID, TenantConstants.DEFAULT_TENANT_ID, 0, "短信验证码错误");
-			throw new ServiceException("验证码错误或已过期");
+			throw new ServiceException("手机号或验证码错误");
 		}
 		SysUser user = TenantContext.ignore(() ->
 			userMapper.selectOneByQuery(QueryWrapper.create().eq("phone", phone).orderBy("id", false)));
+		// 话术归一：未注册/其他失败同质，防手机号枚举
 		if (user == null) {
-			loginLockService.recordFail(phone);
+			loginLockService.recordFail(lockKey);
 			saveLoginLog(phone, request, ClientConstants.DEFAULT_CLIENT_ID, TenantConstants.DEFAULT_TENANT_ID, 0, "手机号未注册");
-			throw new ServiceException("该手机号未注册");
+			throw new ServiceException("手机号或验证码错误");
 		}
 		// 登录层租户生命周期校验：停用/过期的租户禁止短信登录
 		String smsTenantInvalid = tenantValidator.validate(user.getTenantId());
@@ -259,7 +305,8 @@ public class AuthController {
 			saveLoginLog(user.getUsername(), request, ClientConstants.DEFAULT_CLIENT_ID, user.getTenantId(), 0, smsTenantInvalid);
 			throw new ServiceException(smsTenantInvalid);
 		}
-		loginLockService.clear(phone);
+		assertUserLoginable(user, user.getUsername(), request, ClientConstants.DEFAULT_CLIENT_ID);
+		loginLockService.clear(lockKey);
 		StpUtil.login(user.getId(), new cn.dev33.satoken.stp.parameter.SaLoginParameter()
 			.setTerminalExtra(MonitorConstants.TERMINAL_EXTRA_IP, request.getRemoteAddr())
 			.setTerminalExtra(MonitorConstants.TERMINAL_EXTRA_UA, truncateUa(request)));
@@ -274,10 +321,18 @@ public class AuthController {
 		return R.data(Map.of("authorizeUrl", socialService.renderAuthUrl(source)));
 	}
 
-	/** 本地 mock 授权页：模拟第三方放行，生成 code 回跳前端回调地址（dev 联调，无真实凭证时验证全链路） */
+	/** 本地 mock 授权页：模拟第三方放行，生成 code 回跳前端回调地址（仅 mockEnabled 的 dev 联调；
+	 *  redirect_uri 必须等于该来源登记值，防开放重定向） */
 	@GetMapping("/social/mock-authorize")
 	public void socialMockAuthorize(@RequestParam("redirect_uri") String redirectUri,
 									@RequestParam String state, HttpServletResponse response) throws IOException {
+		com.mugsun.boot.social.SocialProperties.ClientConfig mockCfg = socialProperties.getType().get("mock");
+		if (!socialProperties.isEnabled() || !socialProperties.isMockEnabled() || mockCfg == null) {
+			throw new ServiceException("mock 社交来源未启用");
+		}
+		if (!mockCfg.getRedirectUri().equals(redirectUri)) {
+			throw new ServiceException("redirect_uri 不合法");
+		}
 		String code = "mockcode-" + IdUtil.fastSimpleUUID();
 		String sep = redirectUri.contains("?") ? "&" : "?";
 		response.sendRedirect(redirectUri + sep + "code=" + code + "&state=" + state);
@@ -343,7 +398,12 @@ public class AuthController {
 
 	@PostMapping("/logout")
 	public R<Void> logout() {
+		// 登出即断开该端推送连接（服务端兜底，非合作客户端不可续收推送）
+		String tokenValue = StpUtil.getTokenValue();
 		StpUtil.logout();
+		if (tokenValue != null && !tokenValue.isBlank()) {
+			wsMessageSender.closeUser(null, tokenValue, "已登出");
+		}
 		return R.success("已登出");
 	}
 
@@ -428,14 +488,14 @@ public class AuthController {
 		return R.success("修改成功");
 	}
 
-	/** 个人中心：修改密码（校验原密码） */
+	/** 个人中心：修改密码（校验原密码）；改密成功踢全部在线端，强制重新登录 */
 	@PostMapping("/update-password")
 	@SaCheckLogin
 	public R<Void> updatePassword(@RequestBody UpdatePasswordDTO dto) {
 		SysUser user = TenantContext.ignore(() -> userMapper.selectOneById(StpUtil.getLoginIdAsLong()));
-		// 传输密码 SM2 解密（国密开关开启时）
-		String oldPassword = decodePassword(dto.oldPassword());
-		String newPassword = decodePassword(dto.newPassword());
+		// 传输密码 SM2 解密（国密开关开启时），解密失败归一为参数无效
+		String oldPassword = decodePasswordNormalized(dto.oldPassword());
+		String newPassword = decodePasswordNormalized(dto.newPassword());
 		if (user == null || !passwordEncoder.matches(oldPassword, user.getPassword())) {
 			throw new ServiceException("原密码错误");
 		}
@@ -446,7 +506,9 @@ public class AuthController {
 		user.setPassword(encoded);
 		userMapper.update(user);
 		securityPolicyService.logPassword(user.getId(), encoded);
-		return R.success("密码修改成功");
+		// 改密即全端下线（旧密码签发的会话一律作废）
+		StpUtil.kickout(user.getId());
+		return R.success("密码修改成功，请重新登录");
 	}
 
 	/** 改昵称参数 */

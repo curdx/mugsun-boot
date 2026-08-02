@@ -39,9 +39,10 @@ public class SysRoleController {
 	}
 
 	@GetMapping("/page")
+	@SaCheckPermission("sys:role:list")
 	public R<Page<SysRole>> page(@RequestParam(defaultValue = "1") long pageNum,
 								 @RequestParam(defaultValue = "10") long pageSize) {
-		return R.data(roleMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("sort", true)));
+		return R.data(roleMapper.paginate(pageNum, Math.min(pageSize, 500), QueryWrapper.create().orderBy("sort", true)));
 	}
 
 	/** 角色下拉选项（value/label 契约样例，供用户授权等场景消费） */
@@ -62,6 +63,7 @@ public class SysRoleController {
 
 	/** 角色码下拉选项（value=角色码），供流程审批人等按角色码匹配的场景消费 */
 	@GetMapping("/code-select")
+	@SaCheckPermission("sys:role:list")
 	public R<List<Map<String, Object>>> codeSelect() {
 		List<Map<String, Object>> options = roleMapper
 			.selectListByQuery(QueryWrapper.create().orderBy("sort", true))
@@ -77,6 +79,7 @@ public class SysRoleController {
 	}
 
 	@GetMapping("/detail")
+	@SaCheckPermission("sys:role:list")
 	public R<SysRole> detail(@RequestParam Long id) {
 		return R.data(roleMapper.selectOneById(id));
 	}
@@ -94,9 +97,36 @@ public class SysRoleController {
 				role.setCustomSql(exist == null ? null : exist.getCustomSql());
 			}
 		}
+		// 数据范围提升到「全部/自定义 SQL」与 customSql 同口径门控：仅平台超管可放宽（防自助数据权限提权）
+		if (!com.mugsun.boot.tenant.TenantContext.isPlatformSuperAdmin() && role.getId() != null) {
+			SysRole exist = roleMapper.selectOneById(role.getId());
+			if (exist != null && !java.util.Objects.equals(exist.getDataScope(), role.getDataScope())
+				&& role.getDataScope() != null
+				&& (role.getDataScope() == com.mugsun.boot.common.constant.DataScopeConstants.ALL
+					|| role.getDataScope() == com.mugsun.boot.common.constant.DataScopeConstants.CUSTOM_SQL)) {
+				throw new com.mugsun.core.tool.exception.ServiceException("数据范围调整为全部/自定义需平台超管操作");
+			}
+		}
+		// 内置 admin 角色码为保护码：仅平台超管可授予；存量内置角色禁止改码（通配 * 锚定该码，改码即 RBAC 停摆/提权）
+		boolean isSuperAdmin = com.mugsun.boot.tenant.TenantContext.isPlatformSuperAdmin();
+		if (com.mugsun.boot.common.constant.RoleConstants.ADMIN.equals(role.getRoleCode()) && !isSuperAdmin) {
+			throw new com.mugsun.core.tool.exception.ServiceException("内置角色码仅平台超管可使用");
+		}
 		if (role.getId() == null) {
+			role.sanitizeForInsert();
+			role.setTenantId(null);
 			roleMapper.insert(role);
 		} else {
+			SysRole exist = roleMapper.selectOneById(role.getId());
+			if (exist == null) {
+				throw new com.mugsun.core.tool.exception.ServiceException("角色不存在");
+			}
+			if (com.mugsun.boot.common.constant.RoleConstants.ADMIN.equals(exist.getRoleCode())
+				&& !com.mugsun.boot.common.constant.RoleConstants.ADMIN.equals(role.getRoleCode())) {
+				throw new com.mugsun.core.tool.exception.ServiceException("内置管理员角色禁止改码");
+			}
+			role.sanitizeForUpdate();
+			role.setTenantId(null);
 			roleMapper.update(role);
 		}
 		syncRoleDept(role);
@@ -118,7 +148,9 @@ public class SysRoleController {
 
 	/** 角色自定义部门 id 集合（data_scope=5 授权回显） */
 	@GetMapping("/dept-ids")
+	@SaCheckPermission("sys:role:grant")
 	public R<List<Long>> deptIds(@RequestParam Long roleId) {
+		assertRoleInScope(roleId);
 		List<Long> ids = roleDeptMapper
 			.selectListByQuery(QueryWrapper.create().eq("role_id", roleId))
 			.stream()
@@ -130,13 +162,22 @@ public class SysRoleController {
 	@SaCheckPermission("sys:role:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
+		// 内置 admin 角色禁删：通配 * 锚定该角色码，删除即全站 RBAC 停摆
+		for (Long id : ids) {
+			SysRole role = roleMapper.selectOneById(id);
+			if (role != null && com.mugsun.boot.common.constant.RoleConstants.ADMIN.equals(role.getRoleCode())) {
+				throw new com.mugsun.core.tool.exception.ServiceException("内置管理员角色禁止删除");
+			}
+		}
 		roleMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
 	}
 
 	/** 查询角色已授权的菜单 id 集合（授权树回显） */
 	@GetMapping("/menu-ids")
+	@SaCheckPermission("sys:role:grant")
 	public R<List<Long>> menuIds(@RequestParam Long roleId) {
+		assertRoleInScope(roleId);
 		List<Long> ids = roleMenuMapper
 			.selectListByQuery(QueryWrapper.create().eq("role_id", roleId))
 			.stream()
@@ -145,10 +186,12 @@ public class SysRoleController {
 		return R.data(ids);
 	}
 
-	/** 角色授权菜单 */
+	/** 角色授权菜单（事务：delete+insert 原子，防部分失败剥光授权） */
 	@SaCheckPermission("sys:role:grant")
 	@PostMapping("/grant")
+	@Transactional(rollbackFor = Exception.class)
 	public R<Void> grant(@RequestBody GrantParam param) {
+		assertRoleInScope(param.roleId());
 		roleMenuMapper.deleteByQuery(QueryWrapper.create().eq("role_id", param.roleId()));
 		if (param.menuIds() != null) {
 			for (Long menuId : param.menuIds()) {
@@ -159,5 +202,12 @@ public class SysRoleController {
 			}
 		}
 		return R.success("授权成功");
+	}
+
+	/** 角色归属校验：sys_role_menu/sys_role_dept 中间表无 tenant_id，必须先证角色属于当前租户（Flex 租户条件天然挡跨租户） */
+	private void assertRoleInScope(Long roleId) {
+		if (roleId == null || roleMapper.selectOneById(roleId) == null) {
+			throw new com.mugsun.core.tool.exception.ServiceException("角色不存在");
+		}
 	}
 }

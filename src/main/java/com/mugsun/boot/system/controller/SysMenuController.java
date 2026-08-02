@@ -39,9 +39,20 @@ public class SysMenuController {
 	@SaCheckPermission("sys:menu:save")
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysMenu menu) {
+		// 防环：父级不能是自身或自身后代（成环即子树蒸发 + 权限幽灵残留）
+		if (menu.getId() != null && menu.getParentId() != null && !menu.getParentId().equals(0L)) {
+			if (menu.getParentId().equals(menu.getId())) {
+				throw new com.mugsun.core.tool.exception.ServiceException("上级菜单不能是自身");
+			}
+			if (isDescendant(menu.getParentId(), menu.getId())) {
+				throw new com.mugsun.core.tool.exception.ServiceException("上级菜单不能是自身子级");
+			}
+		}
 		if (menu.getId() == null) {
+			menu.sanitizeForInsert();
 			menuMapper.insert(menu);
 		} else {
+			menu.sanitizeForUpdate();
 			menuMapper.update(menu);
 		}
 		return R.success("操作成功");
@@ -50,7 +61,26 @@ public class SysMenuController {
 	@SaCheckPermission("sys:menu:remove")
 	@PostMapping("/remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
+		// 引用检查：存在子菜单时拒删（防子树蒸发与授权幽灵残留）
+		for (Long id : ids) {
+			if (menuMapper.selectCountByQuery(QueryWrapper.create().eq("parent_id", id)) > 0) {
+				throw new com.mugsun.core.tool.exception.ServiceException("存在子菜单，请先删除子级");
+			}
+		}
 		menuMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");
+	}
+
+	/** startId 的父链上是否含 targetId（成环判定：拟设父级的祖先里有我，则我成了自己的后代） */
+	private boolean isDescendant(Long startId, Long targetId) {
+		Long cur = startId;
+		for (int i = 0; i < 64 && cur != null && !cur.equals(0L); i++) {
+			if (cur.equals(targetId)) {
+				return true;
+			}
+			SysMenu parent = menuMapper.selectOneById(cur);
+			cur = parent == null ? null : parent.getParentId();
+		}
+		return false;
 	}
 }

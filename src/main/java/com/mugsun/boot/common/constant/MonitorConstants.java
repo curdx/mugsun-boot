@@ -17,22 +17,28 @@ public interface MonitorConstants {
 	String PARAM_SAMPLE_RATE = "monitor.access-log.sample-rate";
 	/** sys_param 键：慢接口阈值（毫秒），超过必记且 slow=1（不受采样影响） */
 	String PARAM_SLOW_MS = "monitor.access-log.slow-ms";
-	/** sys_param 键：日志保留天数（api_log/error_log/oper_log 超期物理清理） */
+	/** sys_param 键：日志保留天数（api_log/error_log 超期物理清理） */
 	String PARAM_RETENTION_DAYS = "monitor.log.retention-days";
+	/** sys_param 键：操作审计日志保留天数（等保留证，独立于访问/错误日志，默认 180 天） */
+	String PARAM_OPER_RETENTION_DAYS = "monitor.oper-log.retention-days";
+	/** sys_param 键：操作日志哈希链截断锚点（保留期清理末条被删记录 id:record_hash，验签自锚点续起） */
+	String PARAM_CHAIN_ANCHOR = "monitor.oper-log.chain-anchor";
 	/** 兜底默认：全量采样 */
 	int DEFAULT_SAMPLE_RATE = 100;
 	/** 兜底默认：慢接口阈值 1s */
 	long DEFAULT_SLOW_MS = 1000L;
 	/** 兜底默认：保留 30 天 */
 	int DEFAULT_RETENTION_DAYS = 30;
+	/** 兜底默认：操作审计日志保留 180 天（等保三级审计留存口径） */
+	int DEFAULT_OPER_RETENTION_DAYS = 180;
 
 	/** 访问日志排除路径前缀（监控端点/文档/推送/静态与上传下载，与 XssFilter 跳过集合并集） */
 	List<String> API_LOG_EXCLUDES = List.of(
 		"/actuator", "/v3/api-docs", "/doc.html", "/swagger", "/warm-flow",
 		"/ws", "/file", "/system/oss", "/system/file", "/favicon.ico", "/error");
 
-	/** 受鉴权保护的 actuator 端点前缀（health/info 保持公开保 G1 契约） */
-	Set<String> ACTUATOR_GUARDED = Set.of("/actuator/prometheus", "/actuator/metrics");
+	/** 公开 actuator 端点前缀（health/info 探活契约，无需鉴权）；/actuator/** 其余全部需登录+监控权限码（fail-closed） */
+	Set<String> ACTUATOR_PUBLIC = Set.of("/actuator/health", "/actuator/info");
 
 	/** 权限码：访问日志查询 */
 	String PERM_API_LOG_LIST = "sys:api-log:list";

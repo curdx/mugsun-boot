@@ -32,7 +32,14 @@ public class XssFilter extends OncePerRequestFilter {
 			chain.doFilter(request, response);
 			return;
 		}
-		chain.doFilter(new XssRequestWrapper(request), response);
+		try {
+			chain.doFilter(new XssRequestWrapper(request), response);
+		} catch (XssRequestWrapper.BodyTooLargeException e) {
+			// 超限 body 直接 413：无界缓存会被未认证大 body 打成内存 DoS
+			response.setStatus(413);
+			response.setContentType("application/json;charset=UTF-8");
+			response.getWriter().write("{\"code\":413,\"success\":false,\"msg\":\"请求体过大\",\"data\":null}");
+		}
 	}
 
 	private boolean isExcluded(String uri) {

@@ -24,6 +24,7 @@ public class SysLoginLogController {
 	}
 
 	@GetMapping("/page")
+	@cn.dev33.satoken.annotation.SaCheckPermission("sys:login-log:list")
 	public R<Page<SysLoginLog>> page(@RequestParam(defaultValue = "1") long pageNum,
 									 @RequestParam(defaultValue = "10") long pageSize,
 									 @RequestParam(required = false) Integer status) {
@@ -31,9 +32,10 @@ public class SysLoginLogController {
 		if (status != null) {
 			query.and("status = ?", status);
 		}
-		// 登录日志为平台级留痕，不做租户过滤
-		Page<SysLoginLog> page = TenantContext.ignore(() ->
-			loginLogMapper.paginate(pageNum, pageSize, query));
+		// 平台超管看全平台留痕（ignore）；其余租户仅见本租户登录日志（tenant_id 列自动过滤）
+		Page<SysLoginLog> page = TenantContext.isPlatformSuperAdmin()
+			? TenantContext.ignore(() -> loginLogMapper.paginate(pageNum, Math.min(pageSize, 500), query))
+			: loginLogMapper.paginate(pageNum, Math.min(pageSize, 500), query);
 		return R.data(page);
 	}
 }

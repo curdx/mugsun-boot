@@ -34,6 +34,11 @@ public class LoginLockService {
 		}
 	}
 
+	/** 组装锁键：租户维度 + 账号——多租户同名账号（如各租户 admin）独立计数，防跨租户连锁锁定与针对性锁死 */
+	public String keyOf(String tenantId, String username) {
+		return tenantId + ":" + username;
+	}
+
 	/** 记录一次失败，达阈值则锁定；计数窗口 = 锁定时长，滑动刷新 */
 	public void recordFail(String username) {
 		int lockMinutes = securityPolicyService.getLockMinutes();

@@ -32,13 +32,16 @@ public class SocialService {
 	private final SysUserMapper userMapper;
 	private final PasswordEncoder passwordEncoder;
 	private final SocialAuthFactory socialAuthFactory;
+	private final com.mugsun.boot.tenant.TenantValidator tenantValidator;
 
 	public SocialService(SysUserOauthMapper oauthMapper, SysUserMapper userMapper,
-						 PasswordEncoder passwordEncoder, SocialAuthFactory socialAuthFactory) {
+						 PasswordEncoder passwordEncoder, SocialAuthFactory socialAuthFactory,
+						 com.mugsun.boot.tenant.TenantValidator tenantValidator) {
 		this.oauthMapper = oauthMapper;
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.socialAuthFactory = socialAuthFactory;
+		this.tenantValidator = tenantValidator;
 	}
 
 	/** 生成第三方授权跳转地址（state 由 JustAuth 生成并缓存进 Redis） */
@@ -83,6 +86,14 @@ public class SocialService {
 		});
 		if (user == null) {
 			throw new ServiceException("该第三方账号尚未绑定平台用户，请先登录并绑定后再使用第三方登录");
+		}
+		// 与账密登录同口径：停用账号/停用过期租户禁止社交登录
+		if (user.getStatus() == null || user.getStatus() != 1) {
+			throw new ServiceException("账号已停用，请联系管理员");
+		}
+		String tenantInvalid = tenantValidator.validate(user.getTenantId());
+		if (tenantInvalid != null) {
+			throw new ServiceException(tenantInvalid);
 		}
 		StpUtil.login(user.getId());
 		StpUtil.getSession().set(TenantContext.TENANT_SESSION_KEY, user.getTenantId());

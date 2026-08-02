@@ -58,8 +58,12 @@ public class SysPostController {
 	@PostMapping("/submit")
 	public R<Void> submit(@RequestBody SysPost post) {
 		if (post.getId() == null) {
+			post.sanitizeForInsert();
+			post.setTenantId(null);
 			postMapper.insert(post);
 		} else {
+			post.sanitizeForUpdate();
+			post.setTenantId(null);
 			postMapper.update(post);
 		}
 		return R.success("操作成功");

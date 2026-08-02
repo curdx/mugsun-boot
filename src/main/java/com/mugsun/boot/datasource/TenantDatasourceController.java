@@ -70,23 +70,37 @@ public class TenantDatasourceController {
 			if (param.getStatus() == null) {
 				param.setStatus(1);
 			}
+			param.sanitizeForInsert();
 			datasourceMapper.insertSelective(param);
 		} else {
+			SysTenantDatasource db = datasourceMapper.selectOneById(param.getId());
+			if (db == null) {
+				throw new ServiceException("数据源配置不存在");
+			}
+			// tenant_code 是注册键身份，禁改（改码旧键残留注册，两租户共用一库）；换码请先删后建
+			if (!db.getTenantCode().equals(param.getTenantCode())) {
+				throw new ServiceException("租户编号不可修改");
+			}
 			// 密码占位符时不覆盖原密码
 			if (PASSWORD_MASK.equals(param.getDsPassword())) {
-				SysTenantDatasource db = datasourceMapper.selectOneById(param.getId());
-				param.setDsPassword(db == null ? param.getDsPassword() : db.getDsPassword());
+				param.setDsPassword(db.getDsPassword());
 			}
+			param.sanitizeForUpdate();
 			datasourceMapper.update(param);
 		}
-		// 保存即注册/注销（注册前探活，坏源抛异常回滚保存动作前的注册尝试）
+		// 保存即注册/注销：事务提交后再操作运行时池（注册失败不影响落库一致性，失败原因随异常上抛）
 		SysTenantDatasource full = datasourceMapper.selectOneByQuery(
 			QueryWrapper.create().eq("tenant_code", param.getTenantCode()));
-		if (full != null && Integer.valueOf(1).equals(full.getStatus())) {
-			registry.register(full);
-		} else if (full != null) {
-			registry.unregister(full.getTenantCode());
-		}
+		String tenantCode = full == null ? null : full.getTenantCode();
+		boolean enabled = full != null && Integer.valueOf(1).equals(full.getStatus());
+		com.mugsun.boot.common.tx.AfterCommit.execute(() -> {
+			if (enabled) {
+				registry.register(datasourceMapper.selectOneByQuery(
+					QueryWrapper.create().eq("tenant_code", tenantCode)));
+			} else if (tenantCode != null) {
+				registry.unregister(tenantCode);
+			}
+		});
 		return R.success("保存成功");
 	}
 

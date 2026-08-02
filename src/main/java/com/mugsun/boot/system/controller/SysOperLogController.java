@@ -26,6 +26,7 @@ public class SysOperLogController {
 	}
 
 	@GetMapping("/page")
+	@cn.dev33.satoken.annotation.SaCheckPermission("sys:oper-log:list")
 	public R<Page<SysOperLog>> page(@RequestParam(defaultValue = "1") long pageNum,
 									@RequestParam(defaultValue = "10") long pageSize,
 									@RequestParam(required = false) Integer status) {
@@ -33,10 +34,11 @@ public class SysOperLogController {
 		if (status != null) {
 			query.and("status = ?", status);
 		}
-		return R.data(operLogMapper.paginate(pageNum, pageSize, query));
+		return R.data(operLogMapper.paginate(pageNum, Math.min(pageSize, 500), query));
 	}
 
 	@GetMapping("/detail")
+	@cn.dev33.satoken.annotation.SaCheckPermission("sys:oper-log:list")
 	public R<SysOperLog> detail(@RequestParam Long id) {
 		return R.data(operLogMapper.selectOneById(id));
 	}

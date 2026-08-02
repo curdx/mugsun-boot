@@ -18,6 +18,9 @@ public class SocialProperties {
 	/** 社交登录总开关 */
 	private boolean enabled = true;
 
+	/** mock provider 开关（仅 dev 联调，生产必须 false——mock 身份固定，开启即后门） */
+	private boolean mockEnabled = false;
+
 	/** 本地 mock provider 的“授权页”地址（后端 mock-authorize 端点，dev 联调用） */
 	private String mockAuthorizeUrl = "http://localhost:8080/auth/social/mock-authorize";
 
@@ -30,6 +33,14 @@ public class SocialProperties {
 
 	public void setEnabled(boolean enabled) {
 		this.enabled = enabled;
+	}
+
+	public boolean isMockEnabled() {
+		return mockEnabled;
+	}
+
+	public void setMockEnabled(boolean mockEnabled) {
+		this.mockEnabled = mockEnabled;
 	}
 
 	public String getMockAuthorizeUrl() {

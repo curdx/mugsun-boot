@@ -228,12 +228,18 @@ public class OAuthService {
 		return new TokenResult(token, refresh, scope, validity);
 	}
 
-	/** redirect_uri 校验：客户端配了则请求须一致（授权阶段） */
+	/** redirect_uri 校验（授权码模式 fail-closed）：客户端必须登记且请求须精确一致——
+	 *  未登记的客户端拒绝发码（防任意域跳转钓码 / javascript: URI XSS 盗令牌） */
 	private void validateRedirectUri(SysOauthClient client, String redirectUri) {
-		if (client.getRedirectUri() != null && !client.getRedirectUri().isBlank()
-			&& redirectUri != null && !redirectUri.isBlank()
-			&& !client.getRedirectUri().equals(redirectUri)) {
+		if (client.getRedirectUri() == null || client.getRedirectUri().isBlank()) {
+			throw OAuth2Exception.invalidRequest("客户端未登记 redirect_uri，禁止授权码模式");
+		}
+		if (redirectUri == null || redirectUri.isBlank() || !client.getRedirectUri().equals(redirectUri)) {
 			throw OAuth2Exception.invalidRequest("redirect_uri 与客户端登记不匹配");
+		}
+		// 登记值仅允许 http(s)（javascript:/data: 等伪协议一经登记即为 XSS 通道）
+		if (!client.getRedirectUri().startsWith("http://") && !client.getRedirectUri().startsWith("https://")) {
+			throw OAuth2Exception.invalidRequest("客户端 redirect_uri 协议不合法");
 		}
 	}
 

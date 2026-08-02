@@ -166,7 +166,9 @@ public class ApiLogFilter extends OncePerRequestFilter {
 	private int sampleRate() {
 		String value = paramService.getValue(MonitorConstants.PARAM_SAMPLE_RATE);
 		try {
-			return value == null ? MonitorConstants.DEFAULT_SAMPLE_RATE : Integer.parseInt(value.trim());
+			int rate = value == null ? MonitorConstants.DEFAULT_SAMPLE_RATE : Integer.parseInt(value.trim());
+			// 钳制 [0,100]：负值会静默停掉全部 GET 访问日志
+			return rate < 0 || rate > 100 ? MonitorConstants.DEFAULT_SAMPLE_RATE : rate;
 		} catch (NumberFormatException e) {
 			return MonitorConstants.DEFAULT_SAMPLE_RATE;
 		}
@@ -175,7 +177,8 @@ public class ApiLogFilter extends OncePerRequestFilter {
 	private long slowMs() {
 		String value = paramService.getValue(MonitorConstants.PARAM_SLOW_MS);
 		try {
-			return value == null ? MonitorConstants.DEFAULT_SLOW_MS : Long.parseLong(value.trim());
+			long ms = value == null ? MonitorConstants.DEFAULT_SLOW_MS : Long.parseLong(value.trim());
+			return ms < 1 ? MonitorConstants.DEFAULT_SLOW_MS : ms;
 		} catch (NumberFormatException e) {
 			return MonitorConstants.DEFAULT_SLOW_MS;
 		}

@@ -209,9 +209,7 @@ public class FileController {
 			attach.getName() == null ? attach.getFilename() : attach.getName(), java.nio.charset.StandardCharsets.UTF_8);
 		response.setContentType(attach.getContentType() == null ? "application/octet-stream" : attach.getContentType());
 		response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + downloadName);
-		if (attach.getSize() != null) {
-			response.setContentLengthLong(attach.getSize());
-		}
+		// 不信任客户端上报 size（直传登记值为展示用途）： chunked 传输，防错配 Content-Length 挂起/截断
 		try {
 			fileStorageService.download(fileInfo).outputStream(response.getOutputStream());
 		} catch (Exception e) {
@@ -221,9 +219,11 @@ public class FileController {
 		}
 	}
 
+	/** 附件清单：持码可见（防任意登录用户枚举附件定位信息）；上限 500 行防爆量 */
 	@GetMapping("/list")
+	@cn.dev33.satoken.annotation.SaCheckPermission("sys:file:list")
 	public R<List<SysAttach>> list() {
-		return R.data(attachMapper.selectListByQuery(QueryWrapper.create().orderBy("id", false)));
+		return R.data(attachMapper.selectListByQuery(QueryWrapper.create().orderBy("id", false).limit(500)));
 	}
 
 	/**

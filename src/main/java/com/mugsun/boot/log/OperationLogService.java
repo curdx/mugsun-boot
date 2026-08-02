@@ -25,9 +25,12 @@ public class OperationLogService {
 	private static final String GENESIS = "0";
 
 	private final SysOperLogMapper operLogMapper;
+	private final com.mugsun.boot.system.service.ParamService paramService;
 
-	public OperationLogService(SysOperLogMapper operLogMapper) {
+	public OperationLogService(SysOperLogMapper operLogMapper,
+							   com.mugsun.boot.system.service.ParamService paramService) {
 		this.operLogMapper = operLogMapper;
+		this.paramService = paramService;
 	}
 
 	@Async
@@ -78,6 +81,17 @@ public class OperationLogService {
 				QueryWrapper.create().orderBy("id", true)));
 		}
 		String expectedPrev = GENESIS;
+		// 截断锚点：保留期清理后全量验签自锚点续起（锚点前记录已被合法清除，不再误报断链）
+		if (!windowed) {
+			String anchor = paramService.getValue(
+				com.mugsun.boot.common.constant.MonitorConstants.PARAM_CHAIN_ANCHOR);
+			if (anchor != null && anchor.contains(":")) {
+				String hash = anchor.substring(anchor.indexOf(':') + 1);
+				if (!hash.isBlank()) {
+					expectedPrev = hash;
+				}
+			}
+		}
 		boolean firstHashed = true;
 		int verified = 0;
 		for (SysOperLog log : logs) {

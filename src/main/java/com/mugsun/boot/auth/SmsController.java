@@ -26,8 +26,5 @@ public class SmsController {
 		return R.success("验证码已发送");
 	}
 
-	@PostMapping("/verify")
-	public R<Boolean> verify(@RequestParam String phone, @RequestParam String code) {
-		return R.data(smsService.verifyCode(phone, code));
-	}
+	/** 校验端点已下线：布尔 oracle 可被在线爆破利用（验证码校验只发生在 sms-login 闭环内） */
 }
