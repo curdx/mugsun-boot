@@ -57,7 +57,8 @@ public class NotifyRetryJob {
 		scanAndRetry();
 	}
 
-	/** 扫描并重试到期流水（package-private 供集成测试直接触发，避免长时间 sleep 等待调度） */
+	/** 扫描并重试到期流水（package-private 供集成测试直接触发，避免长时间 sleep 等待调度）。
+	 *  锁预算：批次 × 单条投递超时的最坏耗时须远小于锁 TTL（两节点并发重发同一条的窗口），超时即截断本批。 */
 	void scanAndRetry() {
 		String token = IdUtil.fastSimpleUUID();
 		Boolean acquired = redis.opsForValue().setIfAbsent(NotifyConstants.RETRY_LOCK_KEY, token,
@@ -65,6 +66,9 @@ public class NotifyRetryJob {
 		if (!Boolean.TRUE.equals(acquired)) {
 			return;
 		}
+		long startedAt = System.currentTimeMillis();
+		// 预算取锁 TTL 的 1/3：持锁超时前主动收手，剩余批次留给下一 tick/其他节点
+		long budgetMs = NotifyConstants.RETRY_LOCK_SECONDS * 1000L / 3;
 		try {
 			int maxTimes = intParam(NotifyConstants.PARAM_RETRY_MAX_TIMES, NotifyConstants.DEFAULT_RETRY_MAX_TIMES);
 			long backoffMs = longParam(NotifyConstants.PARAM_RETRY_BACKOFF, NotifyConstants.DEFAULT_RETRY_BACKOFF_MS);
@@ -77,6 +81,10 @@ public class NotifyRetryJob {
 					.orderBy("id", true)
 					.limit(NotifyConstants.RETRY_SCAN_BATCH_SIZE)));
 			for (SysNotifyRecord record : due) {
+				if (System.currentTimeMillis() - startedAt > budgetMs) {
+					log.warn("通知重试批次超锁预算截断，剩余 {} 条留待下轮", due.size() - due.indexOf(record));
+					break;
+				}
 				try {
 					NotifyDispatcher.inTenant(record.getTenantId(),
 						() -> dispatcher.retryOne(record, maxTimes, backoffMs));
@@ -88,10 +96,10 @@ public class NotifyRetryJob {
 				log.info("通知重试扫描完成，处理 {} 条", due.size());
 			}
 		} finally {
-			// 比对 token 释放，防误删他节点锁
-			if (token.equals(redis.opsForValue().get(NotifyConstants.RETRY_LOCK_KEY))) {
-				redis.delete(NotifyConstants.RETRY_LOCK_KEY);
-			}
+			// Lua compare-and-del 原子释放：TTL 过期被抢锁场景不误删他节点锁
+			String script = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+			redis.execute(new org.springframework.data.redis.core.script.DefaultRedisScript<>(script, Long.class),
+				java.util.List.of(NotifyConstants.RETRY_LOCK_KEY), token);
 		}
 	}
 

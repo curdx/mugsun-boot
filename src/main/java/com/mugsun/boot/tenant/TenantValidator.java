@@ -36,14 +36,17 @@ public class TenantValidator {
 	private final SysTenantMapper tenantMapper;
 	private final SysTenantPackageMapper packageMapper;
 	private final SysUserMapper userMapper;
+	private final org.springframework.data.redis.core.StringRedisTemplate redis;
 
 	private final Map<String, Cached<SysTenant>> tenantCache = new ConcurrentHashMap<>();
 	private final Map<Long, Cached<Set<String>>> packageCache = new ConcurrentHashMap<>();
 
-	public TenantValidator(SysTenantMapper tenantMapper, SysTenantPackageMapper packageMapper, SysUserMapper userMapper) {
+	public TenantValidator(SysTenantMapper tenantMapper, SysTenantPackageMapper packageMapper, SysUserMapper userMapper,
+						   org.springframework.data.redis.core.StringRedisTemplate redis) {
 		this.tenantMapper = tenantMapper;
 		this.packageMapper = packageMapper;
 		this.userMapper = userMapper;
+		this.redis = redis;
 	}
 
 	/** 按编号加载租户（sys_tenant 无 tenant_id，忽略隔离；登录前无会话亦可查）。本地缓存 60s，不缓存 null。 */
@@ -111,6 +114,7 @@ public class TenantValidator {
 	/**
 	 * 建用户前的账号配额校验：统计租户下活跃用户数与 account_count 比较，超额抛异常。
 	 * 平台租户与未设上限（&lt;0）不限制；统计经 Flex 按该租户自动隔离 + 逻辑删除过滤。
+	 * 并发安全由 {@link #quotaLocked} 保证（检查+插入同一锁内），本方法只负责判定。
 	 */
 	public void assertAccountQuota(String code) {
 		if (code == null || TenantConstants.DEFAULT_TENANT_ID.equals(code)) {
@@ -124,6 +128,29 @@ public class TenantValidator {
 		long used = TenantContext.execute(code, () -> userMapper.selectCountByQuery(QueryWrapper.create()));
 		if (used >= tenant.getAccountCount()) {
 			throw new ServiceException("租户账号数已达上限（" + tenant.getAccountCount() + "），请联系管理员开通");
+		}
+	}
+
+	/**
+	 * 租户级互斥执行（Redis SETNX 锁，集群安全）：配额「检查+插入」等读-改-写序列在同一锁内串行，
+	 * 杜绝并发 TOCTOU 超额。平台租户无需锁直接执行。
+	 */
+	public <T> T quotaLocked(String code, java.util.function.Supplier<T> action) {
+		if (code == null || TenantConstants.DEFAULT_TENANT_ID.equals(code)) {
+			return action.get();
+		}
+		String key = "mugsun:quota:lock:" + code;
+		String token = cn.hutool.core.util.IdUtil.fastSimpleUUID();
+		Boolean acquired = redis.opsForValue().setIfAbsent(key, token, java.time.Duration.ofSeconds(10));
+		if (!Boolean.TRUE.equals(acquired)) {
+			throw new ServiceException("该租户正在创建账号，请稍后重试");
+		}
+		try {
+			return action.get();
+		} finally {
+			String script = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+			redis.execute(new org.springframework.data.redis.core.script.DefaultRedisScript<>(script, Long.class),
+				java.util.List.of(key), token);
 		}
 	}
 

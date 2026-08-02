@@ -31,9 +31,13 @@ public class RedisSerialNumberGenerator extends AbstractSerialNumberGenerator {
 
 	private static final String KEY_PREFIX = "mugsun:serial:";
 
-	/** 首次不存在则置初值为基线，再按步长和自增，返回自增后末值 */
+	/** 首次不存在则置初值为基线；当前值低于 DB 末值（floor）则抬升到 floor，再按步长和自增——
+	 *  运行期 Redis 丢数（flush/无持久化重启）也不会从初值重发与 DB 高水位重号 */
 	private static final DefaultRedisScript<Long> INCR_SCRIPT = new DefaultRedisScript<>(
-		"if redis.call('exists', KEYS[1]) == 0 then redis.call('set', KEYS[1], ARGV[2]) end "
+		"local cur = redis.call('get', KEYS[1]) "
+			+ "if cur == false then cur = ARGV[2] end "
+			+ "if tonumber(cur) < tonumber(ARGV[3]) then cur = ARGV[3] end "
+			+ "redis.call('set', KEYS[1], cur) "
 			+ "return redis.call('incrby', KEYS[1], ARGV[1])", Long.class);
 
 	/** 预热：仅当 key 缺失或小于 DB 末值时补齐，避免重启/切换 provider 后号倒退 */
@@ -83,7 +87,7 @@ public class RedisSerialNumberGenerator extends AbstractSerialNumberGenerator {
 
 		String key = key(info, LocalDate.now());
 		Long end = redisTemplate.execute(INCR_SCRIPT, List.of(key),
-			String.valueOf(sum), String.valueOf(info.initNumber()));
+			String.valueOf(sum), String.valueOf(info.initNumber()), String.valueOf(dbFloor(info)));
 		if (end == null) {
 			throw new ServiceException("单号自增失败: " + info.code());
 		}
@@ -110,6 +114,23 @@ public class RedisSerialNumberGenerator extends AbstractSerialNumberGenerator {
 			case NONE -> "";
 		};
 		return KEY_PREFIX + info.code() + suffix;
+	}
+
+	/** DB 高水位下限：同周期取 DB 末值，跨周期回初值（Redis 丢数时防与已落库高水位重号） */
+	private long dbFloor(SerialNumberInfo info) {
+		try {
+			com.mybatisflex.core.row.Row row = com.mybatisflex.core.row.Db.selectOneBySql(
+				"SELECT last_number, last_time FROM sys_serial_number WHERE code = ? AND is_deleted = 0", info.code());
+			if (row == null || row.getLong("last_number") == null) {
+				return info.initNumber();
+			}
+			java.sql.Timestamp ts = row.getTimestamp("last_time");
+			LocalDateTime lastTime = ts == null ? null : ts.toLocalDateTime();
+			return needReset(lastTime, info.ruleType()) ? info.initNumber() : row.getLong("last_number");
+		} catch (Exception e) {
+			// 读库失败降级初值（Redis 正常路径不受影响）
+			return info.initNumber();
+		}
 	}
 
 	/** TTL 远超周期长度，杜绝周期内过期导致的号重复；NONE 无周期不设 TTL */

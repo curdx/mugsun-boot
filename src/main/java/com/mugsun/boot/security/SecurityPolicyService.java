@@ -80,6 +80,17 @@ public class SecurityPolicyService {
 		return v == null || v.isBlank() ? "email" : v.trim();
 	}
 
+	/**
+	 * 初始密码（种子 admin/新租户管理员/重置密码/导入用户共用）：
+	 * 环境变量 MUGSUN_INIT_PASSWORD 注入，缺省 123456——生产部署必须改（等保：默认口令须换）。
+	 */
+	@org.springframework.beans.factory.annotation.Value("${mugsun.security.init-password:${MUGSUN_INIT_PASSWORD:123456}}")
+	private String initPassword;
+
+	public String getInitPassword() {
+		return initPassword;
+	}
+
 	public boolean isWatermarkEnabled() {
 		return boolParam("security.watermark.enabled", false);
 	}

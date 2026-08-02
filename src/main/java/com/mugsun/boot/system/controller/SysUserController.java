@@ -135,14 +135,17 @@ public class SysUserController {
 			throw new com.mugsun.core.tool.exception.ServiceException("手机号格式不正确");
 		}
 		if (user.getId() == null) {
-			// 账号数配额：按当前租户 account_count 上限拦截（平台租户/不限额放行）
-			tenantValidator.assertAccountQuota(com.mugsun.boot.tenant.TenantContext.current());
-			String raw = (user.getPassword() == null || user.getPassword().isBlank()) ? "123456" : user.getPassword();
-			user.setPassword(passwordEncoder.encode(raw));
 			// 服务端清洗：审计字段与租户归属一律服务端裁定（Flex 仅对 null tenantId 才填充当前租户）
 			user.sanitizeForInsert();
 			user.setTenantId(null);
-			userMapper.insert(user);
+			// 账号配额检查+插入在租户级 Redis 锁内串行（防并发 TOCTOU 超额；集群安全）
+			String raw = (user.getPassword() == null || user.getPassword().isBlank()) ? securityPolicyService.getInitPassword() : user.getPassword();
+			user.setPassword(passwordEncoder.encode(raw));
+			tenantValidator.quotaLocked(com.mugsun.boot.tenant.TenantContext.current(), () -> {
+				tenantValidator.assertAccountQuota(com.mugsun.boot.tenant.TenantContext.current());
+				userMapper.insert(user);
+				return null;
+			});
 			securityPolicyService.logPassword(user.getId(), user.getPassword());
 			notifyWelcome(user);
 		} else {
@@ -215,14 +218,17 @@ public class SysUserController {
 			if (userMapper.selectCountByQuery(QueryWrapper.create().eq("username", username)) > 0) {
 				continue;
 			}
-			// 账号数配额：逐条入库前校验租户上限，超额即停（平台租户/不限额放行）
-			tenantValidator.assertAccountQuota(tenant);
+			// 账号数配额：逐条入库前校验租户上限（锁内检查+插入防并发超额），超额即停
 			SysUser user = new SysUser();
 			user.setUsername(username);
 			user.setNickname(row.getNickname());
 			user.setStatus(row.getStatus() == null ? 1 : row.getStatus());
-			user.setPassword(passwordEncoder.encode("123456"));
-			userMapper.insert(user);
+			user.setPassword(passwordEncoder.encode(securityPolicyService.getInitPassword()));
+			tenantValidator.quotaLocked(tenant, () -> {
+				tenantValidator.assertAccountQuota(tenant);
+				userMapper.insert(user);
+				return null;
+			});
 			inserted++;
 		}
 		return R.success("导入完成，新增 " + inserted + " 条");
@@ -246,7 +252,7 @@ public class SysUserController {
 		});
 	}
 
-	/** 重置密码为默认 123456（批量；事务原子，重置即踢全部在线端强制重登） */
+	/** 重置密码为初始密码（批量；事务原子，重置即踢全部在线端强制重登） */
 	@PostMapping("/reset-password")
 	@SaCheckPermission("sys:user:reset")
 	@OperationLog("重置密码")
@@ -256,13 +262,13 @@ public class SysUserController {
 			assertTargetOperable(id, true);
 			SysUser user = new SysUser();
 			user.setId(id);
-			String encoded = passwordEncoder.encode("123456");
+			String encoded = passwordEncoder.encode(securityPolicyService.getInitPassword());
 			user.setPassword(encoded);
 			userMapper.update(user);
 			securityPolicyService.logPassword(id, encoded);
 			StpUtil.kickout(id);
 		}
-		return R.success("密码已重置为 123456");
+		return R.success("密码已重置为初始密码");
 	}
 
 	/** 启用 / 停用用户（停用即踢全部在线端） */

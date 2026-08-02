@@ -20,6 +20,12 @@ import java.util.Map;
 @Component
 public class WsHandshakeInterceptor implements HandshakeInterceptor {
 
+	private final com.mugsun.boot.tenant.TenantValidator tenantValidator;
+
+	public WsHandshakeInterceptor(com.mugsun.boot.tenant.TenantValidator tenantValidator) {
+		this.tenantValidator = tenantValidator;
+	}
+
 	@Override
 	public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
 								   WebSocketHandler wsHandler, Map<String, Object> attributes) {
@@ -43,6 +49,11 @@ public class WsHandshakeInterceptor implements HandshakeInterceptor {
 		// 租户编号取不到时缺省（属性表不接受 null 值），仅影响按租户推送的匹配
 		String tenantId = resolveTenantId(userId);
 		if (tenantId != null) {
+			// 握手即校验租户生命周期：停用/过期/已删租户的用户连接一律拒绝（防停用租户持续收推送）
+			String tenantInvalid = tenantValidator.validate(tenantId);
+			if (tenantInvalid != null) {
+				return false;
+			}
 			attributes.put(WsConstants.ATTR_TENANT_ID, tenantId);
 		}
 		attributes.put(WsConstants.ATTR_TOKEN_VALUE, token);

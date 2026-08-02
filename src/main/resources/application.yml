@@ -6,6 +6,11 @@ spring:
   threads:
     virtual:
       enabled: true
+  task:
+    scheduling:
+      pool:
+        # 调度线程池显式扩容：多调度任务（通知重试/日志清理）互不饿死
+        size: 2
   flyway:
     enabled: true
     locations: classpath:db/migration

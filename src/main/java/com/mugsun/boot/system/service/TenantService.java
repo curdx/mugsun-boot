@@ -36,11 +36,13 @@ public class TenantService {
 	private final SysUserRoleMapper userRoleMapper;
 	private final PasswordEncoder passwordEncoder;
 	private final com.mugsun.boot.tenant.TenantValidator tenantValidator;
+	private final com.mugsun.boot.security.SecurityPolicyService securityPolicyService;
 	private final Random random = new Random();
 
 	public TenantService(SysTenantMapper tenantMapper, SysDeptMapper deptMapper, SysPostMapper postMapper,
 						 SysRoleMapper roleMapper, SysUserMapper userMapper, SysUserRoleMapper userRoleMapper,
-						 PasswordEncoder passwordEncoder, com.mugsun.boot.tenant.TenantValidator tenantValidator) {
+						 PasswordEncoder passwordEncoder, com.mugsun.boot.tenant.TenantValidator tenantValidator,
+						 com.mugsun.boot.security.SecurityPolicyService securityPolicyService) {
 		this.tenantMapper = tenantMapper;
 		this.deptMapper = deptMapper;
 		this.postMapper = postMapper;
@@ -49,6 +51,7 @@ public class TenantService {
 		this.userRoleMapper = userRoleMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.tenantValidator = tenantValidator;
+		this.securityPolicyService = securityPolicyService;
 	}
 
 	/** 创建租户并初始化默认数据，返回租户编号 */
@@ -120,7 +123,7 @@ public class TenantService {
 
 		SysUser admin = new SysUser();
 		admin.setUsername(UserConstants.ADMIN_USERNAME);
-		admin.setPassword(passwordEncoder.encode("123456"));
+		admin.setPassword(passwordEncoder.encode(securityPolicyService.getInitPassword()));
 		admin.setNickname(tenantName + "管理员");
 		admin.setStatus(1);
 		admin.setDeptId(dept.getId());

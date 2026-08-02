@@ -28,25 +28,30 @@ public class BizCustomerController {
 	}
 
 	@GetMapping("/page")
+	@cn.dev33.satoken.annotation.SaCheckPermission("sys:customer:list")
 	public R<Page<BizCustomer>> page(@RequestParam(defaultValue = "1") long pageNum,
 									 @RequestParam(defaultValue = "10") long pageSize) {
-		return R.data(customerMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("id", false)));
+		return R.data(customerMapper.paginate(pageNum, Math.min(pageSize, 500), QueryWrapper.create().orderBy("id", false)));
 	}
 
 	@PostMapping("/submit")
+	@cn.dev33.satoken.annotation.SaCheckPermission("sys:customer:save")
 	public R<Void> submit(@RequestBody BizCustomer param) {
 		if (param.getName() == null || param.getName().isBlank()) {
 			throw new ServiceException("客户名称不能为空");
 		}
 		if (param.getId() == null) {
+			param.sanitizeForInsert();
 			customerMapper.insertSelective(param);
 		} else {
+			param.sanitizeForUpdate();
 			customerMapper.update(param);
 		}
 		return R.success("保存成功");
 	}
 
 	@PostMapping("/remove")
+	@cn.dev33.satoken.annotation.SaCheckPermission("sys:customer:remove")
 	public R<Void> remove(@RequestBody List<Long> ids) {
 		customerMapper.deleteBatchByIds(ids);
 		return R.success("删除成功");

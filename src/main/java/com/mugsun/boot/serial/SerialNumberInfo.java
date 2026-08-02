@@ -25,6 +25,14 @@ public record SerialNumberInfo(String code, SerialRuleType ruleType, long initNu
 		if (range == null || range < 1) {
 			throw new ServiceException("步长随机上限须 ≥ 1: " + e.getCode());
 		}
+		// 周期占位一致性：DAY/MONTH/YEAR 规则的 format 必须含对应周期段，
+		// 否则序号按周期重置而格式串无周期值 → 跨周期必重号
+		if (type != SerialRuleType.NONE) {
+			String need = type.getValue();
+			if (!format.contains(need)) {
+				throw new ServiceException("周期规则的单号格式须包含周期占位 " + need + "，否则跨周期重号: " + e.getCode());
+			}
+		}
 		return new SerialNumberInfo(e.getCode(), type,
 			e.getInitNumber() == null ? 0L : e.getInitNumber(),
 			format, range, end - start, "\\[" + format.substring(start + 1, end + 1) + "\\]",

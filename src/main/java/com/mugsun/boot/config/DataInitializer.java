@@ -31,16 +31,19 @@ public class DataInitializer implements CommandLineRunner {
 	private final SysUserRoleMapper userRoleMapper;
 	private final SysRoleMenuMapper roleMenuMapper;
 	private final PasswordEncoder passwordEncoder;
+	private final com.mugsun.boot.security.SecurityPolicyService securityPolicyService;
 
 	public DataInitializer(SysUserMapper userMapper, SysRoleMapper roleMapper, SysMenuMapper menuMapper,
 						   SysUserRoleMapper userRoleMapper, SysRoleMenuMapper roleMenuMapper,
-						   PasswordEncoder passwordEncoder) {
+						   PasswordEncoder passwordEncoder,
+						   com.mugsun.boot.security.SecurityPolicyService securityPolicyService) {
 		this.userMapper = userMapper;
 		this.roleMapper = roleMapper;
 		this.menuMapper = menuMapper;
 		this.userRoleMapper = userRoleMapper;
 		this.roleMenuMapper = roleMenuMapper;
 		this.passwordEncoder = passwordEncoder;
+		this.securityPolicyService = securityPolicyService;
 	}
 
 	@Override
@@ -105,7 +108,7 @@ public class DataInitializer implements CommandLineRunner {
 		// 管理员用户
 		SysUser admin = new SysUser();
 		admin.setUsername(UserConstants.ADMIN_USERNAME);
-		admin.setPassword(passwordEncoder.encode("123456"));
+		admin.setPassword(passwordEncoder.encode(securityPolicyService.getInitPassword()));
 		admin.setNickname("超级管理员");
 		admin.setStatus(1);
 		admin.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
