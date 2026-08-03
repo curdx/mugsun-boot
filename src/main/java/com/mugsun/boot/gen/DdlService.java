@@ -32,9 +32,13 @@ import java.util.Set;
 @Service
 public class DdlService {
 
-	/** 受保护的系统表前缀（不可重建/删除，且新建不得占用）；biz_/help_/viz_/ai_ 为平台既有业务域，同样禁碰 */
-	private static final Set<String> PROTECTED = Set.of("sys_", "gen_", "flyway_", "flow_", "qrtz_", "blade_", "act_",
+	/** 受保护的系统表前缀（不可重建/删除，且新建不得占用）；biz_/help_/viz_/ai_ 为平台既有业务域，同样禁碰。
+	 *  gen_table/gen_column 两张元数据表按精确名单保护（低代码业务表常以 gen_ 命名，不可按前缀误伤） */
+	private static final Set<String> PROTECTED = Set.of("sys_", "flyway_", "flow_", "qrtz_", "blade_", "act_",
 		"biz_", "help_", "viz_", "ai_");
+
+	/** 精确保护名单：代码生成元数据表本体 */
+	private static final Set<String> PROTECTED_EXACT = Set.of("gen_table", "gen_column");
 	/** 审计列由引擎统一维护，建表时显式补齐，不随业务列重复渲染 */
 	private static final Set<String> AUDIT = Set.of("id", "create_time", "update_time", "is_deleted");
 
@@ -234,6 +238,9 @@ public class DdlService {
 	/** 表名保护校验（public：元数据写入侧复用——gen 元数据是 在线表单/DDL/渲染 三链信任根，受保护表一律拒） */
 	public static void guardNotProtected(String tn) {
 		String low = tn.toLowerCase();
+		if (PROTECTED_EXACT.contains(low)) {
+			throw new ServiceException("受保护的系统表不可建/重建：" + tn);
+		}
 		for (String p : PROTECTED) {
 			if (low.startsWith(p)) {
 				throw new ServiceException("受保护的系统表不可建/重建：" + tn);

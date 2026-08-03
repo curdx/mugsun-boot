@@ -162,7 +162,9 @@ public class OnlineService {
 		}
 	}
 
-	/** 元数据读取统一闸：标识符合法性 + 平台保护表黑名单（防存量被投毒元数据流入运行时） */
+	/** 元数据读取统一闸：标识符合法性 + 平台系统表黑名单（防存量被投毒元数据流入运行时）。
+	 *  注意与 DdlService.guardNotProtected 的差异：DDL 侧含 gen_ 前缀（保护 gen_table/gen_column 元数据表），
+	 *  运行时侧放行 gen_ 业务表（低代码建表产物），仅禁两张元数据表本体。 */
 	private GenTable table(Long tableId) {
 		GenTable t = tableMapper.selectOneById(tableId);
 		if (t == null) {
@@ -171,8 +173,24 @@ public class OnlineService {
 		if (!com.mugsun.boot.gen.GenNaming.isIdentifier(t.getTableName())) {
 			throw new IllegalArgumentException("非法表名：" + t.getTableName());
 		}
-		com.mugsun.boot.gen.DdlService.guardNotProtected(t.getTableName());
+		guardRuntimeTable(t.getTableName());
 		return t;
+	}
+
+	/** 运行时黑名单：平台系统表前缀 + 元数据表本体（gen_table/gen_column） */
+	private static final java.util.Set<String> RUNTIME_PROTECTED_PREFIXES = java.util.Set.of(
+		"sys_", "flow_", "flyway_", "qrtz_", "blade_", "act_", "biz_", "help_", "viz_", "ai_");
+
+	private void guardRuntimeTable(String tableName) {
+		String low = tableName.toLowerCase();
+		if ("gen_table".equals(low) || "gen_column".equals(low)) {
+			throw new IllegalArgumentException("元数据表不可作为在线表单：" + tableName);
+		}
+		for (String p : RUNTIME_PROTECTED_PREFIXES) {
+			if (low.startsWith(p)) {
+				throw new IllegalArgumentException("平台系统表不可作为在线表单：" + tableName);
+			}
+		}
 	}
 
 	/** 物理表实际列名（JDBC 内省）：租户/逻辑删除判定以物理结构为准，不信元数据（防元数据缺列绕过隔离） */
