@@ -13,7 +13,7 @@ DELETE FROM sys_menu WHERE menu_name LIKE 'e2e_menu_%';
 
 -- 既有节点归位（图标/组件/父级/排序），不动主键（角色授权引用不失效）
 UPDATE sys_menu SET icon = 'ri:settings-2-line', component = '/index/index', sort = 2 WHERE path = '/system' AND is_deleted = 0;
-UPDATE sys_menu SET icon = 'ri:user-line', component = '/system/user', menu_type = 'C', sort = 1 WHERE path = '/system/user' AND is_deleted = 0;
+UPDATE sys_menu SET icon = 'ri:user-line', component = '/system/user', menu_type = 'C', sort = 1, permission = 'sys:user:list' WHERE path = '/system/user' AND is_deleted = 0;
 UPDATE sys_menu SET path = '/system/gen', component = '/system/gen', icon = 'ri:code-box-line', sort = 15
 	WHERE permission = 'sys:gen:list' AND is_deleted = 0 AND (path IS NULL OR path = '');
 -- 父级解析带 COALESCE 兜底：全新库 /system 尚未播种时保持原父级不置 NULL（启动后由下方自播种补齐）
@@ -32,9 +32,9 @@ INSERT INTO sys_menu (id, parent_id, menu_name, path, component, menu_type, sort
 SELECT 1200000000000000001, 0, '系统管理', '/system', '/index/index', 'M', 2, 'ri:settings-2-line', 0, now(), 0
 WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE path = '/system' AND is_deleted = 0);
 -- 用户管理自播种（按钮行（F）按业务键重锚依赖此节点存在）
-INSERT INTO sys_menu (id, parent_id, menu_name, path, component, menu_type, sort, icon, is_public, create_time, is_deleted)
+INSERT INTO sys_menu (id, parent_id, menu_name, path, component, menu_type, permission, sort, icon, is_public, create_time, is_deleted)
 SELECT 1200000000000000101, (SELECT id FROM sys_menu WHERE path = '/system' AND is_deleted = 0 LIMIT 1),
-	'用户管理', '/system/user', '/system/user', 'C', 1, 'ri:user-line', 0, now(), 0
+	'用户管理', '/system/user', '/system/user', 'C', 'sys:user:list', 1, 'ri:user-line', 0, now(), 0
 WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE path = '/system/user' AND is_deleted = 0);
 
 -- 工作台分组（console 公共：任何登录用户落点）
