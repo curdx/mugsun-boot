@@ -20,6 +20,14 @@ public class SysMenu extends BaseEntity implements INode<SysMenu> {
 	private String menuType;
 	private String permission;
 	private Integer sort;
+	/** 图标（Iconify 名，如 ri:user-line） */
+	private String icon;
+	/** 是否隐藏（0 显示 / 1 隐藏）；Java 侧默认 0，防 insert 未显式赋值时触 NOT NULL 约束 */
+	private Integer isHide = 0;
+	/** 是否缓存页面（0 不缓存 / 1 缓存）；Java 侧默认 1 */
+	private Integer isKeepAlive = 1;
+	/** 是否外链（0 否 / 1 是，新窗口打开）；Java 侧默认 0 */
+	private Integer isExternal = 0;
 
 	@Column(ignore = true)
 	private List<SysMenu> children;
@@ -79,6 +87,38 @@ public class SysMenu extends BaseEntity implements INode<SysMenu> {
 
 	public void setSort(Integer sort) {
 		this.sort = sort;
+	}
+
+	public String getIcon() {
+		return icon;
+	}
+
+	public void setIcon(String icon) {
+		this.icon = icon;
+	}
+
+	public Integer getIsHide() {
+		return isHide;
+	}
+
+	public void setIsHide(Integer isHide) {
+		this.isHide = isHide;
+	}
+
+	public Integer getIsKeepAlive() {
+		return isKeepAlive;
+	}
+
+	public void setIsKeepAlive(Integer isKeepAlive) {
+		this.isKeepAlive = isKeepAlive;
+	}
+
+	public Integer getIsExternal() {
+		return isExternal;
+	}
+
+	public void setIsExternal(Integer isExternal) {
+		this.isExternal = isExternal;
 	}
 
 	@Override

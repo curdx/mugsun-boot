@@ -26,9 +26,30 @@ public class SysMenuController {
 	}
 
 	@GetMapping("/tree")
-	public R<List<SysMenu>> tree() {
-		List<SysMenu> all = menuMapper.selectListByQuery(QueryWrapper.create().orderBy("sort", true));
-		return R.data(TreeUtil.build(all, 0L));
+	public R<List<SysMenu>> tree(@RequestParam(required = false) String menuName,
+								 @RequestParam(required = false) Integer isHide) {
+		QueryWrapper query = QueryWrapper.create().orderBy("sort", true);
+		// 查询条件（值走参数化绑定，LIKE 前后模糊）
+		if (menuName != null && !menuName.isBlank()) {
+			query.like("menu_name", menuName.trim());
+		}
+		if (isHide != null) {
+			query.eq("is_hide", isHide);
+		}
+		List<SysMenu> all = menuMapper.selectListByQuery(query);
+		List<SysMenu> tree = new java.util.ArrayList<>(TreeUtil.build(all, 0L));
+		// 条件过滤时父链可能被滤掉：父级不在结果集的节点提升为根，避免「查得出却看不见」
+		if ((menuName != null && !menuName.isBlank()) || isHide != null) {
+			java.util.Set<Long> ids = new java.util.HashSet<>();
+			all.forEach(m -> ids.add(m.getId()));
+			for (SysMenu node : all) {
+				if (node.getParentId() != null && !node.getParentId().equals(0L) && !ids.contains(node.getParentId())) {
+					node.setChildren(TreeUtil.build(all, node.getId()));
+					tree.add(node);
+				}
+			}
+		}
+		return R.data(tree);
 	}
 
 	@GetMapping("/detail")
