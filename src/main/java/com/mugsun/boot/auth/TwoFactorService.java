@@ -15,7 +15,7 @@ import java.time.Duration;
 import java.util.Map;
 
 /**
- * 双因子登录：密码校验通过后下发二次验证码（邮箱/短信，无凭证降级日志），二次校验通过才发 token。
+ * 双因子登录：密码校验通过后下发二次验证码（邮箱/短信，通道未配置/异常即显式报错），二次校验通过才发 token。
  */
 @Service
 public class TwoFactorService {
@@ -64,8 +64,12 @@ public class TwoFactorService {
 				}
 				mailService.sendByTemplate(contact, "login_2fa", Map.of("code", code));
 			}
+		} catch (ServiceException e) {
+			// 通道显式降级错误（未配置/通道异常）如实上抛，仍烧毁挑战（防悬空验证码）
+			redis.delete(KEY + token);
+			throw e;
 		} catch (Exception e) {
-			// 下发失败即烧毁挑战并明确报错（勿降级日志暗送验证码，防全员锁死+日志泄码）
+			// 非预期异常归一报错（勿降级日志暗送验证码，防全员锁死+日志泄码）
 			redis.delete(KEY + token);
 			throw new ServiceException("双因子验证码下发失败，请重试");
 		}

@@ -51,6 +51,7 @@ public class AuthController {
 	private final com.mugsun.boot.system.mapper.SysRoleMapper roleMapper;
 	private final com.mugsun.boot.system.mapper.SysUserRoleMapper userRoleMapper;
 	private final IpRegionService ipRegionService;
+	private final ForgetPasswordService forgetPasswordService;
 
 	public AuthController(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
 						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper,
@@ -68,7 +69,8 @@ public class AuthController {
 						  com.mugsun.boot.websocket.WsMessageSender wsMessageSender,
 						  com.mugsun.boot.system.mapper.SysRoleMapper roleMapper,
 						  com.mugsun.boot.system.mapper.SysUserRoleMapper userRoleMapper,
-						  IpRegionService ipRegionService) {
+						  IpRegionService ipRegionService,
+						  ForgetPasswordService forgetPasswordService) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
@@ -88,6 +90,7 @@ public class AuthController {
 		this.roleMapper = roleMapper;
 		this.userRoleMapper = userRoleMapper;
 		this.ipRegionService = ipRegionService;
+		this.forgetPasswordService = forgetPasswordService;
 	}
 
 	/** SM2 传输公钥：前端登录/改密/注册前取此公钥加密密码；gmEnabled=false 时前端明文传输 */
@@ -288,6 +291,35 @@ public class AuthController {
 		TenantContext.ignore(() -> userRoleMapper.insert(userRole));
 	}
 
+	/** 忘记密码：发送邮箱重置验证码（图形验证码防爆破；账号不存在同样返回成功防枚举，仅日志留痕） */
+	@PostMapping("/forget-code")
+	public R<Void> forgetCode(@RequestBody ForgetCodeDTO dto) {
+		if (dto.username() == null || dto.username().isBlank()) {
+			throw new ServiceException("账号不能为空");
+		}
+		captchaService.verify(dto.captchaUuid(), dto.captchaCode());
+		String tenantId = (dto.tenantId() == null || dto.tenantId().isBlank())
+			? TenantConstants.DEFAULT_TENANT_ID : dto.tenantId().trim();
+		forgetPasswordService.sendCode(dto.username().trim(), tenantId);
+		return R.success("若账号存在且已绑定邮箱，验证码已发送");
+	}
+
+	/** 忘记密码：凭邮箱验证码重置密码（新密码 SM2 解密 + 复杂度/历史校验，重置即全端下线） */
+	@PostMapping("/forget-reset")
+	public R<Void> forgetReset(@RequestBody ForgetResetDTO dto) {
+		if (dto.username() == null || dto.username().isBlank()
+			|| dto.code() == null || dto.code().isBlank()
+			|| dto.newPassword() == null || dto.newPassword().isBlank()) {
+			throw new ServiceException("账号、验证码与新密码不能为空");
+		}
+		String tenantId = (dto.tenantId() == null || dto.tenantId().isBlank())
+			? TenantConstants.DEFAULT_TENANT_ID : dto.tenantId().trim();
+		// 传输密码 SM2 解密（国密开关开启时），解密失败归一为参数无效
+		String rawPassword = decodePasswordNormalized(dto.newPassword());
+		forgetPasswordService.resetPassword(dto.username().trim(), tenantId, dto.code().trim(), rawPassword);
+		return R.success("密码已重置，请使用新密码登录");
+	}
+
 	/** 短信登录：发送验证码（开发回显） */
 	@PostMapping("/sms-code")
 	public R<Map<String, Object>> smsCode(@RequestBody Map<String, String> body) {
@@ -343,6 +375,30 @@ public class AuthController {
 		StpUtil.getSession().set(TenantContext.TENANT_SESSION_KEY, user.getTenantId());
 		saveLoginLog(user.getUsername(), request, ClientConstants.DEFAULT_CLIENT_ID, user.getTenantId(), 1, "短信登录成功");
 		return R.data(Map.of("token", StpUtil.getTokenValue()));
+	}
+
+	/** 社交登录来源清单：已配置真实源（clientId/secret 已填）+ mock 是否允许；
+	 *  登录页据此渲染——有真实源显示真实按钮、无则整区隐藏，mock 按钮前端维持 DEV-only */
+	@GetMapping("/social/sources")
+	public R<Map<String, Object>> socialSources() {
+		java.util.List<String> sources = new java.util.ArrayList<>();
+		if (socialProperties.isEnabled()) {
+			socialProperties.getType().forEach((key, cfg) -> {
+				if (key == null || "mock".equalsIgnoreCase(key) || cfg == null) {
+					return;
+				}
+				if (cfg.getClientId() != null && !cfg.getClientId().isBlank()
+					&& cfg.getClientSecret() != null && !cfg.getClientSecret().isBlank()) {
+					sources.add(key);
+				}
+			});
+		}
+		boolean mockAllowed = socialProperties.isEnabled() && socialProperties.isMockEnabled()
+			&& socialProperties.getType().containsKey("mock");
+		Map<String, Object> data = new java.util.HashMap<>();
+		data.put("sources", sources);
+		data.put("mockEnabled", mockAllowed);
+		return R.data(data);
 	}
 
 	/** 社交登录入口：生成第三方授权跳转地址（state 落 Redis 防 CSRF），前端跳转此地址 */
@@ -488,6 +544,13 @@ public class AuthController {
 		data.put("buttons", StpUtil.getPermissionList());
 		data.put("needChangePassword", securityPolicyService.needChangePassword(user.getId()));
 		data.put("watermark", securityPolicyService.isWatermarkEnabled());
+		// 个人中心展示：邮箱明文（无脱敏注记列），手机号由 @ColumnMask 既有裁决（明文/脱敏/不可见）
+		data.put("email", user.getEmail());
+		data.put("phone", user.getPhone());
+		// 头像列（V61 起 sys_user 有 avatar 列；实体未建模——SysUser 冻结，行级直查）
+		com.mybatisflex.core.row.Row avatarRow = TenantContext.ignore(() ->
+			com.mybatisflex.core.row.Db.selectOneBySql("SELECT avatar FROM sys_user WHERE id = ?", user.getId()));
+		data.put("avatar", avatarRow == null ? null : avatarRow.getString("avatar"));
 		// 租户套餐：非超管租户按套餐限定可用菜单（null 表示不限）
 		data.put("menus", resolveTenantMenus(user.getTenantId()));
 		return R.data(data);
@@ -526,6 +589,23 @@ public class AuthController {
 		return R.success("修改成功");
 	}
 
+	/** 个人中心：更新头像（/system/file/upload 附件体系公开区产物 URL，落 sys_user.avatar） */
+	@PostMapping("/update-avatar")
+	@SaCheckLogin
+	public R<Void> updateAvatar(@RequestBody UpdateAvatarDTO dto) {
+		String avatar = dto.avatar() == null ? "" : dto.avatar().trim();
+		// 仅接受附件体系产物形态：公开区 URL（http(s)://…/file/… 或相对 /file/…），防 javascript:/data: 注入
+		if (avatar.isBlank() || avatar.length() > 255
+			|| !(avatar.startsWith("http://") || avatar.startsWith("https://") || avatar.startsWith("/file/"))) {
+			throw new ServiceException("头像地址不合法");
+		}
+		long userId = StpUtil.getLoginIdAsLong();
+		// 实体未建模（SysUser 冻结），行级 SQL 落 avatar 列
+		TenantContext.ignore(() -> com.mybatisflex.core.row.Db.updateBySql(
+			"UPDATE sys_user SET avatar = ? WHERE id = ?", avatar, userId));
+		return R.success("头像已更新");
+	}
+
 	/** 个人中心：修改密码（校验原密码）；改密成功踢全部在线端，强制重新登录 */
 	@PostMapping("/update-password")
 	@SaCheckLogin
@@ -555,5 +635,17 @@ public class AuthController {
 
 	/** 改密参数 */
 	public record UpdatePasswordDTO(String oldPassword, String newPassword) {
+	}
+
+	/** 忘记密码发码参数（图形验证码防爆破；tenantId 留空为平台租户） */
+	public record ForgetCodeDTO(String username, String tenantId, String captchaUuid, String captchaCode) {
+	}
+
+	/** 忘记密码重置参数（新密码 SM2 传输） */
+	public record ForgetResetDTO(String username, String tenantId, String code, String newPassword) {
+	}
+
+	/** 更新头像参数（附件体系公开区 URL） */
+	public record UpdateAvatarDTO(String avatar) {
 	}
 }

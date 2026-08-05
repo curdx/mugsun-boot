@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 import java.util.Map;
 
 /**
- * 邮件发送：按模板 ${key} 占位渲染后发送；无 SMTP 凭证时降级为日志（同短信）。
+ * 邮件发送：按模板 ${key} 占位渲染后发送；通道未配置/下发异常即抛错（显式降级，同短信 sendText 语义）。
  * <p>渲染收编统一渲染器 {@link NotifyTemplateRenderer}（缺参 fail-fast，取代原"未提供占位原样保留"）。
  */
 @Service
@@ -29,6 +29,10 @@ public class MailService {
 
 	@Value("${spring.mail.username:noreply@mugsun.com}")
 	private String from;
+	@Value("${spring.mail.host:}")
+	private String host;
+	@Value("${spring.mail.password:}")
+	private String password;
 
 	public MailService(JavaMailSender mailSender, SysMailTemplateMapper templateMapper,
 					   NotifyTemplateRenderer renderer) {
@@ -37,7 +41,16 @@ public class MailService {
 		this.renderer = renderer;
 	}
 
-	/** 按模板发送，返回渲染后内容（便于调试/降级展示） */
+	/**
+	 * 通道健康检查：host/password 已填且非 application.yml 占位符才算已配置
+	 * （占位 smtp.example.com/placeholder 仅供本地起服，不构成可用通道）。
+	 */
+	public boolean isConfigured() {
+		return host != null && !host.isBlank() && !"smtp.example.com".equals(host)
+			&& password != null && !password.isBlank() && !"placeholder".equals(password);
+	}
+
+	/** 按模板发送，返回渲染后内容（便于调试回显） */
 	public String sendByTemplate(String to, String code, Map<String, String> params) {
 		SysMailTemplate tpl = templateMapper.selectOneByQuery(QueryWrapper.create().eq("code", code));
 		if (tpl == null) {
@@ -48,8 +61,11 @@ public class MailService {
 		return content;
 	}
 
-	/** 发送纯文本邮件；失败降级为日志，不阻断业务 */
+	/** 发送纯文本邮件；通道未配置/下发异常即明确报错（显式降级，不再静默吞错假成功） */
 	public void send(String to, String subject, String content) {
+		if (!isConfigured()) {
+			throw new ServiceException("邮件通道未配置");
+		}
 		try {
 			SimpleMailMessage msg = new SimpleMailMessage();
 			msg.setFrom(from);
@@ -59,7 +75,7 @@ public class MailService {
 			mailSender.send(msg);
 			log.info("邮件已发送 to={} subject={}", to, subject);
 		} catch (Exception e) {
-			log.warn("邮件发送失败(降级为日志) to={} subject={} content={} err={}", to, subject, content, e.getMessage());
+			throw new ServiceException("邮件通道异常: " + e.getMessage());
 		}
 	}
 }

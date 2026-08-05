@@ -25,7 +25,7 @@ import java.util.Random;
 
 /**
  * 短信服务：验证码发送与校验。发送通道由 sys_sms 启用配置驱动（SMS4J SmsReadConfig），
- * 无启用配置或凭证占位时降级日志（可审计），支持前端切换渠道运行时生效。
+ * 无启用配置/凭证占位/通道异常即抛错（显式降级，不再假成功），支持前端切换渠道运行时生效。
  */
 @Service
 public class SmsService {
@@ -63,11 +63,20 @@ public class SmsService {
 		return rec == null ? null : rec.getCode();
 	}
 
-	/** 发送验证码：同号 60s 节流（防短信轰炸），发新作废旧码（任意时刻仅一码有效） */
+	/** 发送验证码：同号 60s 节流（防短信轰炸），发新作废旧码（任意时刻仅一码有效）。
+	 *  通道显式降级：无启用配置/下发失败即抛错并作废刚写入的验证码，不再静默降级假成功 */
 	public void sendCode(String phone) {
 		Boolean first = redis.opsForValue().setIfAbsent(THROTTLE_KEY + phone, "1", Duration.ofSeconds(60));
 		if (!Boolean.TRUE.equals(first)) {
 			throw new ServiceException("发送过于频繁，请 60 秒后再试");
+		}
+		// 验证码通道属平台级，登录前无租户上下文，故不加租户条件取启用配置
+		SysSms sms = TenantContext.ignore(() ->
+			smsMapper.selectOneByQuery(QueryWrapper.create().eq("status", 1).orderBy("id", false)));
+		if (sms == null) {
+			// 通道未配置是稳定服务端状态，释放节流锁让显式错误每次可见
+			redis.delete(THROTTLE_KEY + phone);
+			throw new ServiceException("短信通道未配置");
 		}
 		smsCodeMapper.deleteByQuery(QueryWrapper.create().eq("phone", phone));
 		String code = String.valueOf(100000 + random.nextInt(900000));
@@ -77,25 +86,20 @@ public class SmsService {
 		entity.setExpireTime(LocalDateTime.now().plusMinutes(5));
 		smsCodeMapper.insertSelective(entity);
 
-		// 验证码通道属平台级，登录前无租户上下文，故不加租户条件取启用配置
-		SysSms sms = TenantContext.ignore(() ->
-			smsMapper.selectOneByQuery(QueryWrapper.create().eq("status", 1).orderBy("id", false)));
-		if (sms == null) {
-			log.info("无启用短信配置，降级输出验证码 phone={} code={}", phone, code);
-			return;
-		}
 		try {
 			SmsFactory.createSmsBlend(readConfigOf(sms));
 			SmsResponse resp = SmsFactory.getSmsBlend(sms.getSmsCode()).sendMessage(phone, code);
 			if (resp == null || !resp.isSuccess()) {
-				log.info("短信配置[{}/{}]下发未成功(凭证占位)，降级输出 phone={} code={}",
-					sms.getSmsCode(), sms.getCategory(), phone, code);
-			} else {
-				log.info("短信配置[{}/{}]下发成功 phone={}", sms.getSmsCode(), sms.getCategory(), phone);
+				throw new ServiceException("短信下发未成功(凭证占位或网关拒绝): " + sms.getSmsCode());
 			}
+			log.info("短信配置[{}/{}]下发成功 phone={}", sms.getSmsCode(), sms.getCategory(), phone);
+		} catch (ServiceException e) {
+			// 下发失败作废验证码：不留「未送达却可登录」的悬空码
+			smsCodeMapper.deleteByQuery(QueryWrapper.create().eq("phone", phone));
+			throw e;
 		} catch (Exception e) {
-			log.info("短信配置[{}/{}]通道异常，降级输出 phone={} code={}：{}",
-				sms.getSmsCode(), sms.getCategory(), phone, code, e.getMessage());
+			smsCodeMapper.deleteByQuery(QueryWrapper.create().eq("phone", phone));
+			throw new ServiceException("短信通道异常: " + e.getMessage());
 		}
 	}
 
