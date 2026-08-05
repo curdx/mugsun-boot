@@ -27,8 +27,21 @@ public class SysTenantController {
 	}
 
 	@GetMapping("/list")
-	public R<List<SysTenant>> list() {
-		return R.data(tenantMapper.selectListByQuery(QueryWrapper.create().orderBy("id", false)));
+	public R<List<SysTenant>> list(@RequestParam(required = false) String tenantName,
+								   @RequestParam(required = false) String tenantCode,
+								   @RequestParam(required = false) Integer status) {
+		QueryWrapper query = QueryWrapper.create().orderBy("id", false);
+		// 查询条件（值走参数化绑定，名称/编号 LIKE 前后模糊，状态精确匹配）
+		if (tenantName != null && !tenantName.isBlank()) {
+			query.like("tenant_name", tenantName.trim());
+		}
+		if (tenantCode != null && !tenantCode.isBlank()) {
+			query.like("tenant_code", tenantCode.trim());
+		}
+		if (status != null) {
+			query.eq("status", status);
+		}
+		return R.data(tenantMapper.selectListByQuery(query));
 	}
 
 	@GetMapping("/detail")

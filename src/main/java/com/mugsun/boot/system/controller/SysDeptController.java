@@ -28,8 +28,26 @@ public class SysDeptController {
 	}
 
 	@GetMapping("/tree")
-	public R<List<SysDept>> tree() {
+	public R<List<SysDept>> tree(@RequestParam(required = false) String deptName) {
 		List<SysDept> all = deptMapper.selectListByQuery(QueryWrapper.create().orderBy("sort", true));
+		// 名称过滤：保留命中节点及其祖先（树已全量加载，内存过滤后重新建树，层级可正常展开）
+		if (deptName != null && !deptName.isBlank()) {
+			String keyword = deptName.trim();
+			Map<Long, SysDept> byId = new HashMap<>();
+			for (SysDept dept : all) {
+				byId.put(dept.getId(), dept);
+			}
+			java.util.Set<Long> keep = new java.util.HashSet<>();
+			for (SysDept dept : all) {
+				if (dept.getDeptName() != null && dept.getDeptName().contains(keyword)) {
+					SysDept cur = dept;
+					while (cur != null && keep.add(cur.getId())) {
+						cur = byId.get(cur.getParentId());
+					}
+				}
+			}
+			all = all.stream().filter(dept -> keep.contains(dept.getId())).toList();
+		}
 		return R.data(TreeUtil.build(all, 0L));
 	}
 

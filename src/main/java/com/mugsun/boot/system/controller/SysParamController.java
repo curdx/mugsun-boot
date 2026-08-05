@@ -28,8 +28,17 @@ public class SysParamController {
 	}
 
 	@GetMapping("/list")
-	public R<List<SysParam>> list() {
-		return R.data(paramMapper.selectListByQuery(QueryWrapper.create().orderBy("id", false)));
+	public R<List<SysParam>> list(@RequestParam(required = false) String paramName,
+								  @RequestParam(required = false) String paramKey) {
+		QueryWrapper query = QueryWrapper.create().orderBy("id", false);
+		// 查询条件（值走参数化绑定，LIKE 前后模糊）
+		if (paramName != null && !paramName.isBlank()) {
+			query.like("param_name", paramName.trim());
+		}
+		if (paramKey != null && !paramKey.isBlank()) {
+			query.like("param_key", paramKey.trim());
+		}
+		return R.data(paramMapper.selectListByQuery(query));
 	}
 
 	/** 按键取参数值（走缓存） */

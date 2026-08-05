@@ -29,8 +29,18 @@ public class SysPostController {
 
 	@GetMapping("/page")
 	public R<Page<SysPost>> page(@RequestParam(defaultValue = "1") long pageNum,
-								 @RequestParam(defaultValue = "10") long pageSize) {
-		return R.data(postMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("sort", true)));
+								 @RequestParam(defaultValue = "10") long pageSize,
+								 @RequestParam(required = false) String postName,
+								 @RequestParam(required = false) String postCode) {
+		QueryWrapper query = QueryWrapper.create().orderBy("sort", true);
+		// 查询条件（值走参数化绑定，LIKE 前后模糊）
+		if (postName != null && !postName.isBlank()) {
+			query.like("post_name", postName.trim());
+		}
+		if (postCode != null && !postCode.isBlank()) {
+			query.like("post_code", postCode.trim());
+		}
+		return R.data(postMapper.paginate(pageNum, pageSize, query));
 	}
 
 	/** 岗位下拉选项（value/label 契约） */

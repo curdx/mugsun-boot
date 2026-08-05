@@ -29,8 +29,18 @@ public class TenantPackageController {
 
 	@GetMapping("/page")
 	public R<Page<SysTenantPackage>> page(@RequestParam(defaultValue = "1") long pageNum,
-										  @RequestParam(defaultValue = "10") long pageSize) {
-		return R.data(packageMapper.paginate(pageNum, pageSize, QueryWrapper.create().orderBy("id", false)));
+										  @RequestParam(defaultValue = "10") long pageSize,
+										  @RequestParam(required = false) String name,
+										  @RequestParam(required = false) Integer status) {
+		QueryWrapper query = QueryWrapper.create().orderBy("id", false);
+		// 查询条件（值走参数化绑定，名称 LIKE 前后模糊，状态精确匹配）
+		if (name != null && !name.isBlank()) {
+			query.like("name", name.trim());
+		}
+		if (status != null) {
+			query.eq("status", status);
+		}
+		return R.data(packageMapper.paginate(pageNum, pageSize, query));
 	}
 
 	/** 下拉列表：仅启用套餐 */

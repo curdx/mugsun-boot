@@ -41,8 +41,18 @@ public class SysRoleController {
 	@GetMapping("/page")
 	@SaCheckPermission("sys:role:list")
 	public R<Page<SysRole>> page(@RequestParam(defaultValue = "1") long pageNum,
-								 @RequestParam(defaultValue = "10") long pageSize) {
-		return R.data(roleMapper.paginate(pageNum, Math.min(pageSize, 500), QueryWrapper.create().orderBy("sort", true)));
+								 @RequestParam(defaultValue = "10") long pageSize,
+								 @RequestParam(required = false) String roleName,
+								 @RequestParam(required = false) String roleCode) {
+		QueryWrapper query = QueryWrapper.create().orderBy("sort", true);
+		// 查询条件（值走参数化绑定，LIKE 前后模糊）
+		if (roleName != null && !roleName.isBlank()) {
+			query.like("role_name", roleName.trim());
+		}
+		if (roleCode != null && !roleCode.isBlank()) {
+			query.like("role_code", roleCode.trim());
+		}
+		return R.data(roleMapper.paginate(pageNum, Math.min(pageSize, 500), query));
 	}
 
 	/** 角色下拉选项（value/label 契约样例，供用户授权等场景消费） */
