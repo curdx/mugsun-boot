@@ -120,6 +120,11 @@
 			<groupId>org.bouncycastle</groupId>
 			<artifactId>bcprov-jdk18on</artifactId>
 		</dependency>
+		<!-- 离线 IP 归属地：登录日志 login_location 列（xdb 数据文件外置，mugsun.ip2region.* 开关） -->
+		<dependency>
+			<groupId>org.lionsoul</groupId>
+			<artifactId>ip2region</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.dromara.x-file-storage</groupId>
 			<artifactId>x-file-storage-spring</artifactId>

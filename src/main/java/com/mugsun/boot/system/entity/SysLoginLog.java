@@ -20,6 +20,12 @@ public class SysLoginLog extends BaseEntity {
 	private String tenantId;
 	/** 浏览器 UA */
 	private String userAgent;
+	/** 浏览器（写入时 UA 解析落列，历史行可为空） */
+	private String browser;
+	/** 操作系统（写入时 UA 解析落列，历史行可为空） */
+	private String os;
+	/** IP 归属地（ip2region 离线解析，开关关闭/内网/未命中为空） */
+	private String loginLocation;
 	/** 登录客户端码（web/app…） */
 	private String device;
 
@@ -77,6 +83,30 @@ public class SysLoginLog extends BaseEntity {
 
 	public void setUserAgent(String userAgent) {
 		this.userAgent = userAgent;
+	}
+
+	public String getBrowser() {
+		return browser;
+	}
+
+	public void setBrowser(String browser) {
+		this.browser = browser;
+	}
+
+	public String getOs() {
+		return os;
+	}
+
+	public void setOs(String os) {
+		this.os = os;
+	}
+
+	public String getLoginLocation() {
+		return loginLocation;
+	}
+
+	public void setLoginLocation(String loginLocation) {
+		this.loginLocation = loginLocation;
 	}
 
 	public String getDevice() {

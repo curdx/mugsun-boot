@@ -215,15 +215,27 @@ public class FileController {
 		} catch (Exception e) {
 			log.warn("文件下载失败 id={}: {}", id, e.getMessage());
 			response.reset();
-			response.sendError(jakarta.servlet.http.HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "文件读取失败");
+			// 存储平台下线/文件已物删 → 404（前端预览类调用据此静默降级，不污染错误监控）
+			response.sendError(jakarta.servlet.http.HttpServletResponse.SC_NOT_FOUND, "文件不存在或存储平台已下线");
 		}
 	}
 
-	/** 附件清单：持码可见（防任意登录用户枚举附件定位信息）；上限 500 行防爆量 */
-	@GetMapping("/list")
+	/** 附件分页：持码可见（防任意登录用户枚举附件定位信息）；filename 按原始文件名 LIKE、ext 精确匹配 */
+	@GetMapping("/page")
 	@cn.dev33.satoken.annotation.SaCheckPermission("sys:file:list")
-	public R<List<SysAttach>> list() {
-		return R.data(attachMapper.selectListByQuery(QueryWrapper.create().orderBy("id", false).limit(500)));
+	public R<com.mybatisflex.core.paginate.Page<SysAttach>> page(@RequestParam(defaultValue = "1") long pageNum,
+									 @RequestParam(defaultValue = "10") long pageSize,
+									 @RequestParam(required = false) String filename,
+									 @RequestParam(required = false) String ext) {
+		QueryWrapper query = QueryWrapper.create().orderBy("id", false);
+		// 查询条件（值走参数化绑定，LIKE 前后模糊）
+		if (filename != null && !filename.isBlank()) {
+			query.like("name", filename.trim());
+		}
+		if (ext != null && !ext.isBlank()) {
+			query.eq("ext", ext.trim());
+		}
+		return R.data(attachMapper.paginate(pageNum, Math.min(pageSize, 500), query));
 	}
 
 	/**

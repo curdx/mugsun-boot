@@ -19,6 +19,10 @@ public class SysOperLog extends BaseEntity {
 	private Long duration;
 	private Integer status;
 	private String errorMsg;
+
+	/** 操作人显示名（展示用，非表列：operator 存的是用户 id，page 富化回填 昵称/用户名，用户已删则回退原 id） */
+	@com.mybatisflex.annotation.Column(ignore = true)
+	private String operatorName;
 	/** 操作所属租户（@Async 落库经 TenantTaskDecorator 透传，异步不丢隔离） */
 	private String tenantId;
 	/** 防篡改：前一条哈希 / 本条 SM3 哈希 / 本条 SM2 签名 */
@@ -88,6 +92,14 @@ public class SysOperLog extends BaseEntity {
 
 	public void setOperator(String operator) {
 		this.operator = operator;
+	}
+
+	public String getOperatorName() {
+		return operatorName;
+	}
+
+	public void setOperatorName(String operatorName) {
+		this.operatorName = operatorName;
 	}
 
 	public String getIp() {

@@ -140,3 +140,10 @@ mugsun:
     enabled: ${MUGSUN_SOCIAL_ENABLED:true}
     # mock 社交来源仅 dev profile 配置（身份固定=后门，主配置绝不携带）
     mock-enabled: ${MUGSUN_SOCIAL_MOCK:false}
+  ip2region:
+    # 离线 IP 归属地（登录日志 login_location 列）：缺省关闭。
+    # xdb 数据文件（约 11MB）不入库——官方仅经 GitHub 仓库 data/ 分发且不定期更新，
+    # 开启步骤：下载 https://github.com/lionsoul2014/ip2region/raw/master/data/ip2region_v4.xdb
+    # 至服务器本地目录，xdb-path 指向该文件后 enabled=true。
+    enabled: ${MUGSUN_IP2REGION_ENABLED:false}
+    xdb-path: ${MUGSUN_IP2REGION_XDB_PATH:}

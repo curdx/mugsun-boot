@@ -50,6 +50,7 @@ public class AuthController {
 	private final com.mugsun.boot.websocket.WsMessageSender wsMessageSender;
 	private final com.mugsun.boot.system.mapper.SysRoleMapper roleMapper;
 	private final com.mugsun.boot.system.mapper.SysUserRoleMapper userRoleMapper;
+	private final IpRegionService ipRegionService;
 
 	public AuthController(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
 						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper,
@@ -66,7 +67,8 @@ public class AuthController {
 						  com.mugsun.boot.social.SocialProperties socialProperties,
 						  com.mugsun.boot.websocket.WsMessageSender wsMessageSender,
 						  com.mugsun.boot.system.mapper.SysRoleMapper roleMapper,
-						  com.mugsun.boot.system.mapper.SysUserRoleMapper userRoleMapper) {
+						  com.mugsun.boot.system.mapper.SysUserRoleMapper userRoleMapper,
+						  IpRegionService ipRegionService) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
@@ -85,6 +87,7 @@ public class AuthController {
 		this.wsMessageSender = wsMessageSender;
 		this.roleMapper = roleMapper;
 		this.userRoleMapper = userRoleMapper;
+		this.ipRegionService = ipRegionService;
 	}
 
 	/** SM2 传输公钥：前端登录/改密/注册前取此公钥加密密码；gmEnabled=false 时前端明文传输 */
@@ -401,13 +404,21 @@ public class AuthController {
 		return R.success("解绑成功");
 	}
 
-	/** 登录日志留痕（平台级，登录前无租户上下文）：含租户/UA/设备增强字段 */
+	/** 登录日志留痕（平台级，登录前无租户上下文）：含租户/UA/设备增强字段；
+	 *  写入时解析 UA 落 browser/os 列、ip2region 离线解析落 login_location 列（均可空，解析失败不阻断） */
 	private void saveLoginLog(String username, HttpServletRequest request, String device, String tenantId,
-							 int status, String msg) {
+								 int status, String msg) {
 		SysLoginLog log = new SysLoginLog();
 		log.setUsername(username);
 		log.setIp(request.getRemoteAddr());
-		log.setUserAgent(truncateUa(request));
+		String ua = truncateUa(request);
+		log.setUserAgent(ua);
+		if (ua != null && !ua.isBlank()) {
+			cn.hutool.http.useragent.UserAgent agent = cn.hutool.http.useragent.UserAgentUtil.parse(ua);
+			log.setBrowser(agent.getBrowser() == null ? null : agent.getBrowser().getName());
+			log.setOs(agent.getOs() == null ? null : agent.getOs().getName());
+		}
+		log.setLoginLocation(ipRegionService.resolve(log.getIp()));
 		log.setDevice(device);
 		log.setTenantId(tenantId);
 		log.setStatus(status);
