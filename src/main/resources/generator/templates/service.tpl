@@ -54,13 +54,16 @@ public class #(entityName)Service {
 				#(childMapperVar).insertSelective(sub);
 			} else {
 				#(childMapperVar).update(sub);
-				keepIds.add(sub.getId());
 			}
+			// 新插行由 insertSelective 回填雪花 id，与存量行一并纳入保留集，防被下方移除条件误删
+			keepIds.add(sub.getId());
 		}
 		// 被移除的子行逻辑删（is_deleted=1，与平台逻辑删除口径一致）
-		#(childMapperVar).deleteByQuery(QueryWrapper.create()
-			.eq("#(subJoinColumn)", mainId)
-			.and(QueryWrapper.create().notIn("id", keepIds).when(!keepIds.isEmpty())));
+		QueryWrapper removeQuery = QueryWrapper.create().eq("#(subJoinColumn)", mainId);
+		if (!keepIds.isEmpty()) {
+			removeQuery.notIn("id", keepIds);
+		}
+		#(childMapperVar).deleteByQuery(removeQuery);
 	}
 
 	/** 级联删除：删子表 → 删主表 */

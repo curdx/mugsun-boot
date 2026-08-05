@@ -35,7 +35,7 @@ import java.util.zip.ZipOutputStream;
 public class GenRenderService {
 
 	/** BaseEntity 继承字段，实体不重复声明 */
-	private static final Set<String> BASE_FIELDS = Set.of("id", "createTime", "updateTime", "isDeleted");
+	private static final Set<String> BASE_FIELDS = Set.of("id", "createTime", "updateTime", "isDeleted", "tenantId");
 	/** 需显式 import 的 Java 类型 */
 	private static final Map<String, String> TYPE_IMPORTS = Map.of(
 		"BigDecimal", "java.math.BigDecimal",
