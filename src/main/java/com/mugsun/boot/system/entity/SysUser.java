@@ -35,6 +35,19 @@ public class SysUser extends BaseEntity {
 	@ColumnMask(FieldMaskConstants.TYPE_USER_ID_CARD)
 	private String idCard;
 
+	/** 部门名（展示用，非表列，page/detail 富化填充） */
+	@Column(ignore = true)
+	private String deptName;
+	/** 岗位名（展示用，非表列） */
+	@Column(ignore = true)
+	private String postName;
+	/** 角色名串（展示用，非表列，顿号分隔） */
+	@Column(ignore = true)
+	private String roleNames;
+	/** 角色 id 集合（建档/编辑挂角色入参 + detail 回显，非表列） */
+	@Column(ignore = true)
+	private java.util.List<Long> roleIds;
+
 	public String getUsername() {
 		return username;
 	}
@@ -113,5 +126,37 @@ public class SysUser extends BaseEntity {
 
 	public void setIdCard(String idCard) {
 		this.idCard = idCard;
+	}
+
+	public String getDeptName() {
+		return deptName;
+	}
+
+	public void setDeptName(String deptName) {
+		this.deptName = deptName;
+	}
+
+	public String getPostName() {
+		return postName;
+	}
+
+	public void setPostName(String postName) {
+		this.postName = postName;
+	}
+
+	public String getRoleNames() {
+		return roleNames;
+	}
+
+	public void setRoleNames(String roleNames) {
+		this.roleNames = roleNames;
+	}
+
+	public java.util.List<Long> getRoleIds() {
+		return roleIds;
+	}
+
+	public void setRoleIds(java.util.List<Long> roleIds) {
+		this.roleIds = roleIds;
 	}
 }

@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 用户管理
@@ -46,6 +47,8 @@ public class SysUserController {
 	private final AuditService auditService;
 	private final SysUserRoleMapper userRoleMapper;
 	private final com.mugsun.boot.system.mapper.SysRoleMapper roleMapper;
+	private final com.mugsun.boot.system.mapper.SysDeptMapper deptMapper;
+	private final com.mugsun.boot.system.mapper.SysPostMapper postMapper;
 	private final com.mugsun.boot.security.SecurityPolicyService securityPolicyService;
 	private final com.mugsun.boot.tenant.TenantValidator tenantValidator;
 	private final NotifySendApi notifySendApi;
@@ -53,6 +56,8 @@ public class SysUserController {
 	public SysUserController(SysUserMapper userMapper, PasswordEncoder passwordEncoder, AuditService auditService,
 							 SysUserRoleMapper userRoleMapper,
 							 com.mugsun.boot.system.mapper.SysRoleMapper roleMapper,
+							 com.mugsun.boot.system.mapper.SysDeptMapper deptMapper,
+							 com.mugsun.boot.system.mapper.SysPostMapper postMapper,
 							 com.mugsun.boot.security.SecurityPolicyService securityPolicyService,
 							 com.mugsun.boot.tenant.TenantValidator tenantValidator,
 							 NotifySendApi notifySendApi) {
@@ -61,6 +66,8 @@ public class SysUserController {
 		this.auditService = auditService;
 		this.userRoleMapper = userRoleMapper;
 		this.roleMapper = roleMapper;
+		this.deptMapper = deptMapper;
+		this.postMapper = postMapper;
 		this.securityPolicyService = securityPolicyService;
 		this.tenantValidator = tenantValidator;
 		this.notifySendApi = notifySendApi;
@@ -70,13 +77,85 @@ public class SysUserController {
 	@SaCheckPermission("sys:user:list")
 	@DataScope
 	public R<Page<SysUser>> page(@RequestParam(defaultValue = "1") long pageNum,
-								 @RequestParam(defaultValue = "10") long pageSize) {
+								 @RequestParam(defaultValue = "10") long pageSize,
+								 @RequestParam(required = false) String username,
+								 @RequestParam(required = false) String nickname,
+								 @RequestParam(required = false) String phone,
+								 @RequestParam(required = false) Integer status,
+								 @RequestParam(required = false) Long deptId) {
 		QueryWrapper query = QueryWrapper.create().orderBy("id", false);
+		// 查询条件（值走参数化绑定，LIKE 前后模糊）
+		if (username != null && !username.isBlank()) {
+			query.like("username", username.trim());
+		}
+		if (nickname != null && !nickname.isBlank()) {
+			query.like("nickname", nickname.trim());
+		}
+		if (phone != null && !phone.isBlank()) {
+			query.like("phone", phone.trim());
+		}
+		if (status != null) {
+			query.eq("status", status);
+		}
+		if (deptId != null) {
+			query.eq("dept_id", deptId);
+		}
 		// 行级数据权限：@DataScope 激活后由数据权限方言自动注入 OR 并集条件（无需手工 apply）
 		Page<SysUser> page = userMapper.paginate(pageNum, pageSize, query);
 		// 密码脱敏
 		page.getRecords().forEach(u -> u.setPassword(null));
+		enrichOrg(page.getRecords());
 		return R.data(page);
+	}
+
+	/** 组织信息富化：部门/岗位/角色名批量回填（按 id 集批量查，避免 N+1） */
+	private void enrichOrg(List<SysUser> records) {
+		if (records == null || records.isEmpty()) {
+			return;
+		}
+		java.util.Set<Long> deptIds = new java.util.HashSet<>();
+		java.util.Set<Long> postIds = new java.util.HashSet<>();
+		List<Long> userIds = new java.util.ArrayList<>();
+		for (SysUser u : records) {
+			if (u.getDeptId() != null) {
+				deptIds.add(u.getDeptId());
+			}
+			if (u.getPostId() != null) {
+				postIds.add(u.getPostId());
+			}
+			userIds.add(u.getId());
+		}
+		Map<Long, String> deptMap = new java.util.HashMap<>();
+		if (!deptIds.isEmpty()) {
+			deptMapper.selectListByQuery(QueryWrapper.create().in("id", deptIds))
+				.forEach(d -> deptMap.put(d.getId(), d.getDeptName()));
+		}
+		Map<Long, String> postMap = new java.util.HashMap<>();
+		if (!postIds.isEmpty()) {
+			postMapper.selectListByQuery(QueryWrapper.create().in("id", postIds))
+				.forEach(p -> postMap.put(p.getId(), p.getPostName()));
+		}
+		// 角色名：user_role 批量取回后按角色 id 集查名
+		List<SysUserRole> userRoles = userRoleMapper.selectListByQuery(QueryWrapper.create().in("user_id", userIds));
+		Map<Long, String> roleNameMap = new java.util.HashMap<>();
+		if (!userRoles.isEmpty()) {
+			roleMapper.selectListByQuery(QueryWrapper.create().in("id",
+					userRoles.stream().map(SysUserRole::getRoleId).distinct().toList()))
+				.forEach(r -> roleNameMap.put(r.getId(), r.getRoleName()));
+		}
+		Map<Long, List<String>> namesByUser = new java.util.HashMap<>();
+		for (SysUserRole ur : userRoles) {
+			String name = roleNameMap.get(ur.getRoleId());
+			if (name != null) {
+				namesByUser.computeIfAbsent(ur.getUserId(), k -> new java.util.ArrayList<>()).add(name);
+			}
+		}
+		for (SysUser u : records) {
+			u.setDeptName(deptMap.get(u.getDeptId()));
+			u.setPostName(postMap.get(u.getPostId()));
+			List<String> names = namesByUser.get(u.getId());
+			u.setRoleNames(names == null ? null : String.join("、", names));
+		}
 	}
 
 	@GetMapping("/detail")
@@ -88,8 +167,44 @@ public class SysUserController {
 		SysUser user = userMapper.selectOneByQuery(QueryWrapper.create().eq("id", id));
 		if (user != null) {
 			user.setPassword(null);
+			// 角色回显（建档弹窗编辑态）
+			user.setRoleIds(userRoleMapper.selectListByQuery(QueryWrapper.create().eq("user_id", id))
+				.stream().map(SysUserRole::getRoleId).toList());
 		}
 		return R.data(user);
+	}
+
+	/** 部门/岗位归属校验：存在且属当前租户（防挂到他租户组织越权取数） */
+	private void assertOrgValid(SysUser user) {
+		if (user.getDeptId() != null
+			&& deptMapper.selectCountByQuery(QueryWrapper.create().eq("id", user.getDeptId())) == 0) {
+			throw new com.mugsun.core.tool.exception.ServiceException("部门不存在");
+		}
+		if (user.getPostId() != null
+			&& postMapper.selectCountByQuery(QueryWrapper.create().eq("id", user.getPostId())) == 0) {
+			throw new com.mugsun.core.tool.exception.ServiceException("岗位不存在");
+		}
+	}
+
+	/**
+	 * 角色同步：roleIds 不为 null 时全量替换用户角色。
+	 * 校验角色存在且属当前租户（Flex 租户隔离自动过滤他租户角色，数量不符即含越权 id）。
+	 */
+	private void syncUserRoles(Long userId, List<Long> roleIds) {
+		if (roleIds == null) {
+			return;
+		}
+		if (!roleIds.isEmpty()
+			&& roleMapper.selectCountByQuery(QueryWrapper.create().in("id", roleIds)) != roleIds.size()) {
+			throw new com.mugsun.core.tool.exception.ServiceException("存在无效角色");
+		}
+		userRoleMapper.deleteByQuery(QueryWrapper.create().eq("user_id", userId));
+		for (Long roleId : roleIds) {
+			SysUserRole ur = new SysUserRole();
+			ur.setUserId(userId);
+			ur.setRoleId(roleId);
+			userRoleMapper.insert(ur);
+		}
 	}
 
 	/** 用户下拉选项（value=id / label=昵称，供收件人选择等场景，仅启用用户）；持码+数据范围约束，防全租户账号枚举 */
@@ -134,6 +249,8 @@ public class SysUserController {
 		if (user.getPhone() != null && !user.getPhone().isBlank() && !user.getPhone().matches("^1\\d{10}$")) {
 			throw new com.mugsun.core.tool.exception.ServiceException("手机号格式不正确");
 		}
+		// 部门/岗位归属校验（建档挂组织，防跨租户）
+		assertOrgValid(user);
 		if (user.getId() == null) {
 			// 服务端清洗：审计字段与租户归属一律服务端裁定（Flex 仅对 null tenantId 才填充当前租户）
 			user.sanitizeForInsert();
@@ -148,6 +265,8 @@ public class SysUserController {
 			});
 			securityPolicyService.logPassword(user.getId(), user.getPassword());
 			notifyWelcome(user);
+			// 建档挂角色（roleIds 非 null 才同步，保持旧调用方兼容）
+			syncUserRoles(user.getId(), user.getRoleIds());
 		} else {
 			// 审计前后镜像恒脱敏读：与操作者角色无关，敏感字段永不落明文入审计
 			SysUser before = com.mugsun.boot.common.mask.FieldMaskContext.maskedRead(() -> userMapper.selectOneById(user.getId()));
@@ -171,6 +290,8 @@ public class SysUserController {
 			Object operator = StpUtil.getLoginIdDefaultNull();
 			auditService.record("sys_user", user.getId().toString(), before, after,
 				operator == null ? null : operator.toString());
+			// 编辑挂角色（roleIds 非 null 才同步，保持旧调用方兼容）
+			syncUserRoles(user.getId(), user.getRoleIds());
 		}
 		return R.success("操作成功");
 	}
