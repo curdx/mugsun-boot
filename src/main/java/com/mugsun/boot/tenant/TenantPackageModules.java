@@ -121,7 +121,9 @@ public final class TenantPackageModules {
 	private static final List<String> PLATFORM_WRITE_PREFIXES = List.of(
 		"/system/menu",
 		"/system/dict",
-		"/system/param"
+		"/system/dict-biz",
+		"/system/param",
+		"/system/client"
 	);
 
 	private TenantPackageModules() {
@@ -132,8 +134,11 @@ public final class TenantPackageModules {
 		return matchesAny(path, PLATFORM_ONLY_PREFIXES);
 	}
 
-	/** 是否平台超管专属「写」路径（GET 只读放行，写操作仅平台超管） */
+	/** 是否平台超管专属「写」路径（GET 只读放行，写操作仅平台超管；字典批量查询属全局共享只读助手，不算配置写） */
 	public static boolean isPlatformWrite(String path) {
+		if (path.startsWith("/system/dict/batch") || path.startsWith("/system/dict-biz/batch")) {
+			return false;
+		}
 		return matchesAny(path, PLATFORM_WRITE_PREFIXES);
 	}
 

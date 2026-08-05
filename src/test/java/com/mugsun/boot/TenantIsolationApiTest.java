@@ -66,4 +66,22 @@ class TenantIsolationApiTest extends AbstractIntegrationTest {
 		assertThat(r.path("success").asBoolean()).isFalse();
 		assertThat(r.path("msg").asText()).contains("无权跨租户操作");
 	}
+
+	@Test
+	void globalConfigWriteIsForbiddenForTenantAdmin() {
+		// 租户管理员（持 * 通配）改全局配置（无 tenant_id 共享表）被拒——跨租户完整性红线
+		Map<String, Object> dict = new HashMap<>();
+		dict.put("code", "it-global-" + System.currentTimeMillis() % 100000);
+		dict.put("dictValue", "越权字典");
+		dict.put("dictKey", "1");
+		ResponseEntity<String> response = post("/system/dict/submit", dict, tenantAdminToken);
+		assertThat(response.getStatusCode().value()).as("租户管理员写全局字典须 403").isEqualTo(403);
+		JsonNode r = readBody(response);
+		assertThat(r.path("code").asInt()).isEqualTo(403);
+		assertThat(r.path("msg").asText()).contains("仅平台超管可修改平台全局配置");
+
+		// 平台超管不受影响（同端点可写）
+		JsonNode ok = readBody(post("/system/dict/submit", dict, loginAdmin()));
+		assertThat(ok.path("code").asInt()).as("平台超管写全局字典须 200：" + ok.path("msg").asText()).isEqualTo(200);
+	}
 }
