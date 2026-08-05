@@ -116,4 +116,17 @@ class PermissionGuardApiTest extends AbstractIntegrationTest {
 		JsonNode r = readBody(response);
 		assertThat(r.path("code").asInt()).isEqualTo(403);
 	}
+
+	@Test
+	void jobSaveWithInvalidProcessorIsRejected() {
+		// 处理器必须在注册表（Spring 容器 BasicProcessor 实现）内：指向不存在类的保存直接 400，不落成死任务
+		String adminToken = loginAdmin();
+		Map<String, Object> body = new HashMap<>();
+		body.put("jobName", "集成测试非法处理器任务");
+		body.put("processorInfo", "com.mugsun.boot.job.NotExistProcessor");
+		ResponseEntity<String> response = post("/system/job/save", body, adminToken);
+		JsonNode r = readBody(response);
+		assertThat(r.path("code").asInt()).isEqualTo(400);
+		assertThat(r.path("msg").asText()).contains("处理器未注册");
+	}
 }

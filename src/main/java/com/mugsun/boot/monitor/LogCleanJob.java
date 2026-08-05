@@ -45,15 +45,24 @@ public class LogCleanJob {
 		cleanExpired();
 	}
 
+	/** 供 PowerJob 处理器手动触发：立即执行一次保留期清理，返回各表清理条数（不经节流） */
+	public java.util.Map<String, Integer> cleanNow() {
+		return doClean();
+	}
+
 	/** 物理清理超保留期日志（package-private 供集成测试直接触发，避免长时间 sleep 等待调度）。
 	 *  api/error 与 oper 保留期分离：操作审计日志属等保留证，默认 180 天（monitor.oper-log.retention-days）；
 	 *  oper_log 物理删除前把末条被删记录的 record_hash 落「截断锚点」，全量验签自锚点续起，清理不再误报断链。 */
 	void cleanExpired() {
+		doClean();
+	}
+
+	private java.util.Map<String, Integer> doClean() {
 		String token = IdUtil.fastSimpleUUID();
 		Boolean acquired = redis.opsForValue().setIfAbsent(MonitorConstants.CLEAN_LOCK_KEY, token,
 			Duration.ofSeconds(MonitorConstants.CLEAN_LOCK_SECONDS));
 		if (!Boolean.TRUE.equals(acquired)) {
-			return;
+			return java.util.Map.of();
 		}
 		try {
 			LocalDateTime deadline = LocalDateTime.now().minusDays(clampedDays(
@@ -75,6 +84,7 @@ public class LogCleanJob {
 			log.info("日志保留期清理完成：api_log {} 条，error_log {} 条，oper_log {} 条（api/error 保留 {} 天，oper 保留 {} 天）",
 				api, error, oper, clampedDays(paramService.getValue(MonitorConstants.PARAM_RETENTION_DAYS),
 					MonitorConstants.DEFAULT_RETENTION_DAYS), operDays);
+			return java.util.Map.of("apiLog", api, "errorLog", error, "operLog", oper);
 		} finally {
 			// Lua compare-and-del 原子释放：TTL 过期被抢锁场景不误删他节点锁
 			String script = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
