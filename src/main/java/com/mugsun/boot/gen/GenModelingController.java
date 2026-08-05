@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 动态建表 / AI 辅助建模：元数据 → 物理表 DDL（建表/增量同步/强制重建）与自然语言候选建模。
+ * 动态建表 / 规则建模：元数据 → 物理表 DDL（建表/增量同步/强制重建）与规则解析候选建模。
  * 反向导入（既有表→元数据）复用 {@code GenController#importTable}（/system/gen/import）。
  */
 @RestController
@@ -54,7 +54,7 @@ public class GenModelingController {
 		return R.success(force ? "重建成功" : "同步成功");
 	}
 
-	/** AI 辅助建模：自然语言 → 候选可编辑元数据（仅产出候选，不落库/不建表） */
+	/** 规则建模：按格式描述 → 候选可编辑元数据（仅产出候选，不落库/不建表；基于规则解析，不支持自由中文描述） */
 	@SaCheckPermission("sys:gen:list")
 	@PostMapping("/ai/draft")
 	public R<Map<String, Object>> aiDraft(@RequestBody DraftParam param) {
@@ -76,7 +76,7 @@ public class GenModelingController {
 		return R.data(tableId);
 	}
 
-	/** AI 建模描述参数 */
+	/** 规则建模描述参数 */
 	public record DraftParam(String description) {
 	}
 

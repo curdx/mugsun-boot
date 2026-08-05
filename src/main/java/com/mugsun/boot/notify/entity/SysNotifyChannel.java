@@ -11,7 +11,7 @@ import com.mybatisflex.annotation.Table;
 @Table("sys_notify_channel")
 public class SysNotifyChannel extends BaseEntity {
 
-	/** 渠道编码：in_app/mail/sms（wechat_mp 预留） */
+	/** 渠道编码：in_app/mail/sms */
 	private String channel;
 	/** 渠道名称 */
 	private String name;

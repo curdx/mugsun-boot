@@ -11,8 +11,6 @@ public interface NotifyConstants {
 	String CHANNEL_MAIL = "mail";
 	/** 渠道编码：短信 */
 	String CHANNEL_SMS = "sms";
-	/** 渠道编码：微信公众号（扩展点预留，未实现） */
-	String CHANNEL_WECHAT_MP = "wechat_mp";
 
 	/** 流水状态：初始（已落库待投递） */
 	String STATUS_INIT = "INIT";
