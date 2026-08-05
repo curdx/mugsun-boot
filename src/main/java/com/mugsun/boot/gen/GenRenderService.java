@@ -207,6 +207,12 @@ public class GenRenderService {
 		m.put("isMaster", isMaster);
 		// 类声明（预拼，规避 Enjoy 内联指令吞空格）
 		m.put("classDecl", "extends BaseEntity" + (isTree ? " implements INode<" + entityName + ">" : ""));
+		List<Map<String, Object>> entityColumns = new ArrayList<>();
+		List<Map<String, Object>> listColumns = new ArrayList<>();
+		List<Map<String, Object>> formColumns = new ArrayList<>();
+		List<String> imports = new ArrayList<>();
+		Set<String> elImports = new LinkedHashSet<>(List.of("ElButton", "ElCard", "ElDialog", "ElForm", "ElFormItem"));
+		Set<String> dictCodes = new LinkedHashSet<>();
 		// 主子表：子实体/子表/外键 + 复用 entity/mapper 模板的子模型
 		if (isMaster && t.getSubTableName() != null) {
 			String childEntity = GenNaming.toCamel(GenNaming.stripPrefix(t.getSubTableName(), nvl(t.getTablePrefix(), "")), true);
@@ -235,24 +241,25 @@ public class GenRenderService {
 			childTable.setTplCategory("crud");
 			Map<String, Object> childModel = buildModel(childTable, childCols == null ? List.of() : childCols, List.of());
 			m.put("childModel", childModel);
-			// 子表编辑列：剔除外键列（级联时自动回填），供主子前端子表编辑
-			@SuppressWarnings("unchecked")
-			List<Map<String, Object>> childEntityCols = (List<Map<String, Object>>) childModel.get("columns");
+			// 子表编辑列：剔除外键列（级联时自动回填），控件按 html_type 映射（row 绑定，子行内嵌编辑）
 			List<Map<String, Object>> childForm = new ArrayList<>();
-			for (Map<String, Object> c : childEntityCols) {
-				if (!joinField.equals(c.get("javaField"))) {
-					childForm.add(c);
+			for (GenColumn c : childCols == null ? List.<GenColumn>of() : childCols) {
+				String field = c.getJavaField();
+				if (joinField.equals(field) || BASE_FIELDS.contains(field)) {
+					continue;
 				}
+				String label = cleanLabel(nvl(c.getColumnComment(), field));
+				String dict = c.getDictType();
+				if ("select".equals(c.getHtmlType()) && dict != null && !dict.isBlank()) {
+					dictCodes.add(dict);
+				}
+				childForm.add(Map.of(
+					"javaField", field, "comment", label,
+					"control", formControl("row." + field, label, c.getHtmlType(), dict, elImports)));
 			}
 			m.put("childFormColumns", childForm);
 		}
 
-		List<Map<String, Object>> entityColumns = new ArrayList<>();
-		List<Map<String, Object>> listColumns = new ArrayList<>();
-		List<Map<String, Object>> formColumns = new ArrayList<>();
-		List<String> imports = new ArrayList<>();
-		Set<String> elImports = new LinkedHashSet<>(List.of("ElButton", "ElCard", "ElDialog", "ElForm", "ElFormItem"));
-		Set<String> dictCodes = new LinkedHashSet<>();
 		for (GenColumn c : cols) {
 			String field = c.getJavaField();
 			String label = cleanLabel(nvl(c.getColumnComment(), field));
@@ -283,7 +290,7 @@ public class GenRenderService {
 				}
 				formColumns.add(Map.of(
 					"prop", field, "label", label,
-					"control", formControl(field, label, c.getHtmlType(), dict, elImports)));
+					"control", formControl("currentRow." + field, label, c.getHtmlType(), dict, elImports)));
 			}
 		}
 		imports.sort(String::compareTo);
@@ -294,12 +301,19 @@ public class GenRenderService {
 			elImports.add("ElMessage");
 			elImports.add("ElMessageBox");
 		}
+		if (isMaster) {
+			elImports.add("ElPagination");
+		}
 		m.put("columns", entityColumns);
 		// 树表：父级字段由 新增子/新增根 结构化设置，不进编辑表单（且雪花 Long id 不宜入数值控件）
 		if (isTree) {
 			String parentFieldJava = t.getTreeParentField() != null
 				? GenNaming.toCamel(t.getTreeParentField(), false) : "parentId";
 			formColumns.removeIf(c -> parentFieldJava.equals(c.get("prop")));
+			// 懒加载：控制器按父列取直接子节点（parentColumn 为原始库列名）
+			m.put("parentColumn", t.getTreeParentField() != null && !t.getTreeParentField().isBlank()
+				? t.getTreeParentField() : "parent_id");
+			m.put("parentFieldJava", parentFieldJava);
 		}
 		m.put("listColumns", listColumns);
 		m.put("formColumns", formColumns);
@@ -321,9 +335,9 @@ public class GenRenderService {
 		return m;
 	}
 
-	/** 按控件类型生成表单控件 XML（并登记所需 Element Plus 组件） */
-	private String formControl(String prop, String label, String htmlType, String dict, Set<String> elImports) {
-		String bind = "currentRow." + prop;
+	/** 按控件类型生成表单控件 XML（并登记所需 Element Plus 组件）；bind 为 v-model 绑定表达式 */
+	private String formControl(String bind, String label, String htmlType, String dict, Set<String> elImports) {
+		boolean noDict = dict == null || dict.isBlank();
 		return switch (htmlType == null ? "input" : htmlType) {
 			case "textarea" -> {
 				elImports.add("ElInput");
@@ -342,12 +356,41 @@ public class GenRenderService {
 				yield "<ElSwitch v-model=\"" + bind + "\" :active-value=\"1\" :inactive-value=\"0\" />";
 			}
 			case "select" -> {
-				elImports.add("ElSelect");
-				elImports.add("ElOption");
-				String options = dict != null && !dict.isBlank()
-					? "\n            <ElOption v-for=\"d in " + dict + "\" :key=\"d.value\" :label=\"d.label\" :value=\"d.value\" />\n          "
-					: "";
-				yield "<ElSelect v-model=\"" + bind + "\" placeholder=\"请选择" + label + "\" style=\"width: 100%\">" + options + "</ElSelect>";
+				if (noDict) {
+					// 未配置字典时下拉必然为空，降级输入框并明示（防生成「空下拉」糊弄用户）
+					elImports.add("ElInput");
+					yield "<ElInput v-model=\"" + bind + "\" placeholder=\"请选择" + label + "（未配置字典，暂以输入代替）\" />";
+				} else {
+					elImports.add("ElSelect");
+					elImports.add("ElOption");
+					yield "<ElSelect v-model=\"" + bind + "\" placeholder=\"请选择" + label + "\" style=\"width: 100%\">"
+						+ "\n            <ElOption v-for=\"d in " + dict + "\" :key=\"d.value\" :label=\"d.label\" :value=\"d.value\" />\n          "
+						+ "</ElSelect>";
+				}
+			}
+			case "radio" -> {
+				if (noDict) {
+					elImports.add("ElInput");
+					yield "<ElInput v-model=\"" + bind + "\" placeholder=\"请选择" + label + "（未配置字典，暂以输入代替）\" />";
+				} else {
+					elImports.add("ElRadioGroup");
+					elImports.add("ElRadio");
+					yield "<ElRadioGroup v-model=\"" + bind + "\">"
+						+ "\n            <ElRadio v-for=\"d in " + dict + "\" :key=\"d.value\" :value=\"d.value\">{{ d.label }}</ElRadio>\n          "
+						+ "</ElRadioGroup>";
+				}
+			}
+			case "checkbox" -> {
+				if (noDict) {
+					elImports.add("ElInput");
+					yield "<ElInput v-model=\"" + bind + "\" placeholder=\"请选择" + label + "（未配置字典，暂以输入代替）\" />";
+				} else {
+					elImports.add("ElCheckboxGroup");
+					elImports.add("ElCheckbox");
+					yield "<ElCheckboxGroup v-model=\"" + bind + "\">"
+						+ "\n            <ElCheckbox v-for=\"d in " + dict + "\" :key=\"d.value\" :value=\"d.value\">{{ d.label }}</ElCheckbox>\n          "
+						+ "</ElCheckboxGroup>";
+				}
 			}
 			default -> {
 				elImports.add("ElInput");

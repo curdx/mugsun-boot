@@ -2,9 +2,9 @@ import request from '@/utils/http'
 import type { #(entityName)Form, #(entityName)Query } from './type'
 #if(isTree)
 
-/** #(functionName)树 */
-export const fetch#(entityName)Tree = () =>
-  request.get({ url: '#(apiUrl)/tree' })
+/** #(functionName)树（懒加载：parentId 空取根节点，否则取直接子级） */
+export const fetch#(entityName)Tree = (parentId?: number | string) =>
+  request.get({ url: '#(apiUrl)/tree', params: parentId == null ? {} : { parentId } })
 #end
 
 /** #(functionName)分页 */

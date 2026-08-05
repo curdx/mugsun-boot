@@ -1,4 +1,4 @@
-<!-- #(functionName) 管理页（代码生成产物·树表 TreeUtil + 懒展开） -->
+<!-- #(functionName) 管理页（代码生成产物·树表·懒加载：展开时按节点取子级，大树不全量拉取） -->
 <template>
   <div class="art-full-height">
     <ElCard class="art-table-card">
@@ -9,8 +9,9 @@
         :data="treeData"
         row-key="id"
         border
-        default-expand-all
-        :tree-props="{ children: 'children' }"
+        lazy
+        :load="loadChildren"
+        :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
         v-loading="loading"
       >
 #for(col : listColumns)
@@ -60,6 +61,7 @@
   const dialogVisible = ref(false)
   const currentRow = ref<any>({})
 
+  // 根节点（parentId 空由后端按 0 处理）
   const loadTree = async (): Promise<void> => {
     loading.value = true
     try {
@@ -67,6 +69,15 @@
     } finally {
       loading.value = false
     }
+  }
+
+  // 懒加载：展开某节点时才取其直接子级（el-table load 回调）
+  const loadChildren = async (
+    row: any,
+    _treeNode: unknown,
+    resolve: (data: any[]) => void
+  ): Promise<void> => {
+    resolve(((await fetch#(entityName)Tree(row.id)) as any[]) || [])
   }
 
   const openAdd = (parent?: any): void => {
@@ -83,6 +94,7 @@
     await fetchSave#(entityName)(currentRow.value)
     ElMessage.success('操作成功')
     dialogVisible.value = false
+    // 重载根节点（已展开子级在重新展开时按需再取）
     await loadTree()
   }
 

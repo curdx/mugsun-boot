@@ -5,7 +5,6 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.demo.entity.Category;
 import com.mugsun.boot.demo.mapper.CategoryMapper;
 import com.mugsun.core.tool.api.R;
-import com.mugsun.core.tool.tree.TreeUtil;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.springframework.web.bind.annotation.*;
@@ -28,9 +27,20 @@ public class CategoryController {
 		this.categoryMapper = categoryMapper;
 	}
 
+	/** 懒加载树：parentId 空取根节点（父列=0），否则取其直接子节点；分组统计 hasChildren 驱动前端展开箭头（防大树全量加载） */
 	@GetMapping("/tree")
-	public R<List<Category>> tree() {
-		return R.data(TreeUtil.build(categoryMapper.selectListByQuery(QueryWrapper.create().orderBy("id", true)), 0L));
+	public R<List<Category>> tree(@RequestParam(required = false) Long parentId) {
+		List<Category> list = categoryMapper.selectListByQuery(QueryWrapper.create()
+			.eq("parent_id", parentId == null ? 0L : parentId).orderBy("id", true));
+		if (!list.isEmpty()) {
+			java.util.Map<Long, Long> childCounts = new java.util.HashMap<>();
+			for (com.mybatisflex.core.row.Row row : com.mybatisflex.core.row.Db.selectListBySql(
+				"SELECT parent_id AS pid, COUNT(*) AS cnt FROM gen_category WHERE is_deleted = 0 GROUP BY parent_id")) {
+				childCounts.put(row.getLong("pid"), row.getLong("cnt"));
+			}
+			list.forEach(n -> n.setHasChildren(childCounts.getOrDefault(n.getId(), 0L) > 0));
+		}
+		return R.data(list);
 	}
 
 	@GetMapping("/page")

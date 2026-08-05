@@ -36,7 +36,7 @@ public class OrderService {
 		return order;
 	}
 
-	/** 级联保存：存主表 → 按主键重建子表（删旧插新） */
+	/** 级联保存：存主表 → 子表按 id 差异处理（有 id 更新、无 id 新增、被移除的逻辑删，不再「删旧插新」累积软删行） */
 	@Transactional(rollbackFor = Exception.class)
 	public void save(Order order) {
 		if (order.getId() == null) {
@@ -45,15 +45,22 @@ public class OrderService {
 			orderMapper.update(order);
 		}
 		Long mainId = order.getId();
-		orderItemMapper.deleteByQuery(QueryWrapper.create().eq("order_id", mainId));
-		List<OrderItem> subList = order.getOrderItemList();
-		if (subList != null) {
-			for (OrderItem sub : subList) {
-				sub.setId(null);
-				sub.setOrderId(mainId);
+		List<OrderItem> subList = order.getOrderItemList() == null
+			? java.util.List.of() : order.getOrderItemList();
+		java.util.Set<Long> keepIds = new java.util.HashSet<>();
+		for (OrderItem sub : subList) {
+			sub.setOrderId(mainId);
+			if (sub.getId() == null) {
 				orderItemMapper.insertSelective(sub);
+			} else {
+				orderItemMapper.update(sub);
+				keepIds.add(sub.getId());
 			}
 		}
+		// 被移除的子行逻辑删（is_deleted=1，与平台逻辑删除口径一致）
+		orderItemMapper.deleteByQuery(QueryWrapper.create()
+			.eq("order_id", mainId)
+			.and(QueryWrapper.create().notIn("id", keepIds).when(!keepIds.isEmpty())));
 	}
 
 	/** 级联删除：删子表 → 删主表 */

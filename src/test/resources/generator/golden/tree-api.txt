@@ -1,9 +1,9 @@
 import request from '@/utils/http'
 import type { CategoryForm, CategoryQuery } from './type'
 
-/** 分类树 */
-export const fetchCategoryTree = () =>
-  request.get({ url: '/api/demo/category/tree' })
+/** 分类树（懒加载：parentId 空取根节点，否则取直接子级） */
+export const fetchCategoryTree = (parentId?: number | string) =>
+  request.get({ url: '/api/demo/category/tree', params: parentId == null ? {} : { parentId } })
 
 /** 分类分页 */
 export const fetchCategoryPage = (params: CategoryQuery) =>

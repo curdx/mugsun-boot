@@ -5,9 +5,6 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import #(entityPkg).#(entityName);
 import #(mapperPkg).#(mapperName);
 import com.mugsun.core.tool.api.R;
-#if(isTree)
-import com.mugsun.core.tool.tree.TreeUtil;
-#end
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.springframework.web.bind.annotation.*;
@@ -31,9 +28,20 @@ public class #(entityName)Controller {
 	}
 #if(isTree)
 
+	/** 懒加载树：parentId 空取根节点（父列=0），否则取其直接子节点；分组统计 hasChildren 驱动前端展开箭头（防大树全量加载） */
 	@GetMapping("/tree")
-	public R<List<#(entityName)>> tree() {
-		return R.data(TreeUtil.build(#(mapperVar).selectListByQuery(QueryWrapper.create().orderBy("id", true)), 0L));
+	public R<List<#(entityName)>> tree(@RequestParam(required = false) Long parentId) {
+		List<#(entityName)> list = #(mapperVar).selectListByQuery(QueryWrapper.create()
+			.eq("#(parentColumn)", parentId == null ? 0L : parentId).orderBy("id", true));
+		if (!list.isEmpty()) {
+			java.util.Map<Long, Long> childCounts = new java.util.HashMap<>();
+			for (com.mybatisflex.core.row.Row row : com.mybatisflex.core.row.Db.selectListBySql(
+				"SELECT #(parentColumn) AS pid, COUNT(*) AS cnt FROM #(tableName) WHERE is_deleted = 0 GROUP BY #(parentColumn)")) {
+				childCounts.put(row.getLong("pid"), row.getLong("cnt"));
+			}
+			list.forEach(n -> n.setHasChildren(childCounts.getOrDefault(n.getId(), 0L) > 0));
+		}
+		return R.data(list);
 	}
 #end
 

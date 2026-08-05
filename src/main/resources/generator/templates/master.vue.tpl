@@ -16,6 +16,17 @@
           </template>
         </ElTableColumn>
       </ElTable>
+      <div style="display: flex; justify-content: flex-end; margin-top: 12px">
+        <ElPagination
+          v-model:current-page="page.current"
+          v-model:page-size="page.size"
+          :total="page.total"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @current-change="load"
+          @size-change="load"
+        />
+      </div>
       <ElDialog v-model="dialogVisible" :title="currentRow.id ? '编辑' : '新增'" width="760px" align-center>
         <ElForm :model="currentRow" label-width="100px">
 #for(col : formColumns)
@@ -32,7 +43,7 @@
 #for(col : childFormColumns)
           <ElTableColumn label="#(col.comment)" min-width="120">
             <template v-slot:default="{ row }">
-              <ElInput v-model="row.#(col.javaField)" size="small" />
+              #(col.control)
             </template>
           </ElTableColumn>
 #end
@@ -52,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, onMounted } from 'vue'
+  import { ref, reactive, onMounted } from 'vue'
   import { #(elImports) } from 'element-plus'
 #if(dictCodes.size() > 0)
   import { useDict } from '@/hooks/core/useDict'
@@ -74,12 +85,14 @@
   const loading = ref(false)
   const dialogVisible = ref(false)
   const currentRow = ref<any>({ #(subListField): [] })
+  const page = reactive({ current: 1, size: 20, total: 0 })
 
   const load = async (): Promise<void> => {
     loading.value = true
     try {
-      const res: any = await fetch#(entityName)Page({ pageNum: 1, pageSize: 100 })
-      list.value = res?.records || res || []
+      const res: any = await fetch#(entityName)Page({ pageNum: page.current, pageSize: page.size })
+      list.value = res?.records || []
+      page.total = res?.totalRow || 0
     } finally {
       loading.value = false
     }

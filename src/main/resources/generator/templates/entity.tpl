@@ -32,6 +32,10 @@ public class #(entityName) #(classDecl) {
 	/** 子节点（树构建，非数据库列） */
 	@Column(ignore = true)
 	private List<#(entityName)> children;
+
+	/** 是否有子节点（懒加载标记，非数据库列，/tree 按分组统计回填） */
+	@Column(ignore = true)
+	private boolean hasChildren;
 #end
 #if(isMaster)
 
@@ -59,6 +63,14 @@ public class #(entityName) #(classDecl) {
 	@Override
 	public void setChildren(List<#(entityName)> children) {
 		this.children = children;
+	}
+
+	public boolean isHasChildren() {
+		return hasChildren;
+	}
+
+	public void setHasChildren(boolean hasChildren) {
+		this.hasChildren = hasChildren;
 	}
 #end
 #if(isMaster)
