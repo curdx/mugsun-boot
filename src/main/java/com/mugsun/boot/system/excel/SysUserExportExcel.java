@@ -2,11 +2,13 @@ package com.mugsun.boot.system.excel;
 
 import cn.idev.excel.annotation.ExcelProperty;
 
+import java.time.LocalDateTime;
+
 /**
- * 用户导入模型（兼导入模板）：仅暴露非敏感列，密码等不参与 Excel。
- * 部门/岗位按名称导入（服务端按名解析 id），导出模型见 {@link SysUserExportExcel}。
+ * 用户导出模型：展示导向（部门/角色为名串），列多于导入模型。
+ * 手机号取数已经字段级权限裁决（无查看权为 null、无明文权为脱敏值），此处只做透传。
  */
-public class SysUserExcel {
+public class SysUserExportExcel {
 
 	@ExcelProperty("用户名")
 	private String username;
@@ -17,8 +19,8 @@ public class SysUserExcel {
 	@ExcelProperty("部门")
 	private String deptName;
 
-	@ExcelProperty("岗位")
-	private String postName;
+	@ExcelProperty("角色")
+	private String roleNames;
 
 	@ExcelProperty("邮箱")
 	private String email;
@@ -28,6 +30,9 @@ public class SysUserExcel {
 
 	@ExcelProperty("状态(1启用/0禁用)")
 	private Integer status;
+
+	@ExcelProperty("创建时间")
+	private LocalDateTime createTime;
 
 	public String getUsername() {
 		return username;
@@ -53,12 +58,12 @@ public class SysUserExcel {
 		this.deptName = deptName;
 	}
 
-	public String getPostName() {
-		return postName;
+	public String getRoleNames() {
+		return roleNames;
 	}
 
-	public void setPostName(String postName) {
-		this.postName = postName;
+	public void setRoleNames(String roleNames) {
+		this.roleNames = roleNames;
 	}
 
 	public String getEmail() {
@@ -83,5 +88,13 @@ public class SysUserExcel {
 
 	public void setStatus(Integer status) {
 		this.status = status;
+	}
+
+	public LocalDateTime getCreateTime() {
+		return createTime;
+	}
+
+	public void setCreateTime(LocalDateTime createTime) {
+		this.createTime = createTime;
 	}
 }

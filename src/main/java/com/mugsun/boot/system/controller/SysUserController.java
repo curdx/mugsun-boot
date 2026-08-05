@@ -14,10 +14,12 @@ import com.mugsun.boot.notify.api.NotifySendApi;
 import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.entity.SysUserRole;
 import com.mugsun.boot.system.excel.SysUserExcel;
+import com.mugsun.boot.system.excel.SysUserExportExcel;
 import com.mugsun.boot.system.mapper.SysUserMapper;
 import com.mugsun.boot.system.mapper.SysUserRoleMapper;
 import com.mugsun.boot.system.payload.StatusParam;
 import com.mugsun.boot.system.payload.UserGrantParam;
+import com.mugsun.boot.system.payload.UserImportResult;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.web.excel.ExcelUtil;
 import com.mybatisflex.core.paginate.Page;
@@ -83,8 +85,18 @@ public class SysUserController {
 								 @RequestParam(required = false) String phone,
 								 @RequestParam(required = false) Integer status,
 								 @RequestParam(required = false) Long deptId) {
+		QueryWrapper query = buildUserQuery(username, nickname, phone, status, deptId);
+		// 行级数据权限：@DataScope 激活后由数据权限方言自动注入 OR 并集条件（无需手工 apply）
+		Page<SysUser> page = userMapper.paginate(pageNum, pageSize, query);
+		// 密码脱敏
+		page.getRecords().forEach(u -> u.setPassword(null));
+		enrichOrg(page.getRecords());
+		return R.data(page);
+	}
+
+	/** 用户列表查询条件构造（page 与 export 共用：值走参数化绑定，LIKE 前后模糊） */
+	private QueryWrapper buildUserQuery(String username, String nickname, String phone, Integer status, Long deptId) {
 		QueryWrapper query = QueryWrapper.create().orderBy("id", false);
-		// 查询条件（值走参数化绑定，LIKE 前后模糊）
 		if (username != null && !username.isBlank()) {
 			query.like("username", username.trim());
 		}
@@ -100,12 +112,7 @@ public class SysUserController {
 		if (deptId != null) {
 			query.eq("dept_id", deptId);
 		}
-		// 行级数据权限：@DataScope 激活后由数据权限方言自动注入 OR 并集条件（无需手工 apply）
-		Page<SysUser> page = userMapper.paginate(pageNum, pageSize, query);
-		// 密码脱敏
-		page.getRecords().forEach(u -> u.setPassword(null));
-		enrichOrg(page.getRecords());
-		return R.data(page);
+		return query;
 	}
 
 	/** 组织信息富化：部门/岗位/角色名批量回填（按 id 集批量查，避免 N+1） */
@@ -309,50 +316,171 @@ public class SysUserController {
 		return R.success("删除成功");
 	}
 
+	/**
+	 * 导出用户（与 page 同查询条件，受 @DataScope 行级范围约束）。
+	 * 手机号导出形态由字段级权限裁决（@ColumnMask 读管线自动生效）：无查看权→空、无明文权→脱敏、有明文权→明文。
+	 */
 	@GetMapping("/export")
 	@SaCheckPermission("sys:user:list")
 	@DataScope
-	public void export(HttpServletResponse response) {
-		List<SysUserExcel> rows = userMapper.selectListByQuery(QueryWrapper.create().orderBy("id", false))
-			.stream().map(user -> {
-				SysUserExcel row = new SysUserExcel();
-				row.setUsername(user.getUsername());
-				row.setNickname(user.getNickname());
-				row.setStatus(user.getStatus());
-				return row;
-			}).toList();
-		ExcelUtil.export(response, "用户数据", "用户", rows, SysUserExcel.class);
+	public void export(HttpServletResponse response,
+					   @RequestParam(required = false) String username,
+					   @RequestParam(required = false) String nickname,
+					   @RequestParam(required = false) String phone,
+					   @RequestParam(required = false) Integer status,
+					   @RequestParam(required = false) Long deptId) {
+		List<SysUser> users = userMapper.selectListByQuery(buildUserQuery(username, nickname, phone, status, deptId));
+		enrichOrg(users);
+		List<SysUserExportExcel> rows = users.stream().map(user -> {
+			SysUserExportExcel row = new SysUserExportExcel();
+			row.setUsername(user.getUsername());
+			row.setNickname(user.getNickname());
+			row.setDeptName(user.getDeptName());
+			row.setRoleNames(user.getRoleNames());
+			row.setEmail(user.getEmail());
+			row.setPhone(user.getPhone());
+			row.setStatus(user.getStatus());
+			row.setCreateTime(user.getCreateTime());
+			return row;
+		}).toList();
+		ExcelUtil.export(response, "用户数据", "用户", rows, SysUserExportExcel.class);
 	}
 
+	/** 导入模板下载：表头 + 一行示例（权限码与导入一致） */
+	@GetMapping("/import-template")
+	@SaCheckPermission("sys:user:add")
+	public void importTemplate(HttpServletResponse response) {
+		SysUserExcel example = new SysUserExcel();
+		example.setUsername("zhangsan");
+		example.setNickname("张三");
+		example.setDeptName("研发中心");
+		example.setPostName("开发工程师");
+		example.setEmail("zhangsan@example.com");
+		example.setPhone("13800000000");
+		example.setStatus(1);
+		ExcelUtil.export(response, "用户导入模板", "用户导入", List.of(example), SysUserExcel.class);
+	}
+
+	/**
+	 * 导入用户：逐行处理，单行失败不影响其余行，返回结构化成败明细。
+	 * 空用户名行整行跳过（不计成败）；格式错误（手机号不合规/状态非法）记失败行；
+	 * 已存在账号：updateSupport=false 记失败「已存在」，=true 覆盖更新 昵称/状态/邮箱/部门/岗位（不更新密码与手机号）。
+	 */
 	@PostMapping("/import")
 	@SaCheckPermission("sys:user:add")
 	@OperationLog("导入用户")
-	public R<Void> importUser(MultipartFile file) {
+	public R<UserImportResult> importUser(@RequestParam("file") MultipartFile file,
+										  @RequestParam(required = false, defaultValue = "false") boolean updateSupport) {
 		List<SysUserExcel> rows = ExcelUtil.read(file, SysUserExcel.class);
-		int inserted = 0;
 		String tenant = com.mugsun.boot.tenant.TenantContext.current();
-		for (SysUserExcel row : rows) {
+		int success = 0;
+		List<UserImportResult.FailRow> failList = new java.util.ArrayList<>();
+		for (int i = 0; i < rows.size(); i++) {
+			SysUserExcel row = rows.get(i);
 			String username = row.getUsername() == null ? null : row.getUsername().trim();
 			if (username == null || username.isEmpty()) {
 				continue;
 			}
-			if (userMapper.selectCountByQuery(QueryWrapper.create().eq("username", username)) > 0) {
-				continue;
+			try {
+				importRow(row, username, updateSupport, tenant);
+				success++;
+			} catch (com.mugsun.core.tool.exception.ServiceException e) {
+				// rowIndex 为 Excel 物理行号：表头占第 1 行，首条数据为第 2 行
+				failList.add(new UserImportResult.FailRow(i + 2, username, e.getMessage()));
+			} catch (org.springframework.dao.DuplicateKeyException e) {
+				// 唯一约束冲突（用户名/手机号与他账号重复）：记失败行而非整批 500
+				failList.add(new UserImportResult.FailRow(i + 2, username, "与已有账号数据冲突（用户名或手机号重复）"));
 			}
-			// 账号数配额：逐条入库前校验租户上限（锁内检查+插入防并发超额），超额即停
-			SysUser user = new SysUser();
-			user.setUsername(username);
-			user.setNickname(row.getNickname());
-			user.setStatus(row.getStatus() == null ? 1 : row.getStatus());
-			user.setPassword(passwordEncoder.encode(securityPolicyService.getInitPassword()));
-			tenantValidator.quotaLocked(tenant, () -> {
-				tenantValidator.assertAccountQuota(tenant);
-				userMapper.insert(user);
-				return null;
-			});
-			inserted++;
 		}
-		return R.success("导入完成，新增 " + inserted + " 条");
+		return R.data(new UserImportResult(success, failList.size(), failList));
+	}
+
+	/** 导入单行：格式校验 → 部门/岗位名解析 → 新增或按 updateSupport 覆盖 */
+	private void importRow(SysUserExcel row, String username, boolean updateSupport, String tenant) {
+		String phone = trimToNull(row.getPhone());
+		// 手机号格式校验（与 submit 同规：短信登录按号取人，脏号即冒注面）
+		if (phone != null && !phone.matches("^1\\d{10}$")) {
+			throw new com.mugsun.core.tool.exception.ServiceException("手机号格式不正确");
+		}
+		Integer status = row.getStatus();
+		if (status != null && status != 0 && status != 1) {
+			throw new com.mugsun.core.tool.exception.ServiceException("状态须为1或0");
+		}
+		Long deptId = resolveDeptId(row.getDeptName());
+		Long postId = resolvePostId(row.getPostName());
+		SysUser existing = userMapper.selectOneByQuery(QueryWrapper.create().eq("username", username));
+		if (existing != null) {
+			if (!updateSupport) {
+				throw new com.mugsun.core.tool.exception.ServiceException("已存在");
+			}
+			// 覆盖更新：仅模板承载字段（不更新密码/手机号）；空白字段视为「不更新」，置 null 交 Flex update 忽略、保留原值
+			assertTargetOperable(existing.getId(), true);
+			SysUser update = new SysUser();
+			update.setId(existing.getId());
+			update.setNickname(trimToNull(row.getNickname()));
+			update.setStatus(status);
+			update.setEmail(trimToNull(row.getEmail()));
+			update.setDeptId(deptId);
+			update.setPostId(postId);
+			update.sanitizeForUpdate();
+			userMapper.update(update);
+			return;
+		}
+		// 新增：初始密码入库（与 submit 同款收尾：审计字段服务端清洗 + 配额锁内检查+插入防并发超额）
+		SysUser user = new SysUser();
+		user.setUsername(username);
+		user.setNickname(trimToNull(row.getNickname()));
+		user.setStatus(status == null ? 1 : status);
+		user.setEmail(trimToNull(row.getEmail()));
+		user.setPhone(phone);
+		user.setDeptId(deptId);
+		user.setPostId(postId);
+		user.setPassword(passwordEncoder.encode(securityPolicyService.getInitPassword()));
+		user.sanitizeForInsert();
+		user.setTenantId(null);
+		tenantValidator.quotaLocked(tenant, () -> {
+			tenantValidator.assertAccountQuota(tenant);
+			userMapper.insert(user);
+			return null;
+		});
+		securityPolicyService.logPassword(user.getId(), user.getPassword());
+	}
+
+	/** 部门名 → id（空名不挂；无匹配记失败行；重名取首条） */
+	private Long resolveDeptId(String deptName) {
+		String name = trimToNull(deptName);
+		if (name == null) {
+			return null;
+		}
+		List<com.mugsun.boot.system.entity.SysDept> depts = deptMapper
+			.selectListByQuery(QueryWrapper.create().eq("dept_name", name));
+		if (depts.isEmpty()) {
+			throw new com.mugsun.core.tool.exception.ServiceException("部门不存在：" + name);
+		}
+		return depts.get(0).getId();
+	}
+
+	/** 岗位名 → id（空名不挂；无匹配记失败行；重名取首条） */
+	private Long resolvePostId(String postName) {
+		String name = trimToNull(postName);
+		if (name == null) {
+			return null;
+		}
+		List<com.mugsun.boot.system.entity.SysPost> posts = postMapper
+			.selectListByQuery(QueryWrapper.create().eq("post_name", name));
+		if (posts.isEmpty()) {
+			throw new com.mugsun.core.tool.exception.ServiceException("岗位不存在：" + name);
+		}
+		return posts.get(0).getId();
+	}
+
+	/** 空白字符串归一为 null（导入语义：空白即「未填写」） */
+	private String trimToNull(String value) {
+		if (value == null) {
+			return null;
+		}
+		String trimmed = value.trim();
+		return trimmed.isEmpty() ? null : trimmed;
 	}
 
 	/** 新用户欢迎通知：提交后按统一模板多渠道 fan-out；通知失败不阻断建用户（记日志） */
