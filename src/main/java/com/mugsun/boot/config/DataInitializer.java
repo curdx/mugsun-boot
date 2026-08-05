@@ -20,7 +20,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 /**
- * 初始化数据：首次启动创建超级管理员 admin/123456 及其角色、菜单权限
+ * 初始化数据：首次启动创建超级管理员及其角色、菜单权限；
+ * 幂等播种内置普通用户角色（自助注册默认归属）。
  */
 @Component
 public class DataInitializer implements CommandLineRunner {
@@ -51,9 +52,30 @@ public class DataInitializer implements CommandLineRunner {
 		// 启动初始化写平台租户表，无会话上下文——经中心忽略入口显式声明，规避 fail-closed
 		TenantContext.ignore(() -> {
 			seed();
+			seedCommonRole();
 			reanchorSeedMenus();
 			return null;
 		});
+	}
+
+	/**
+	 * 播种内置普通用户角色（幂等，存量库也补）：自助注册的默认归属角色，
+	 * 仅本人数据范围、无任何权限码——注册即可登录见工作台，又不碰管理面。
+	 */
+	private void seedCommonRole() {
+		long exists = roleMapper.selectCountByQuery(QueryWrapper.create()
+			.eq("role_code", RoleConstants.USER)
+			.eq("tenant_id", TenantConstants.DEFAULT_TENANT_ID));
+		if (exists > 0) {
+			return;
+		}
+		SysRole commonRole = new SysRole();
+		commonRole.setRoleName("普通用户");
+		commonRole.setRoleCode(RoleConstants.USER);
+		commonRole.setSort(9);
+		commonRole.setDataScope(com.mugsun.boot.common.constant.DataScopeConstants.SELF);
+		commonRole.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
+		roleMapper.insert(commonRole);
 	}
 
 	/**

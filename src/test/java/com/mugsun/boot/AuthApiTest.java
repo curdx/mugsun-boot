@@ -70,4 +70,29 @@ class AuthApiTest extends AbstractIntegrationTest {
 		assertThat(r.path("code").asInt()).isEqualTo(401);
 		assertThat(r.path("success").asBoolean()).isFalse();
 	}
+
+	@Test
+	void registerAssignsDefaultRole() {
+		// 自助注册（验证码 + SM2 密文密码同真实链路）→ 自动挂内置普通用户角色 user，登录可见工作台
+		String username = "it-reg-" + System.currentTimeMillis() % 100000;
+		JsonNode captcha = readBody(get("/auth/captcha", null));
+		String publicKey = readBody(get("/auth/sm2-public-key", null)).path("data").path("publicKey").asText();
+		Map<String, Object> body = new HashMap<>();
+		body.put("username", username);
+		body.put("nickname", "集成测试注册用户");
+		body.put("password", sm2Encrypt("ItReg@12345", publicKey));
+		body.put("captchaUuid", captcha.path("data").path("captchaUuid").asText());
+		body.put("captchaCode", captcha.path("data").path("captchaCode").asText());
+		ResponseEntity<String> regResp = post("/auth/register", body, null);
+		JsonNode reg = readBody(regResp);
+		assertThat(reg.path("code").asInt()).as("注册应成功：" + reg.path("msg").asText()).isEqualTo(200);
+
+		// 新用户登录 → /auth/info 角色含内置普通用户角色 user（且无任何管理伪角色）
+		String token = login(PLATFORM_TENANT, username, "ItReg@12345");
+		JsonNode info = readBody(get("/auth/info", token));
+		java.util.List<String> roles = new java.util.ArrayList<>();
+		info.path("data").path("roles").forEach(n -> roles.add(n.asText()));
+		assertThat(roles).as("注册用户应挂默认角色").contains("user");
+		assertThat(roles).doesNotContain("admin", "R_SUPER", "R_ADMIN");
+	}
 }

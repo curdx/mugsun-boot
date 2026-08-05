@@ -55,6 +55,14 @@ public class SecurityPolicyService {
 		return boolParam("security.password.complexity", true);
 	}
 
+	/** 自助注册默认角色编码（sys_param 可配，置空则不挂任何角色） */
+	public String getRegisterDefaultRoleCode() {
+		String v = paramService.getValue("security.register.default-role-code");
+		return v == null || v.isBlank()
+			? com.mugsun.boot.common.constant.RoleConstants.USER
+			: v.trim();
+	}
+
 	public int getHistoryCount() {
 		return intParam("security.password.history-count", 3);
 	}

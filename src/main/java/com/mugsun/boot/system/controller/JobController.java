@@ -50,6 +50,7 @@ public class JobController {
 	}
 
 	/** 任务列表（过滤已删除 status=99） */
+	@SaCheckPermission("sys:job:list")
 	@GetMapping("/list")
 	public R<List<JobInfoDTO>> list() {
 		List<JobInfoDTO> jobs = client().fetchAllJob().getData();
@@ -111,6 +112,7 @@ public class JobController {
 	}
 
 	/** 任务执行日志（最近实例） */
+	@SaCheckPermission("sys:job:list")
 	@GetMapping("/instances")
 	public R<List<InstanceInfoDTO>> instances(@RequestParam Long jobId) {
 		InstancePageQuery query = new InstancePageQuery();
@@ -121,6 +123,7 @@ public class JobController {
 	}
 
 	/** 查询执行实例状态（3 运行中 / 5 成功 / 4 失败） */
+	@SaCheckPermission("sys:job:list")
 	@GetMapping("/status")
 	public R<Integer> status(@RequestParam Long instanceId) {
 		return R.data(client().fetchInstanceStatus(instanceId).getData());

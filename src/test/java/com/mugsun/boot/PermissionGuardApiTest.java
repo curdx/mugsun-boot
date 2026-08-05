@@ -107,4 +107,13 @@ class PermissionGuardApiTest extends AbstractIntegrationTest {
 		JsonNode r = readBody(response);
 		assertThat(r.path("code").asInt()).isEqualTo(403);
 	}
+
+	@Test
+	void jobReadApiIsForbiddenForLowPrivilegeUser() {
+		// 定时任务读接口同样持码校验（历史曾仅 @SaCheckLogin 裸奔）—— 无码即拒
+		ResponseEntity<String> response = get("/system/job/list", lowToken);
+		assertThat(response.getStatusCode().value()).isEqualTo(403);
+		JsonNode r = readBody(response);
+		assertThat(r.path("code").asInt()).isEqualTo(403);
+	}
 }

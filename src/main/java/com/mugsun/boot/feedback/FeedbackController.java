@@ -22,9 +22,12 @@ import java.util.List;
 public class FeedbackController {
 
 	private final SysFeedbackMapper feedbackMapper;
+	private final com.mugsun.boot.system.mapper.SysAttachMapper attachMapper;
 
-	public FeedbackController(SysFeedbackMapper feedbackMapper) {
+	public FeedbackController(SysFeedbackMapper feedbackMapper,
+							  com.mugsun.boot.system.mapper.SysAttachMapper attachMapper) {
 		this.feedbackMapper = feedbackMapper;
+		this.attachMapper = attachMapper;
 	}
 
 	/** 用户提交反馈 */
@@ -33,10 +36,18 @@ public class FeedbackController {
 		if (feedback.getContent() == null || feedback.getContent().isBlank()) {
 			throw new ServiceException("反馈内容不能为空");
 		}
-		// 附件地址仅允许 http(s)（管理端以裸 href 渲染，javascript: 伪协议即存储型 XSS 钓管理员）
-		if (feedback.getAttachUrl() != null && !feedback.getAttachUrl().isBlank()
-			&& !feedback.getAttachUrl().startsWith("http://") && !feedback.getAttachUrl().startsWith("https://")) {
-			throw new ServiceException("附件地址不合法");
+		// 附件信息一律按 attachId 服务端解析回填（不信任客户端传入的名称/地址——
+		// 防 javascript: 伪协议等存储型 XSS 钓管理员；本地存储相对地址亦不受影响）
+		if (feedback.getAttachId() != null) {
+			com.mugsun.boot.system.entity.SysAttach attach = attachMapper.selectOneById(feedback.getAttachId());
+			if (attach == null) {
+				throw new ServiceException("附件不存在或已删除");
+			}
+			feedback.setAttachName(attach.getName());
+			feedback.setAttachUrl(attach.getUrl());
+		} else {
+			feedback.setAttachName(null);
+			feedback.setAttachUrl(null);
 		}
 		// 提交人与状态由服务端定，忽略客户端 id
 		feedback.setId(null);

@@ -48,6 +48,8 @@ public class AuthController {
 	private final com.mugsun.boot.common.crypto.GmCryptoConfig gmCryptoConfig;
 	private final com.mugsun.boot.social.SocialProperties socialProperties;
 	private final com.mugsun.boot.websocket.WsMessageSender wsMessageSender;
+	private final com.mugsun.boot.system.mapper.SysRoleMapper roleMapper;
+	private final com.mugsun.boot.system.mapper.SysUserRoleMapper userRoleMapper;
 
 	public AuthController(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
 						  LoginLockService loginLockService, SysLoginLogMapper loginLogMapper,
@@ -62,7 +64,9 @@ public class AuthController {
 						  com.mugsun.boot.tenant.TenantValidator tenantValidator,
 						  com.mugsun.boot.common.crypto.GmCryptoConfig gmCryptoConfig,
 						  com.mugsun.boot.social.SocialProperties socialProperties,
-						  com.mugsun.boot.websocket.WsMessageSender wsMessageSender) {
+						  com.mugsun.boot.websocket.WsMessageSender wsMessageSender,
+						  com.mugsun.boot.system.mapper.SysRoleMapper roleMapper,
+						  com.mugsun.boot.system.mapper.SysUserRoleMapper userRoleMapper) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
@@ -79,6 +83,8 @@ public class AuthController {
 		this.gmCryptoConfig = gmCryptoConfig;
 		this.socialProperties = socialProperties;
 		this.wsMessageSender = wsMessageSender;
+		this.roleMapper = roleMapper;
+		this.userRoleMapper = userRoleMapper;
 	}
 
 	/** SM2 传输公钥：前端登录/改密/注册前取此公钥加密密码；gmEnabled=false 时前端明文传输 */
@@ -255,7 +261,28 @@ public class AuthController {
 		user.setTenantId(tenantId);
 		TenantContext.ignore(() -> userMapper.insert(user));
 		securityPolicyService.logPassword(user.getId(), user.getPassword());
+		assignDefaultRole(user.getId(), tenantId);
 		return R.success("注册成功");
+	}
+
+	/**
+	 * 自助注册默认角色：角色编码走 sys_param（security.register.default-role-code，缺省 user），
+	 * 角色存在才挂（不存在/置空不阻断注册）——注册即可登录见工作台与个人域，但无任何管理权限码。
+	 */
+	private void assignDefaultRole(Long userId, String tenantId) {
+		String roleCode = securityPolicyService.getRegisterDefaultRoleCode();
+		if (roleCode == null || roleCode.isBlank()) {
+			return;
+		}
+		com.mugsun.boot.system.entity.SysRole role = TenantContext.ignore(() -> roleMapper.selectOneByQuery(
+			QueryWrapper.create().eq("role_code", roleCode.trim()).eq("tenant_id", tenantId)));
+		if (role == null) {
+			return;
+		}
+		com.mugsun.boot.system.entity.SysUserRole userRole = new com.mugsun.boot.system.entity.SysUserRole();
+		userRole.setUserId(userId);
+		userRole.setRoleId(role.getId());
+		TenantContext.ignore(() -> userRoleMapper.insert(userRole));
 	}
 
 	/** 短信登录：发送验证码（开发回显） */
