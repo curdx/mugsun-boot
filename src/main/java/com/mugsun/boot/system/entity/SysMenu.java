@@ -22,6 +22,8 @@ public class SysMenu extends BaseEntity implements INode<SysMenu> {
 	private Integer sort;
 	/** 图标（Iconify 名，如 ri:user-line） */
 	private String icon;
+	/** 是否公共菜单（0 按角色授权 / 1 任意登录可见） */
+	private Integer isPublic = 0;
 	/** 是否隐藏（0 显示 / 1 隐藏）；Java 侧默认 0，防 insert 未显式赋值时触 NOT NULL 约束 */
 	private Integer isHide = 0;
 	/** 是否缓存页面（0 不缓存 / 1 缓存）；Java 侧默认 1 */
@@ -95,6 +97,14 @@ public class SysMenu extends BaseEntity implements INode<SysMenu> {
 
 	public void setIcon(String icon) {
 		this.icon = icon;
+	}
+
+	public Integer getIsPublic() {
+		return isPublic;
+	}
+
+	public void setIsPublic(Integer isPublic) {
+		this.isPublic = isPublic;
 	}
 
 	public Integer getIsHide() {

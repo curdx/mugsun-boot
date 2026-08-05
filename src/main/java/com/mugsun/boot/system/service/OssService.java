@@ -63,6 +63,18 @@ public class OssService {
 		return platform;
 	}
 
+	/** 存储平台是否仍注册在案（平台配置被删/下线的历史附件据此标记不可下载，前端预览据此跳过） */
+	public boolean platformRegistered(String platform) {
+		if (platform == null || platform.isBlank()) {
+			return false;
+		}
+		if (fileStorageService.getDefaultPlatform().equals(platform)) {
+			return true;
+		}
+		return fileStorageService.getFileStorageList().stream()
+			.anyMatch(fs -> platform.equals(fs.getPlatform()));
+	}
+
 	/**
 	 * 平台所属类别（local/minio/aliyun）：DB 注册平台查 sys_oss 行；
 	 * yaml 默认平台及配置行已删的历史平台按 local 处理（本地下载语义兜底）。

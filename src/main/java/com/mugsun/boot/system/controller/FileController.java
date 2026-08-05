@@ -235,7 +235,12 @@ public class FileController {
 		if (ext != null && !ext.isBlank()) {
 			query.eq("ext", ext.trim());
 		}
-		return R.data(attachMapper.paginate(pageNum, Math.min(pageSize, 500), query));
+		com.mybatisflex.core.paginate.Page<SysAttach> page = attachMapper.paginate(pageNum, Math.min(pageSize, 500), query);
+		// 平台在册标记富化（历史附件平台已下线 → 前端预览静默跳过，不制造 404 噪音）
+		for (SysAttach attach : page.getRecords()) {
+			attach.setDownloadable(ossService.platformRegistered(attach.getPlatform()));
+		}
+		return R.data(page);
 	}
 
 	/**

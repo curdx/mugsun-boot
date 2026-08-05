@@ -111,22 +111,28 @@ public class DataInitializer implements CommandLineRunner {
 		adminRole.setDataScope(com.mugsun.boot.common.constant.DataScopeConstants.ALL);
 		adminRole.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
 		roleMapper.insert(adminRole);
-		// 菜单：系统管理 > 用户管理
-		SysMenu systemMenu = new SysMenu();
-		systemMenu.setParentId(0L);
-		systemMenu.setMenuName("系统管理");
-		systemMenu.setPath("/system");
-		systemMenu.setMenuType("M");
-		systemMenu.setSort(1);
-		menuMapper.insert(systemMenu);
-		SysMenu userMenu = new SysMenu();
-		userMenu.setParentId(systemMenu.getId());
-		userMenu.setMenuName("用户管理");
-		userMenu.setPath("/system/user");
-		userMenu.setMenuType("M");
-		userMenu.setPermission("sys:user:list");
-		userMenu.setSort(1);
-		menuMapper.insert(userMenu);
+		// 菜单：系统管理 > 用户管理（V60 迁移可能已播种，按 path 幂等复用，防重复目录）
+		SysMenu systemMenu = menuMapper.selectOneByQuery(QueryWrapper.create().eq("path", "/system"));
+		if (systemMenu == null) {
+			systemMenu = new SysMenu();
+			systemMenu.setParentId(0L);
+			systemMenu.setMenuName("系统管理");
+			systemMenu.setPath("/system");
+			systemMenu.setMenuType("M");
+			systemMenu.setSort(1);
+			menuMapper.insert(systemMenu);
+		}
+		SysMenu userMenu = menuMapper.selectOneByQuery(QueryWrapper.create().eq("path", "/system/user"));
+		if (userMenu == null) {
+			userMenu = new SysMenu();
+			userMenu.setParentId(systemMenu.getId());
+			userMenu.setMenuName("用户管理");
+			userMenu.setPath("/system/user");
+			userMenu.setMenuType("M");
+			userMenu.setPermission("sys:user:list");
+			userMenu.setSort(1);
+			menuMapper.insert(userMenu);
+		}
 		// 管理员用户
 		SysUser admin = new SysUser();
 		admin.setUsername(UserConstants.ADMIN_USERNAME);
