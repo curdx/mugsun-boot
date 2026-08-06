@@ -50,6 +50,7 @@ public class MenuRouteController {
 		for (SysMenu m : all) {
 			byId.put(m.getId(), m);
 		}
+		boolean platformSuperAdmin = com.mugsun.boot.tenant.TenantContext.isPlatformSuperAdmin();
 		// 可见 id 集：admin 全量；其余 授权 ∪ 公共，父链补齐
 		java.util.Set<Long> visible = new java.util.HashSet<>();
 		if (StpUtil.getRoleList().contains(RoleConstants.ADMIN)) {
@@ -73,6 +74,16 @@ public class MenuRouteController {
 				while (cur != null && cur.getParentId() != null && cur.getParentId() != 0) {
 					visible.add(cur.getParentId());
 					cur = byId.get(cur.getParentId());
+				}
+			}
+		}
+		// 非平台超管剔除平台专属菜单（租户/开放平台/监控/任务等平台设施页面对其 403，菜单不展示防死链）
+		if (!platformSuperAdmin) {
+			for (SysMenu m : all) {
+				String probe = m.getComponent() != null && !m.getComponent().isBlank()
+					? m.getComponent() : m.getPath();
+				if (probe != null && com.mugsun.boot.tenant.TenantPackageModules.isPlatformOnly(probe)) {
+					visible.remove(m.getId());
 				}
 			}
 		}
