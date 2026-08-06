@@ -11,23 +11,8 @@ COMMENT ON COLUMN sys_menu.is_public IS '是否公共菜单（0 按角色授权 
 DELETE FROM sys_role_menu WHERE menu_id IN (SELECT id FROM sys_menu WHERE menu_name LIKE 'e2e_menu_%');
 DELETE FROM sys_menu WHERE menu_name LIKE 'e2e_menu_%';
 
--- 既有节点归位（图标/组件/父级/排序），不动主键（角色授权引用不失效）
-UPDATE sys_menu SET icon = 'ri:settings-2-line', component = '/index/index', sort = 2 WHERE path = '/system' AND is_deleted = 0;
-UPDATE sys_menu SET icon = 'ri:user-line', component = '/system/user', menu_type = 'C', sort = 1, permission = 'sys:user:list' WHERE path = '/system/user' AND is_deleted = 0;
-UPDATE sys_menu SET path = '/system/gen', component = '/system/gen', icon = 'ri:code-box-line', sort = 15
-	WHERE permission = 'sys:gen:list' AND is_deleted = 0 AND (path IS NULL OR path = '');
--- 父级解析带 COALESCE 兜底：全新库 /system 尚未播种时保持原父级不置 NULL（启动后由下方自播种补齐）
-UPDATE sys_menu SET path = '/system/api-log', component = '/system/api-log', icon = 'ri:global-line', sort = 32,
-	parent_id = COALESCE((SELECT id FROM sys_menu WHERE path = '/system' AND is_deleted = 0 LIMIT 1), parent_id)
-	WHERE permission = 'sys:api-log:list' AND is_deleted = 0 AND (path IS NULL OR path = '');
-UPDATE sys_menu SET path = '/system/error-log', component = '/system/error-log', icon = 'ri:error-warning-line', sort = 33,
-	parent_id = COALESCE((SELECT id FROM sys_menu WHERE path = '/system' AND is_deleted = 0 LIMIT 1), parent_id)
-	WHERE permission = 'sys:error-log:list' AND is_deleted = 0 AND (path IS NULL OR path = '');
-UPDATE sys_menu SET path = '/system/monitor', component = '/system/monitor', icon = 'ri:line-chart-line', sort = 34,
-	parent_id = COALESCE((SELECT id FROM sys_menu WHERE path = '/system' AND is_deleted = 0 LIMIT 1), parent_id)
-	WHERE permission = 'sys:monitor:list' AND is_deleted = 0 AND (path IS NULL OR path = '');
-
--- 系统管理目录自播种（全新库 Flyway 先于 DataInitializer 运行，须自给自足；幂等）
+-- 系统管理目录自播种（全新库 Flyway 先于 DataInitializer 运行，须自给自足；幂等。
+-- 必须先于下方 UPDATE/子菜单插入：否则全新库父级不存在，日志三件套滞留根级）
 INSERT INTO sys_menu (id, parent_id, menu_name, path, component, menu_type, sort, icon, is_public, create_time, is_deleted)
 SELECT 1200000000000000001, 0, '系统管理', '/system', '/index/index', 'M', 2, 'ri:settings-2-line', 0, now(), 0
 WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE path = '/system' AND is_deleted = 0);
@@ -36,6 +21,21 @@ INSERT INTO sys_menu (id, parent_id, menu_name, path, component, menu_type, perm
 SELECT 1200000000000000101, (SELECT id FROM sys_menu WHERE path = '/system' AND is_deleted = 0 LIMIT 1),
 	'用户管理', '/system/user', '/system/user', 'C', 'sys:user:list', 1, 'ri:user-line', 0, now(), 0
 WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE path = '/system/user' AND is_deleted = 0);
+
+-- 既有节点归位（图标/组件/父级/排序），不动主键（角色授权引用不失效）
+UPDATE sys_menu SET icon = 'ri:settings-2-line', component = '/index/index', sort = 2 WHERE path = '/system' AND is_deleted = 0;
+UPDATE sys_menu SET icon = 'ri:user-line', component = '/system/user', menu_type = 'C', sort = 1, permission = 'sys:user:list' WHERE path = '/system/user' AND is_deleted = 0;
+UPDATE sys_menu SET path = '/system/gen', component = '/system/gen', icon = 'ri:code-box-line', sort = 15
+	WHERE permission = 'sys:gen:list' AND is_deleted = 0 AND (path IS NULL OR path = '');
+UPDATE sys_menu SET path = '/system/api-log', component = '/system/api-log', icon = 'ri:global-line', sort = 32,
+	parent_id = (SELECT id FROM sys_menu WHERE path = '/system' AND is_deleted = 0 LIMIT 1)
+	WHERE permission = 'sys:api-log:list' AND is_deleted = 0 AND (path IS NULL OR path = '');
+UPDATE sys_menu SET path = '/system/error-log', component = '/system/error-log', icon = 'ri:error-warning-line', sort = 33,
+	parent_id = (SELECT id FROM sys_menu WHERE path = '/system' AND is_deleted = 0 LIMIT 1)
+	WHERE permission = 'sys:error-log:list' AND is_deleted = 0 AND (path IS NULL OR path = '');
+UPDATE sys_menu SET path = '/system/monitor', component = '/system/monitor', icon = 'ri:line-chart-line', sort = 34,
+	parent_id = (SELECT id FROM sys_menu WHERE path = '/system' AND is_deleted = 0 LIMIT 1)
+	WHERE permission = 'sys:monitor:list' AND is_deleted = 0 AND (path IS NULL OR path = '');
 
 -- 工作台分组（console 公共：任何登录用户落点）
 INSERT INTO sys_menu (id, parent_id, menu_name, path, component, menu_type, sort, icon, is_public, create_time, is_deleted)
