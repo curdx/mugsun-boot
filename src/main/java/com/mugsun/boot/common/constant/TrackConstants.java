@@ -1,0 +1,305 @@
+package com.mugsun.boot.common.constant;
+
+/**
+ * 埋点（G99）常量：独立数据源 / 权限码 / sys_param 键 / Redis 键 / 截断长度 / 摄入与调度参数。
+ * <p>埋点库锁定 PostgreSQL（未来 ClickHouse），与业务库物理隔离、多方言解耦；
+ * 全部埋点读写经 {@code @TrackDS} 切面路由到 {@link #DS_KEY} 数据源。
+ */
+public interface TrackConstants {
+
+	/** 埋点独立数据源 key（mybatis-flex.datasource 静态键，租户无关） */
+	String DS_KEY = "track";
+	/** track 库独立 Flyway 迁移目录（版本序列独立于主库） */
+	String FLYWAY_LOCATIONS = "classpath:db/track/migration";
+	/** track 库 Flyway 迁移文件前缀（T1/T2/...，与主库 V 序列区分） */
+	String FLYWAY_SQL_PREFIX = "T";
+
+	/** 权限码：埋点概览查询 */
+	String PERM_OVERVIEW_LIST = "sys:track-overview:list";
+	/** 权限码：事件分析查询 */
+	String PERM_EVENT_LIST = "sys:track-event:list";
+	/** 权限码：性能分析查询 */
+	String PERM_PERF_LIST = "sys:track-perf:list";
+	/** 权限码：错误监控查询 */
+	String PERM_ERROR_LIST = "sys:track-error:list";
+	/** 权限码：埋点接入应用查询 */
+	String PERM_APP_LIST = "sys:track-app:list";
+	/** 权限码：埋点接入应用新增 */
+	String PERM_APP_ADD = "sys:track-app:add";
+	/** 权限码：埋点接入应用编辑 */
+	String PERM_APP_EDIT = "sys:track-app:edit";
+	/** 权限码：回放查看（G100；最高敏感，查看必留痕审计） */
+	String PERM_REPLAY_VIEW = "sys:track-replay:view";
+
+	/** sys_param 键：collect 端点单 IP 滑窗限流（次/分） */
+	String PARAM_RATE_LIMIT = "track.collect.rate-limit";
+	/** sys_param 键：单批最大事件数（超过截断并计数） */
+	String PARAM_BATCH_MAX = "track.collect.batch-max";
+	/** sys_param 键：明细保留天数（新应用默认值；分区清理依据） */
+	String PARAM_RETENTION_DAYS = "track.retention-days";
+	/** 兜底默认：限流 600 次/分/IP */
+	int DEFAULT_RATE_LIMIT = 600;
+	/** 兜底默认：单批 100 事件 */
+	int DEFAULT_BATCH_MAX = 100;
+	/** 兜底默认：明细保留 90 天 */
+	int DEFAULT_RETENTION_DAYS = 90;
+
+	/** Redis 键前缀（埋点域全部键共用，便于按前缀统计/清理） */
+	String REDIS_PREFIX = "mugsun:track:";
+	/** 幂等键前缀：SETNX mugsun:track:evt:{event_id}，命中即丢并计数 */
+	String IDEMPOTENT_KEY_PREFIX = REDIS_PREFIX + "evt:";
+	/** 幂等键 TTL（秒）：25h，覆盖离线补发窗口 */
+	long IDEMPOTENT_TTL_SECONDS = 90000L;
+	/** 实时流前缀：Redis Stream mugsun:track:stream:{app_key}（XADD + MAXLEN 近似裁剪） */
+	String STREAM_KEY_PREFIX = REDIS_PREFIX + "stream:";
+	/** 实时流近似裁剪长度 */
+	int STREAM_MAX_LEN = 1000;
+	/** 在线人数前缀：ZSET mugsun:track:online:{app_key}（score=上报毫秒时间戳） */
+	String ONLINE_KEY_PREFIX = REDIS_PREFIX + "online:";
+	/** 在线判定窗口（毫秒）：5 分钟 */
+	long ONLINE_WINDOW_MS = 300000L;
+
+	/** props 键截断长度 */
+	int PROPS_KEY_MAX_LEN = 64;
+	/** props 值截断长度 */
+	int PROPS_VALUE_MAX_LEN = 1024;
+	/** props 单事件总量上限（字节，16KB） */
+	int PROPS_TOTAL_MAX_BYTES = 16384;
+	/** props 嵌套深度上限 */
+	int PROPS_MAX_DEPTH = 3;
+	/** 事件名长度上限 */
+	int EVENT_NAME_MAX_LEN = 64;
+	/** appKey 长度上限 */
+	int APP_KEY_MAX_LEN = 32;
+	/** URL 路径长度上限 */
+	int URL_MAX_LEN = 512;
+	/** 页面标题长度上限 */
+	int PAGE_TITLE_MAX_LEN = 255;
+
+	/** collect 单批解压后体量上限（字节，2MB） */
+	int COLLECT_PAYLOAD_MAX_BYTES = 2097152;
+	/** 异步消费批量聚合条数（条/窗口孰先触发） */
+	int CONSUME_BATCH_SIZE = 200;
+	/** 异步消费批量聚合窗口（毫秒） */
+	long CONSUME_BATCH_WINDOW_MS = 500L;
+	/** 消费队列上限（单副本进程内；满则丢新 + 计数告警，宁可丢事件不拖垮 DB） */
+	int CONSUME_QUEUE_CAPACITY = 10000;
+	/** 批次失败重回队列最大次数（指数退避，超过丢弃 + 计数） */
+	int CONSUME_MAX_RETRY = 5;
+	/** 消费虚拟线程数（2–4 小并发档；独立执行器，不挂 TenantTaskDecorator） */
+	int CONSUME_THREAD_COUNT = 2;
+	/** 批次重回队列的指数退避基数（毫秒），实际等待 = 基数 × 2^(次数-1)，封顶 {@link #CONSUME_RETRY_BACKOFF_MAX_MS} */
+	long CONSUME_RETRY_BACKOFF_BASE_MS = 1000L;
+	/** 批次重回队列的退避上限（毫秒） */
+	long CONSUME_RETRY_BACKOFF_MAX_MS = 30000L;
+
+	/** 限流键前缀：INCR mugsun:track:rl:{ip}:{appKey}:{yyyyMMddHHmm}，首置 EXPIRE 70s（分钟窗滑窗） */
+	String RATE_LIMIT_KEY_PREFIX = REDIS_PREFIX + "rl:";
+	/** 限流键过期（秒）：略大于 60s 窗口，防边界计数残留 */
+	long RATE_LIMIT_EXPIRE_SECONDS = 70L;
+	/** 限流键分钟窗时间格式 */
+	String RATE_LIMIT_MINUTE_PATTERN = "yyyyMMddHHmm";
+	/** track_app 本地缓存 TTL（毫秒）：appKey 校验/配置下发共用，多副本各自缓存、无广播，生效最坏延迟 = TTL */
+	long APP_CACHE_TTL_MS = 30000L;
+
+	/** 校时阈值（毫秒）：|client_ts − received_at| 超 24h 则 ts := received_at 且 clock_skewed=1（正常偏差不拒收） */
+	long CLOCK_SKEW_THRESHOLD_MS = 86400000L;
+	/** client_ts 允许的最大未来偏移（毫秒）：晚于 received_at + 7 天视为荒谬时间，丢弃该条并计数 */
+	long CLIENT_TS_MAX_FUTURE_MS = 604800000L;
+	/** client_ts 最早合法值（2020-01-01T00:00:00Z  epoch 毫秒）：早于此视为荒谬时间，丢弃并计数 */
+	long CLIENT_TS_MIN_EPOCH_MS = 1577836800000L;
+
+	/** distinct_id 长度上限（对应 track_event.distinct_id VARCHAR(64)） */
+	int DISTINCT_ID_MAX_LEN = 64;
+	/** session_id 长度上限（对应 VARCHAR(36)） */
+	int SESSION_ID_MAX_LEN = 36;
+	/** event_id 长度上限（对应 VARCHAR(36)） */
+	int EVENT_ID_MAX_LEN = 36;
+	/** 路由模板/来源域名/UTM 等维度列通用长度上限（对应 VARCHAR(255)） */
+	int DIM_MAX_LEN = 255;
+	/** 设备类型长度上限（对应 VARCHAR(16)） */
+	int DEVICE_MAX_LEN = 16;
+	/** 浏览器/操作系统列长度上限（对应 VARCHAR(32)） */
+	int BROWSER_OS_MAX_LEN = 32;
+	/** 错误指纹长度上限（对应 VARCHAR(64)） */
+	int ERROR_FINGERPRINT_MAX_LEN = 64;
+
+	/** 内置事件：页面浏览 */
+	String EVENT_PAGEVIEW = "$pageview";
+	/** 内置事件：错误 */
+	String EVENT_ERROR = "$error";
+	/** 内置事件：会话结束（到达即 settled=1 定稿） */
+	String EVENT_SESSION_END = "$session_end";
+	/** 内置事件：身份绑定 */
+	String EVENT_IDENTIFY = "$identify";
+
+	/** 内置（$ 前缀）事件白名单：不在清单内的 $ 事件一律拒收（$ 为保留字，防伪造保留事件污染统计） */
+	java.util.Set<String> PREDEFINED_EVENTS = java.util.Set.of(
+		EVENT_PAGEVIEW, "$pageleave", "$click", "$exposure", "$web_vitals",
+		EVENT_ERROR, "$session_start", EVENT_SESSION_END, EVENT_IDENTIFY);
+	/** 自定义事件名正则：字母开头，字母/数字/下划线，总长 ≤64 */
+	java.util.regex.Pattern CUSTOM_EVENT_NAME = java.util.regex.Pattern.compile("^[A-Za-z][A-Za-z0-9_]{0,63}$");
+
+	/** SDK 平台：web（UA 解析仅对 web 执行） */
+	String PLATFORM_WEB = "web";
+	/** 设备类型：桌面 */
+	String DEVICE_DESKTOP = "desktop";
+	/** 设备类型：手机 */
+	String DEVICE_MOBILE = "mobile";
+	/** 设备类型：平板 */
+	String DEVICE_TABLET = "tablet";
+
+	/** 协议字段：接入标识 */
+	String FIELD_APP_KEY = "app_key";
+	/** 协议字段：事件数组 */
+	String FIELD_EVENTS = "events";
+	/** 协议字段：事件幂等 ID */
+	String FIELD_EVENT_ID = "event_id";
+	/** 协议字段：事件名 */
+	String FIELD_EVENT_NAME = "event";
+	/** 协议字段：客户端原始时间（epoch 毫秒） */
+	String FIELD_TS = "ts";
+	/** 协议字段：匿名 ID */
+	String FIELD_DISTINCT_ID = "distinct_id";
+	/** 协议字段：会话 ID */
+	String FIELD_SESSION_ID = "session_id";
+	/** 协议字段：自定义属性包 */
+	String FIELD_PROPS = "props";
+	/** 协议字段：SDK 信息 */
+	String FIELD_SDK = "sdk";
+	/** 协议字段：SDK 平台（web/android/ios） */
+	String FIELD_PLATFORM = "platform";
+	/** 协议字段：客户端上报的登录用户（不可信，仅 $identify 一致性核对用） */
+	String FIELD_USER_ID = "user_id";
+	/** props 热点键：原始路径（提升为 url_path 列） */
+	String PROP_URL_PATH = "url_path";
+	/** props 热点键：路由模板（提升为 route_path 列，page 维度聚合防高基数） */
+	String PROP_ROUTE_PATH = "route_path";
+	/** props 热点键：页面标题 */
+	String PROP_PAGE_TITLE = "page_title";
+	/** props 热点键：来源域名 */
+	String PROP_REFERRER_DOMAIN = "referrer_domain";
+	/** props 热点键：UTM 来源 */
+	String PROP_UTM_SOURCE = "utm_source";
+	/** props 热点键：UTM 媒介 */
+	String PROP_UTM_MEDIUM = "utm_medium";
+	/** props 热点键：UTM 活动 */
+	String PROP_UTM_CAMPAIGN = "utm_campaign";
+	/** props 热点键：时长（$pageleave/计时事件，毫秒） */
+	String PROP_DURATION_MS = "duration_ms";
+	/** props 热点键：错误指纹（SDK 可算好上报；缺省服务端按 message+堆栈首行兜底计算） */
+	String PROP_ERROR_FINGERPRINT = "error_fingerprint";
+	/** props 热点键：自报设备类型（缺省服务端 UA 解析兜底） */
+	String PROP_DEVICE = "device";
+	/** props 热点键：错误消息（$error 指纹兜底计算输入） */
+	String PROP_ERROR_MESSAGE = "message";
+	/** props 热点键：错误堆栈（$error 指纹兜底计算输入，取首行） */
+	String PROP_ERROR_STACK = "stack";
+
+	/** 指标：摄入接收事件数 */
+	String METRIC_RECEIVED = "track.ingest.received";
+	/** 指标：丢弃事件数（tag reason：batch_truncated/invalid_event/bad_name/ts_absurd/queue_full/retry_exhausted/persist_failed） */
+	String METRIC_DROPPED = "track.ingest.dropped";
+	/** 指标：限流拒收批次数 */
+	String METRIC_RATELIMITED = "track.ingest.ratelimited";
+	/** 指标：Redis 幂等命中丢弃事件数 */
+	String METRIC_DUPLICATED = "track.ingest.duplicated";
+	/** 指标：发生校时修正事件数 */
+	String METRIC_CLOCK_SKEWED = "track.ingest.clock_skewed";
+	/** 指标：身份裁定拒绝数（tag reason：identify_no_token/identify_user_mismatch/token_tenant_mismatch） */
+	String METRIC_IDENTITY_REJECTED = "track.ingest.identity_rejected";
+	/** 指标：落库延迟（received_at 与落库时刻差） */
+	String METRIC_LAG = "track.ingest.lag";
+
+	/** 5 分钟 rollup 调度 tick（毫秒）：读游标补扫至当前窗口，窗口全量重算覆盖（幂等可重入） */
+	long ROLLUP_TICK_MS = 300000L;
+	/** 会话结算调度 tick（毫秒）：扫 idx_session_settle 部分索引，30min 静默会话定稿落账 */
+	long SESSION_SETTLE_TICK_MS = 60000L;
+	/** 会话静默判定（毫秒）：end_time 早于 now-30min 视为待结算 */
+	long SESSION_SETTLE_SILENCE_MS = 1800000L;
+	/** 分区维护调度 tick（毫秒）：固定周期触发，实际按月节流（每月 25 日预建次月分区） */
+	long PARTITION_TICK_MS = 3600000L;
+
+	/* ==================== B3：rollup 流水线 / 维护任务 / 分析 API ==================== */
+
+	/** 游标任务键：5 分钟 rollup */
+	String CURSOR_JOB_STATS_5M = "stats_5m";
+	/** 游标任务键：天级 rollup */
+	String CURSOR_JOB_STATS_DAY = "stats_day";
+	/** 游标任务键：Web Vitals 直方图 rollup（日粒度窗口） */
+	String CURSOR_JOB_STATS_VITALS = "stats_vitals";
+
+	/** Redis 调度锁键：5 分钟 rollup */
+	String LOCK_STATS_5M = REDIS_PREFIX + "lock:stats-5m";
+	/** Redis 调度锁键：天级 rollup */
+	String LOCK_STATS_DAY = REDIS_PREFIX + "lock:stats-day";
+	/** Redis 调度锁键：vitals rollup */
+	String LOCK_STATS_VITALS = REDIS_PREFIX + "lock:stats-vitals";
+	/** Redis 调度锁键：会话结算 */
+	String LOCK_SESSION_SETTLE = REDIS_PREFIX + "lock:session-settle";
+	/** Redis 调度锁键：分区维护 */
+	String LOCK_PARTITION = REDIS_PREFIX + "lock:partition";
+	/** 调度锁 TTL（秒）：防持锁节点宕机死锁；正常一轮执行远短于此 */
+	long JOB_LOCK_SECONDS = 600L;
+
+	/** rollup 调度 tick（毫秒）：1 分钟探一次；内存节流（{@link #ROLLUP_TICK_MS}）控制实际执行频率 */
+	long ROLLUP_SCHED_TICK_MS = 60000L;
+	/** 天级 rollup 调度 tick（毫秒）：1 小时探一次（当日已追平则跳过，凌晨生效） */
+	long STATS_DAY_TICK_MS = 3600000L;
+	/** 5m 任务单次补扫窗口上限：一次最多追 288 窗（=1 天），防长时间宕机后单轮爆量，剩余逐轮追平 */
+	int ROLLUP_5M_MAX_WINDOWS = 288;
+	/** 日级任务单次补扫窗口上限：一次最多追 92 天（一个季度；day/vitals 共用），剩余逐轮追平 */
+	int ROLLUP_DAY_MAX_WINDOWS = 92;
+
+	/** 维度类型：事件（dim_key=事件名） */
+	String DIM_EVENT = "event";
+	/** 维度类型：页面（dim_key=路由模板，空回退 url_path） */
+	String DIM_PAGE = "page";
+	/** 维度类型：来源域名 */
+	String DIM_REFERRER = "referrer";
+	/** 维度类型：设备类型 */
+	String DIM_DEVICE = "device";
+	/** 维度类型：全站总览（仅 day 表；dim_key 固定 {@link #DIM_KEY_ALL}） */
+	String DIM_OVERVIEW = "overview";
+	/** 总览维度键（day 表 overview 行固定值） */
+	String DIM_KEY_ALL = "ALL";
+
+	/** vitals 指标白名单（props.metric 值域） */
+	java.util.Set<String> VITALS_METRICS = java.util.Set.of("lcp", "inp", "cls", "fcp", "ttfb");
+	/** vitals 指标名：CLS（唯一直方图桶界不同的指标，千分制） */
+	String VITALS_METRIC_CLS = "cls";
+	/** vitals 毫秒类指标（lcp/inp/fcp/ttfb）对数桶界（毫秒，升序）：桶序号 = 小于边界的个数，共 9 桶（末桶为溢出桶） */
+	long[] VITALS_MS_BUCKET_BOUNDS = {100L, 250L, 500L, 1000L, 2500L, 5000L, 10000L, 30000L};
+	/** vitals CLS 桶界（千分制，升序）：共 8 桶（末桶为溢出桶）；SDK 上报 CLS×1000 的数值 */
+	long[] VITALS_CLS_BUCKET_BOUNDS = {10L, 25L, 50L, 100L, 250L, 500L, 1000L};
+	/** props 热点键：vitals 指标名 */
+	String PROP_VITALS_METRIC = "metric";
+	/** props 热点键：vitals 指标值（毫秒或 CLS 千分制） */
+	String PROP_VITALS_VALUE = "value";
+	/** vitals 直方图 url_path 空值占位（唯一索引含 url_path，空串代替 NULL 防 ON CONFLICT 失配） */
+	String VITALS_DIM_UNKNOWN = "";
+
+	/** 分析查询 days 上限（天） */
+	int ANALYSIS_DAYS_MAX = 90;
+	/** 分析/管理分页 pageSize 上限（钳制防全表拉取） */
+	int QUERY_PAGE_SIZE_MAX = 500;
+	/** 分析 Top 列表默认条数（页面/来源/浏览器分布） */
+	int ANALYSIS_TOP_LIMIT = 10;
+	/** 看板查询缓存（秒）：JetCache LOCAL，tenantKeyConvertor 租户前缀天然隔离 */
+	int ANALYSIS_CACHE_SECONDS = 45;
+	/** 分布统计中来源域名空值标签（直访） */
+	String DIM_REFERRER_DIRECT = "direct";
+	/** 分布统计中设备/浏览器空值标签 */
+	String DIM_UNKNOWN = "unknown";
+
+	/** app_key 生成前缀（新增应用时服务端生成，客户端不可指定/篡改） */
+	String APP_KEY_PREFIX = "ak_";
+	/** app_key 随机段长度（hex；总长 = 前缀 + 24 ≤ 32） */
+	int APP_KEY_RANDOM_LEN = 24;
+
+	/** 分区预建起始日：每月 25 日（含）起预建次月分区（实现按日幂等确保当月+次月存在） */
+	int PARTITION_PREBUILD_DAY_OF_MONTH = 25;
+
+	/** 指标：兜底默认分区残留行数告警（非空即分区预建失败/迟到数据越界） */
+	String METRIC_DEFAULT_PARTITION_ROWS = "track.partition.default.rows";
+}

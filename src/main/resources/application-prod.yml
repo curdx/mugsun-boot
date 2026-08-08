@@ -19,6 +19,12 @@ mybatis-flex:
       url: ${JDBC_URL}
       username: ${JDBC_USERNAME}
       password: ${JDBC_PASSWORD}
+    # 埋点独立数据源（G99）：L1 与主库同实例（指向 mugsun_track 库即可）；L2 切独立实例只改本 URL
+    track:
+      type: hikari
+      url: ${TRACK_JDBC_URL}
+      username: ${TRACK_JDBC_USERNAME:${JDBC_USERNAME}}
+      password: ${TRACK_JDBC_PASSWORD:${JDBC_PASSWORD}}
 
 jetcache:
   remote:

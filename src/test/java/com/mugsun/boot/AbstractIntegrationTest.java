@@ -64,9 +64,18 @@ public abstract class AbstractIntegrationTest {
 		DockerImageName.parse("redis:7-alpine"))
 		.withExposedPorts(6379);
 
+	/** 埋点库名（与 application.yml 的 track.url 库名段一致；建库/迁移由 TrackFlywayConfig 经 primary 完成） */
+	protected static final String TRACK_DB = "mugsun_track";
+
 	static {
 		POSTGRES.start();
 		REDIS.start();
+	}
+
+	/** 同容器双库：把容器 JDBC URL 的库名段替换为埋点库名 */
+	private static String trackJdbcUrl() {
+		String url = POSTGRES.getJdbcUrl();
+		return url.substring(0, url.lastIndexOf('/')) + "/" + TRACK_DB;
 	}
 
 	@DynamicPropertySource
@@ -74,6 +83,13 @@ public abstract class AbstractIntegrationTest {
 		registry.add("mybatis-flex.datasource.primary.url", POSTGRES::getJdbcUrl);
 		registry.add("mybatis-flex.datasource.primary.username", POSTGRES::getUsername);
 		registry.add("mybatis-flex.datasource.primary.password", POSTGRES::getPassword);
+		// 埋点独立数据源（G99）：指向同容器 mugsun_track 库（同容器双库，零新增基建）。
+		// 统一在基座声明而非各 track 测试类自报——全测试套件共享同一 Spring 上下文（上下文缓存键一致），
+		// 规避 warm-flow 静态 SpringUtil 的多上下文地雷（第二上下文 initFlow 按类型查 WarmFlowProperties
+		// 会命中上一上下文的同名实例，NoUniqueBeanDefinitionException 启动失败）
+		registry.add("mybatis-flex.datasource.track.url", () -> trackJdbcUrl());
+		registry.add("mybatis-flex.datasource.track.username", POSTGRES::getUsername);
+		registry.add("mybatis-flex.datasource.track.password", POSTGRES::getPassword);
 		registry.add("spring.data.redis.host", REDIS::getHost);
 		registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
 		registry.add("jetcache.remote.default.uri",

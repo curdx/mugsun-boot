@@ -66,6 +66,13 @@ mybatis-flex:
       url: jdbc:postgresql://localhost:5432/mugsun
       username: mugsun
       password: mugsun
+    # 埋点独立数据源（G99）：静态、租户无关；与业务库物理隔离（同实例独立 database，L1 层）
+    # 全部埋点读写经 @TrackDS 切面 DataSourceKey.use("track") 路由；库初始化/迁移见 TrackFlywayConfig
+    track:
+      type: hikari
+      url: jdbc:postgresql://localhost:5432/mugsun_track
+      username: mugsun
+      password: mugsun
   default-datasource-key: primary
   global-config:
     print-banner: false
