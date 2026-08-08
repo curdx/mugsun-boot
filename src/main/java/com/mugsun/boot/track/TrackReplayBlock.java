@@ -24,6 +24,10 @@ public class TrackReplayBlock {
 	private int rrwebEvents;
 	/** 块内容时长（毫秒）：块内 rrweb 事件 timestamp 极差（客户端相对时长，时钟漂移安全） */
 	private long durationMs;
+	/** 块内首个 rrweb 事件时间戳（epoch 毫秒；会话时长墙钟口径的 LEAST 来源） */
+	private long firstEventTs;
+	/** 块内末个 rrweb 事件时间戳（epoch 毫秒；会话时长墙钟口径的 GREATEST 来源） */
+	private long lastEventTs;
 	/** 块内全量快照次数（rrweb type=2；page_count 近似口径：页面加载/路由重建次数） */
 	private int pageCount;
 	/** 服务端接收时间（epoch 毫秒；首块决定 start_time 与对象键 yyyyMM 段） */
@@ -87,6 +91,22 @@ public class TrackReplayBlock {
 
 	public void setDurationMs(long durationMs) {
 		this.durationMs = durationMs;
+	}
+
+	public long getFirstEventTs() {
+		return firstEventTs;
+	}
+
+	public void setFirstEventTs(long firstEventTs) {
+		this.firstEventTs = firstEventTs;
+	}
+
+	public long getLastEventTs() {
+		return lastEventTs;
+	}
+
+	public void setLastEventTs(long lastEventTs) {
+		this.lastEventTs = lastEventTs;
 	}
 
 	public int getPageCount() {

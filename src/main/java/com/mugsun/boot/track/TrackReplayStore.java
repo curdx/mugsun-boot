@@ -20,7 +20,8 @@ import java.util.List;
  * 每行 tenant_id 显式自带）；upsert 语义写死在 SQL（累加/GREATEST/COALESCE 回填），乱序与重试安全。
  * <p><b>track_replay upsert 语义</b>（session_id 唯一，首块建行、后续块并入）：
  * start_time/storage_key/storage_platform/storage_base_path 取首块（冲突不覆盖）；
- * duration_ms/page_count/rrweb_events/size_bytes 累加；last_seq 取 GREATEST；
+ * page_count/rrweb_events/size_bytes 累加；last_seq 取 GREATEST；
+ * duration_ms 为墙钟口径（first_event_ts LEAST / last_event_ts GREATEST 归并后取极差，与播放器时间轴一致）；
  * distinct_id 空串回填、user_id/entry_path COALESCE 回填、has_error GREATEST 置位——
  * 回放块可能先于事件流会话落库（会话行尚无时身份/入口为空口径），后续块到达时从会话快照回填。
  * <p><b>track_session.has_replay</b>：GREATEST 置位不回退；会话行不存在时先落占位行
@@ -30,13 +31,19 @@ import java.util.List;
 @TrackDS
 public class TrackReplayStore {
 
-	/** 回放元数据 upsert：首块建行（start_time/存储坐标取首块），后续块累加 + 置位 + 空值回填 */
+	/** 回放元数据 upsert：首块建行（start_time/存储坐标取首块），后续块累加 + 置位 + 空值回填；
+	 * 时长为墙钟口径——first_event_ts 取 LEAST、last_event_ts 取 GREATEST，duration_ms = 末-首（与播放器时间轴一致） */
 	private static final String REPLAY_UPSERT = "INSERT INTO track_replay (id, session_id, app_key, tenant_id,"
 		+ " distinct_id, user_id, start_time, duration_ms, page_count, rrweb_events, size_bytes, has_error,"
-		+ " entry_path, storage_key, last_seq, storage_platform, storage_base_path, create_time, update_time, is_deleted)"
-		+ " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(), now(), 0)"
+		+ " entry_path, storage_key, last_seq, storage_platform, storage_base_path, first_event_ts, last_event_ts,"
+		+ " create_time, update_time, is_deleted)"
+		+ " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(), now(), 0)"
 		+ " ON CONFLICT (session_id) WHERE is_deleted = 0 DO UPDATE SET"
-		+ " duration_ms = track_replay.duration_ms + EXCLUDED.duration_ms,"
+		+ " first_event_ts = LEAST(COALESCE(track_replay.first_event_ts, EXCLUDED.first_event_ts), EXCLUDED.first_event_ts),"
+		+ " last_event_ts = GREATEST(COALESCE(track_replay.last_event_ts, EXCLUDED.last_event_ts), EXCLUDED.last_event_ts),"
+		+ " duration_ms = GREATEST(0, (GREATEST(COALESCE(track_replay.last_event_ts, EXCLUDED.last_event_ts),"
+		+ " EXCLUDED.last_event_ts) - LEAST(COALESCE(track_replay.first_event_ts, EXCLUDED.first_event_ts),"
+		+ " EXCLUDED.first_event_ts))::int),"
 		+ " page_count = track_replay.page_count + EXCLUDED.page_count,"
 		+ " rrweb_events = track_replay.rrweb_events + EXCLUDED.rrweb_events,"
 		+ " size_bytes = track_replay.size_bytes + EXCLUDED.size_bytes,"
@@ -109,8 +116,9 @@ public class TrackReplayStore {
 				ps.setLong(6, userId);
 			}
 			ps.setTimestamp(7, Timestamp.valueOf(receivedAt));
-			// duration_ms 为 INT 列：钳制防异常 timestamp 极差溢出（正常块 ≈ 切分间隔 5s）
-			ps.setInt(8, (int) Math.min(block.getDurationMs(), Integer.MAX_VALUE));
+			// duration_ms 墙钟口径 = 末事件-首事件（INT 列钳制防溢出）；冲突侧由 SQL 按 LEAST/GREATEST 重算
+			ps.setInt(8, (int) Math.min(Math.max(0, block.getLastEventTs() - block.getFirstEventTs()),
+				Integer.MAX_VALUE));
 			ps.setInt(9, block.getPageCount());
 			ps.setInt(10, block.getRrwebEvents());
 			// 体积展示口径 = 压缩后真实字节（对象存储占用；累计上限控制走解压后口径，见摄入服务）
@@ -121,6 +129,8 @@ public class TrackReplayStore {
 			ps.setInt(15, block.getSeq());
 			ps.setString(16, stored.getPlatform());
 			ps.setString(17, stored.getBasePath());
+			ps.setLong(18, block.getFirstEventTs());
+			ps.setLong(19, block.getLastEventTs());
 		});
 	}
 

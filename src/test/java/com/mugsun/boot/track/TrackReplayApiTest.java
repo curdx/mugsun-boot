@@ -276,7 +276,7 @@ class TrackReplayApiTest extends AbstractTrackIntegrationTest {
 		}
 		assertThat(found).as("分页应含主会话").isNotNull();
 		assertThat(found.path("entryPath").asText()).isEqualTo("/replay-entry");
-		assertThat(found.path("durationMs").asLong()).as("两块时长累加").isEqualTo(9000L);
+		assertThat(found.path("durationMs").asLong()).as("时长为墙钟口径：末事件 12000 - 首事件 1000").isEqualTo(11000L);
 		assertThat(found.path("hasError").asInt()).isEqualTo(0);
 		assertThat(found.path("sizeBytes").asLong()).isEqualTo((long) apiBlock0.gz().length + apiBlock1.gz().length);
 		assertThat(found.path("rrwebEvents").asInt()).isEqualTo(5);

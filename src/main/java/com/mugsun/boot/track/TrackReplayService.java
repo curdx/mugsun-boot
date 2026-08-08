@@ -191,6 +191,9 @@ public class TrackReplayService {
 		block.setDurationMs(durationMs);
 		block.setPageCount(fullSnapshots);
 		block.setReceivedAtMs(System.currentTimeMillis());
+		// 首末事件时间戳：会话时长墙钟口径（duration_ms = 末 - 首）由 upsert 用 LEAST/GREATEST 归并
+		block.setFirstEventTs(minTs == Long.MAX_VALUE ? block.getReceivedAtMs() : minTs);
+		block.setLastEventTs(minTs == Long.MAX_VALUE ? block.getReceivedAtMs() : maxTs);
 		block.setTenantId(app.getTenantId() != null && !app.getTenantId().isBlank()
 			? app.getTenantId() : TenantConstants.DEFAULT_TENANT_ID);
 		if (!consumer.offer(block)) {
