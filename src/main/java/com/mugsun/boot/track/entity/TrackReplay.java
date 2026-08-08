@@ -36,8 +36,14 @@ public class TrackReplay extends BaseEntity {
 	private Integer hasError;
 	/** 入口路径 */
 	private String entryPath;
-	/** 对象存储对象键（私有桶） */
+	/** 对象存储对象键（私有桶；首块键，多块会话的块清单按 seq 推导：dir(storage_key)+seq+".gz"） */
 	private String storageKey;
+	/** 已持久化的最大块序号（seq 自 0 连续递增；-1=尚无块） */
+	private Integer lastSeq;
+	/** 首块写入的 x-file-storage 平台名（读取/删除按原平台寻址） */
+	private String storagePlatform;
+	/** 首块写入时平台的 basePath（FileInfo 重建坐标；storage_key 含此前缀） */
+	private String storageBasePath;
 
 	public String getSessionId() {
 		return sessionId;
@@ -141,5 +147,29 @@ public class TrackReplay extends BaseEntity {
 
 	public void setStorageKey(String storageKey) {
 		this.storageKey = storageKey;
+	}
+
+	public Integer getLastSeq() {
+		return lastSeq;
+	}
+
+	public void setLastSeq(Integer lastSeq) {
+		this.lastSeq = lastSeq;
+	}
+
+	public String getStoragePlatform() {
+		return storagePlatform;
+	}
+
+	public void setStoragePlatform(String storagePlatform) {
+		this.storagePlatform = storagePlatform;
+	}
+
+	public String getStorageBasePath() {
+		return storageBasePath;
+	}
+
+	public void setStorageBasePath(String storageBasePath) {
+		this.storageBasePath = storageBasePath;
 	}
 }

@@ -66,9 +66,8 @@ public class TrackAdminService {
 			app.setMaskSelectors(body.getMaskSelectors());
 			app.setRetentionDays(validateRetentionDays(body.getRetentionDays()));
 			app.setReplayEnabled(body.getReplayEnabled() == null ? 0 : normalizeSwitch(body.getReplayEnabled(), "replayEnabled"));
-			app.setReplaySampleRate(body.getReplaySampleRate() == null ? 10 : validateSampleRate(body.getReplaySampleRate()));
-			app.setReplayRetentionDays(body.getReplayRetentionDays() == null ? 14
-				: validateRetentionDays(body.getReplayRetentionDays()));
+			app.setReplaySampleRate(validateReplaySampleRate(body.getReplaySampleRate()));
+			app.setReplayRetentionDays(validateReplayRetentionDays(body.getReplayRetentionDays()));
 			app.setRemark(body.getRemark());
 			app.sanitizeForInsert();
 			appMapper.insertSelective(app);
@@ -100,10 +99,10 @@ public class TrackAdminService {
 				app.setReplayEnabled(normalizeSwitch(body.getReplayEnabled(), "replayEnabled"));
 			}
 			if (body.getReplaySampleRate() != null) {
-				app.setReplaySampleRate(validateSampleRate(body.getReplaySampleRate()));
+				app.setReplaySampleRate(validateReplaySampleRate(body.getReplaySampleRate()));
 			}
 			if (body.getReplayRetentionDays() != null) {
-				app.setReplayRetentionDays(validateRetentionDays(body.getReplayRetentionDays()));
+				app.setReplayRetentionDays(validateReplayRetentionDays(body.getReplayRetentionDays()));
 			}
 			if (body.getRemark() != null) {
 				app.setRemark(body.getRemark());
@@ -222,6 +221,28 @@ public class TrackAdminService {
 		}
 		if (retentionDays < 1 || retentionDays > 3650) {
 			throw new ServiceException("保留天数须 1..3650");
+		}
+		return retentionDays;
+	}
+
+	/** 回放采样率 0..100（%；0 合法 = 仅 $error 会话强传，见 SDK 回放插件语义），缺省 10 */
+	private int validateReplaySampleRate(Integer sampleRate) {
+		if (sampleRate == null) {
+			return 10;
+		}
+		if (sampleRate < 0 || sampleRate > 100) {
+			throw new ServiceException("回放采样率须 0..100");
+		}
+		return sampleRate;
+	}
+
+	/** 回放保留天数 1..30（回放体量远大于事件流，钳短上限防误配长保留撑爆对象存储），缺省 14 */
+	private int validateReplayRetentionDays(Integer retentionDays) {
+		if (retentionDays == null) {
+			return TrackConstants.REPLAY_DEFAULT_RETENTION_DAYS;
+		}
+		if (retentionDays < 1 || retentionDays > 30) {
+			throw new ServiceException("回放保留天数须 1..30");
 		}
 		return retentionDays;
 	}

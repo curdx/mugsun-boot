@@ -7,6 +7,7 @@ import com.mugsun.boot.common.constant.TrackConstants;
 import com.mugsun.boot.track.TrackAppService;
 import com.mugsun.boot.track.TrackCollectException;
 import com.mugsun.boot.track.TrackIngestService;
+import com.mugsun.boot.track.TrackReplayService;
 import com.mugsun.boot.track.entity.TrackApp;
 import com.mugsun.core.tool.api.R;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,7 +27,8 @@ import java.util.zip.GZIPInputStream;
 
 /**
  * 埋点采集公开端点（SDK 直连，/track 非 /system 路径天然匿名，无需鉴权登记）：
- * POST /track/collect 批量摄入（gzip/明文 JSON）；GET /track/config SDK 配置下发。
+ * POST /track/collect 批量摄入（gzip/明文 JSON）；POST /track/replay 回放块摄入（G100，base64+gzip 块）；
+ * GET /track/config SDK 配置下发。
  * <p>刻意不用 Spring 全局 ObjectMapper 与 @RequestBody：XssJacksonConfig 的净化反序列化器会篡改
  * props 文本（事件属性须原样留存、截断入库，渲染侧由前端 DOMPurify 防存储型 XSS）；
  * 请求体经 XssRequestWrapper 缓存后原样读出（压缩体 ≤2MB 由过滤器 413 兜底），自行解压/解析。
@@ -43,10 +45,13 @@ public class TrackCollectController {
 
 	private final TrackIngestService ingestService;
 	private final TrackAppService appService;
+	private final TrackReplayService replayService;
 
-	public TrackCollectController(TrackIngestService ingestService, TrackAppService appService) {
+	public TrackCollectController(TrackIngestService ingestService, TrackAppService appService,
+								  TrackReplayService replayService) {
 		this.ingestService = ingestService;
 		this.appService = appService;
+		this.replayService = replayService;
 	}
 
 	/**
@@ -86,8 +91,43 @@ public class TrackCollectController {
 	}
 
 	/**
+	 * 回放块摄入（G100）：同步路径只做校验/限流/幂等/体积累计/入队即返回（R 信封 code=200）。
+	 * 协议：{app_key, session_id, seq, event_count, gzip, payload:&lt;base64&gt;}——gzip=true 时 payload=base64(gzip(rrweb 事件数组 JSON))；
+	 * gzip=false 时 payload=base64(明文 JSON)（SDK pagehide 收尾块：异步 gzip 活不过卸载，同步明文编码）。
+	 * （application/json；seq 会话内自 0 连续递增）。响应 data：{accepted, duplicated}——
+	 * duplicated=true 为同 session+seq 重发被幂等丢弃（视为成功，SDK 无需重试）。
+	 */
+	@PostMapping("/replay")
+	public ResponseEntity<R<?>> replay(HttpServletRequest request) throws IOException {
+		try {
+			byte[] body = request.getInputStream().readAllBytes();
+			if (body.length == 0) {
+				throw new TrackCollectException(400, "请求体为空");
+			}
+			if (body.length > TrackConstants.REPLAY_ENVELOPE_MAX_BYTES) {
+				throw new TrackCollectException(413, "请求体过大");
+			}
+			JsonNode root;
+			try {
+				root = PLAIN_MAPPER.readTree(body);
+			} catch (JsonProcessingException e) {
+				// 畸形 JSON 属客户端错误，转 400（不落入全局 500 兜底刷错误日志）
+				throw new TrackCollectException(400, "请求体 JSON 非法");
+			}
+			if (root == null || !root.isObject()) {
+				throw new TrackCollectException(400, "请求体须为 JSON 对象");
+			}
+			return ResponseEntity.ok(R.data(replayService.ingest(root, request.getRemoteAddr())));
+		} catch (TrackCollectException e) {
+			R<Object> body = R.fail(e.getMessage());
+			body.setCode(e.getStatus());
+			return ResponseEntity.status(e.getStatus()).body(body);
+		}
+	}
+
+	/**
 	 * SDK 配置下发：{enabled, sampleRate, maskSelectors, replayEnabled, replaySampleRate}。
-	 * replayEnabled 恒 false（回放 G100 才开，本期无论 track_app.replay_enabled 何值一律下发关）。
+	 * replayEnabled 读 track_app.replay_enabled（G100 放开：关时 SDK 不启动录制）。
 	 * 本地缓存 30s（与 appKey 校验共用 {@link TrackAppService} 缓存，多副本生效延迟见其 javadoc）。
 	 */
 	@GetMapping("/config")
@@ -99,7 +139,7 @@ public class TrackCollectController {
 			data.put("enabled", app.getEnabled() != null && app.getEnabled() == 1);
 			data.put("sampleRate", app.getSampleRate() == null ? 100 : app.getSampleRate());
 			data.put("maskSelectors", app.getMaskSelectors() == null ? "" : app.getMaskSelectors());
-			data.put("replayEnabled", false);
+			data.put("replayEnabled", app.getReplayEnabled() != null && app.getReplayEnabled() == 1);
 			data.put("replaySampleRate", app.getReplaySampleRate() == null ? 0 : app.getReplaySampleRate());
 			return ResponseEntity.ok(R.data(data));
 		} catch (TrackCollectException e) {

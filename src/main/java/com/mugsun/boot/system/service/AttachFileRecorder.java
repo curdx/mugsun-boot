@@ -3,6 +3,7 @@ package com.mugsun.boot.system.service;
 import cn.hutool.core.lang.Dict;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mugsun.boot.common.constant.OssConstants;
+import com.mugsun.boot.common.constant.TrackConstants;
 import com.mugsun.boot.system.entity.SysAttach;
 import com.mugsun.boot.system.entity.SysAttachPart;
 import com.mugsun.boot.system.mapper.SysAttachMapper;
@@ -39,9 +40,13 @@ public class AttachFileRecorder implements FileRecorder {
 		this.partMapper = partMapper;
 	}
 
-	/** 上传完成登记附件；登记行主键回写 {@link FileInfo#setId}，供调用方直接回执（免回表） */
+	/** 上传完成登记附件；登记行主键回写 {@link FileInfo#setId}，供调用方直接回执（免回表）。
+	 *  内部对象（attr 带 {@link OssConstants#ATTR_INTERNAL_OBJECT}，如埋点回放块）非附件，跳过登记 */
 	@Override
 	public boolean save(FileInfo info) {
+		if (isInternalObject(info)) {
+			return true;
+		}
 		SysAttach attach = new SysAttach();
 		attach.setName(info.getOriginalFilename());
 		attach.setUrl(info.getUrl());
@@ -99,11 +104,15 @@ public class AttachFileRecorder implements FileRecorder {
 		return info;
 	}
 
-	/** 物理删除的级联销登记：按 url 逻辑删除登记行（幂等，重复删返回未命中） */
+	/** 物理删除的级联销登记：按 url 逻辑删除登记行（幂等，重复删返回未命中）。
+	 *  回放块等内部对象从未登记（url 含 replay/ 路径段），静默跳过不打告警 */
 	@Override
 	public boolean delete(String url) {
 		if (url == null || url.isBlank()) {
 			return false;
+		}
+		if (url.contains("/" + TrackConstants.REPLAY_PATH_PREFIX)) {
+			return true;
 		}
 		int rows = attachMapper.deleteByQuery(QueryWrapper.create().eq("url", url));
 		if (rows == 0) {
@@ -138,6 +147,12 @@ public class AttachFileRecorder implements FileRecorder {
 			return null;
 		}
 		return attachMapper.selectOneByQuery(QueryWrapper.create().eq("url", url).orderBy("id", false));
+	}
+
+	/** 内部对象判定：attr 携带 {@link OssConstants#ATTR_INTERNAL_OBJECT} 标记（回放块等非附件对象，不落 sys_attach） */
+	private boolean isInternalObject(FileInfo info) {
+		Dict attr = info.getAttr();
+		return attr != null && attr.getStr(OssConstants.ATTR_INTERNAL_OBJECT) != null;
 	}
 
 	/** 访问级别：attr 未携带（如框架内部流转）按私有兜底，宁可收紧不可外泄 */

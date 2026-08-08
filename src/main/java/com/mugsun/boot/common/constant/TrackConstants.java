@@ -28,6 +28,8 @@ public interface TrackConstants {
 	String PERM_APP_ADD = "sys:track-app:add";
 	/** 权限码：埋点接入应用编辑 */
 	String PERM_APP_EDIT = "sys:track-app:edit";
+	/** 权限码：回放会话列表查询（G100） */
+	String PERM_REPLAY_LIST = "sys:track-replay:list";
 	/** 权限码：回放查看（G100；最高敏感，查看必留痕审计） */
 	String PERM_REPLAY_VIEW = "sys:track-replay:view";
 
@@ -198,7 +200,8 @@ public interface TrackConstants {
 
 	/** 指标：摄入接收事件数 */
 	String METRIC_RECEIVED = "track.ingest.received";
-	/** 指标：丢弃事件数（tag reason：batch_truncated/invalid_event/bad_name/ts_absurd/queue_full/retry_exhausted/persist_failed） */
+	/** 指标：丢弃事件/回放块数（tag reason：batch_truncated/invalid_event/bad_name/ts_absurd/queue_full/retry_exhausted/persist_failed
+	 *  / replay_session_oversize / replay_banned / replay_queue_full / replay_retry_exhausted / replay_persist_failed） */
 	String METRIC_DROPPED = "track.ingest.dropped";
 	/** 指标：限流拒收批次数 */
 	String METRIC_RATELIMITED = "track.ingest.ratelimited";
@@ -302,4 +305,64 @@ public interface TrackConstants {
 
 	/** 指标：兜底默认分区残留行数告警（非空即分区预建失败/迟到数据越界） */
 	String METRIC_DEFAULT_PARTITION_ROWS = "track.partition.default.rows";
+
+	/* ==================== G100：会话回放（rrweb 块摄入/存储/读取/保留期） ==================== */
+
+	/** 回放限流阈值 = collect 限流（{@link #PARAM_RATE_LIMIT}）× 此倍数（回放块大频次低，放宽但独立键隔离） */
+	int REPLAY_RATE_LIMIT_FACTOR = 2;
+	/** 回放限流键前缀：INCR mugsun:track:rlr:{ip}:{appKey}:{yyyyMMddHHmm}，首置 EXPIRE 70s（与 collect 同窗口语义） */
+	String REPLAY_RATE_LIMIT_KEY_PREFIX = REDIS_PREFIX + "rlr:";
+
+	/** 回放请求信封上限（字节，1.5MB）：base64 块文本 + 协议字段（XssFilter 的 2MB 硬顶之前先拦） */
+	int REPLAY_ENVELOPE_MAX_BYTES = 1572864;
+	/** 回放单块解压后上限（字节，4MB；超限 413）。首块含 rrweb 全量快照（整页 DOM + 内联样式，管理台页面
+	 *  实测 1~3MB），1MB 会误杀首块致播放器无基座空白；gzip 块 4MB 明文 ≈ 数百 KB 压缩字节，远低 payload 上限 */
+	int REPLAY_BLOCK_MAX_BYTES = 4194304;
+	/** base64 块文本长度上限（≈1.41MB）：gzip 块压缩字节远低此界（块上限以解压后口径判定，见
+	 *  {@link #REPLAY_BLOCK_MAX_BYTES}）；此界实际钳制 gzip=false 明文块（解码后 ≈1.07MB 封顶，pagehide 收尾块为增量小量，足够） */
+	int REPLAY_PAYLOAD_B64_MAX_LEN = 1442802;
+	/** 单会话回放累计上限（解压后字节，默认 20MB；sys_param {@link #PARAM_REPLAY_SESSION_MAX} 可调，超 413 + 会话封禁） */
+	long DEFAULT_REPLAY_SESSION_MAX_BYTES = 20971520L;
+	/** sys_param 键：单会话回放累计上限（解压后字节） */
+	String PARAM_REPLAY_SESSION_MAX = "track.replay.session-max-bytes";
+	/** 会话累计体积计数器键前缀：INCRBY mugsun:track:replay-size:{session_id}（解压后字节），首置 EXPIRE 25h */
+	String REPLAY_SIZE_KEY_PREFIX = REDIS_PREFIX + "replay-size:";
+	/** 会话超限封禁键前缀：mugsun:track:replay-ban:{session_id} TTL 25h，存在即拒收该会话后续块（413） */
+	String REPLAY_BAN_KEY_PREFIX = REDIS_PREFIX + "replay-ban:";
+	/** 块幂等键前缀：SETNX mugsun:track:replay-seq:{session_id}:{seq} TTL 25h，命中 = 重复块丢弃（200 duplicated） */
+	String REPLAY_SEQ_KEY_PREFIX = REDIS_PREFIX + "replay-seq:";
+	/** 回放域 Redis 键统一 TTL（秒）：25h，覆盖会话最长生命 + 离线补发窗口（与事件幂等同口径） */
+	long REPLAY_KEY_TTL_SECONDS = 90000L;
+
+	/** 回放消费队列上限（单副本进程内；块均 ~100KB gz，满 = 丢新 + 计数 + 503 由 SDK 重试） */
+	int REPLAY_QUEUE_CAPACITY = 256;
+	/** 回放消费线程数：1（回放量级远低于事件流；单线程保会话内块按到达序落储） */
+	int REPLAY_CONSUME_THREAD_COUNT = 1;
+
+	/** 回放对象路径前缀：对象键 = replay/{app_key}/{yyyyMM}/{session_id}/{seq}.gz（私有桶；键清单按 seq 推导） */
+	String REPLAY_PATH_PREFIX = "replay/";
+	/** 对象键 yyyyMM 段格式（首块到达时刻，UTC；同会话所有块共用首块月份目录） */
+	String REPLAY_PATH_MONTH_PATTERN = "yyyyMM";
+	/** 回放块文件名后缀（内容即客户端原样 gzip 字节） */
+	String REPLAY_BLOCK_SUFFIX = ".gz";
+	/** 回放块 ContentType */
+	String REPLAY_BLOCK_CONTENT_TYPE = "application/gzip";
+	/** 块序号上限（5s/块连续 24h 约 1.7 万块，10 万足够余量；超界 400 防异常序号撑爆键清单） */
+	int REPLAY_SEQ_MAX = 100000;
+	/** app_key/session_id 对象键路径安全字符集（防路径穿越注入对象键） */
+	java.util.regex.Pattern REPLAY_PATH_SAFE = java.util.regex.Pattern.compile("^[A-Za-z0-9_-]+$");
+
+	/** Redis 调度锁键：回放保留期清理 */
+	String LOCK_REPLAY_CLEAN = REDIS_PREFIX + "lock:replay-clean";
+	/** 回放清理调度 tick（毫秒）：每小时探一次，内存节流每日一轮（同分区维护范式） */
+	long REPLAY_CLEAN_TICK_MS = 3600000L;
+	/** 回放清理单轮处理上限（行）；超出逐轮消化 */
+	int REPLAY_CLEAN_BATCH_SIZE = 500;
+	/** 回放保留天数兜底默认（应用已删/行缺省时；同 track_app.replay_retention_days 列默认） */
+	int REPLAY_DEFAULT_RETENTION_DAYS = 14;
+
+	/** 指标：回放块接收数（通过全部校验、已入消费队列） */
+	String METRIC_REPLAY_RECEIVED = "track.replay.received";
+	/** 指标：回放块幂等命中丢弃数（同 session+seq 重发） */
+	String METRIC_REPLAY_DUPLICATED = "track.replay.duplicated";
 }

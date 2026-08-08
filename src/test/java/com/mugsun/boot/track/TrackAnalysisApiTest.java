@@ -340,6 +340,47 @@ class TrackAnalysisApiTest extends AbstractTrackIntegrationTest {
 		assertThat(config.getStatusCode().value()).as("删除后配置下发应 400").isEqualTo(400);
 	}
 
+	/** 应用回放配置（G100）：submit 放开回放三字段（含校验：采样率 0..100、保留天数 1..30、开关 0/1） */
+	@Test
+	void appReplayConfigSubmitAndValidation() {
+		// 新增携带回放配置（采样率 0 合法 = 仅 $error 会话强传）
+		Map<String, Object> create = new HashMap<>();
+		create.put("appName", "回放配置应用");
+		create.put("replayEnabled", 1);
+		create.put("replaySampleRate", 0);
+		create.put("replayRetentionDays", 30);
+		JsonNode created = readBody(post("/system/track/app/submit", create, adminToken));
+		assertThat(created.path("code").asInt()).as("新增：" + created.path("msg").asText()).isEqualTo(200);
+		long id = created.path("data").path("id").asLong();
+		assertThat(created.path("data").path("replayEnabled").asInt()).isEqualTo(1);
+		assertThat(created.path("data").path("replaySampleRate").asInt()).isEqualTo(0);
+		assertThat(created.path("data").path("replayRetentionDays").asInt()).isEqualTo(30);
+
+		// 编辑改值生效
+		JsonNode edited = readBody(post("/system/track/app/submit",
+			Map.of("id", id, "replaySampleRate", 100, "replayRetentionDays", 1), adminToken));
+		assertThat(edited.path("code").asInt()).as("编辑：" + edited.path("msg").asText()).isEqualTo(200);
+		assertThat(edited.path("data").path("replaySampleRate").asInt()).isEqualTo(100);
+		assertThat(edited.path("data").path("replayRetentionDays").asInt()).isEqualTo(1);
+
+		// 越界一律 400（ServiceException 经全局兜底转 R 信封 code=400）
+		JsonNode rate101 = readBody(post("/system/track/app/submit", Map.of("id", id, "replaySampleRate", 101), adminToken));
+		assertThat(rate101.path("code").asInt()).isEqualTo(400);
+		assertThat(rate101.path("msg").asText()).contains("回放采样率须 0..100");
+		assertThat(readBody(post("/system/track/app/submit", Map.of("id", id, "replaySampleRate", -1), adminToken))
+			.path("code").asInt()).isEqualTo(400);
+		JsonNode days31 = readBody(post("/system/track/app/submit", Map.of("id", id, "replayRetentionDays", 31), adminToken));
+		assertThat(days31.path("code").asInt()).isEqualTo(400);
+		assertThat(days31.path("msg").asText()).contains("回放保留天数须 1..30");
+		assertThat(readBody(post("/system/track/app/submit", Map.of("id", id, "replayRetentionDays", 0), adminToken))
+			.path("code").asInt()).isEqualTo(400);
+		assertThat(readBody(post("/system/track/app/submit", Map.of("id", id, "replayEnabled", 2), adminToken))
+			.path("code").asInt()).isEqualTo(400);
+
+		// 清理（逻辑删除，缓存即时失效）
+		post("/system/track/app/remove", Map.of("id", id), adminToken);
+	}
+
 	/** 事件定义：自动注册 → 分页可见 → 认领（显示名/说明/负责人/停用） */
 	@Test
 	void eventDefClaimAndDisable() {

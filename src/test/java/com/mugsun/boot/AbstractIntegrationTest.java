@@ -96,8 +96,19 @@ public abstract class AbstractIntegrationTest {
 			() -> "redis://" + REDIS.getHost() + ":" + REDIS.getMappedPort(6379) + "/3");
 		// 测试环境不连 PowerJob Server
 		registry.add("powerjob.worker.enabled", () -> "false");
-		// 文件存储落 target 下临时目录，不污染 /tmp
-		registry.add("dromara.x-file-storage.local-plus[0].storage-path", () -> "target/it-files/");
+		// 文件存储落 target 下临时目录，不污染 /tmp。
+		// 注意 Spring 列表绑定规则：列表在多属性源时按最高优先级源「整体替换」——只覆盖 storage-path
+		// 会把该元素的 platform/enable-storage 等字段冲成默认值（平台不注册、默认平台不可用），
+		// 故整元素补齐（取值与 application.yml 一致，仅存储目录改道 target/it-files/）
+		registry.add("dromara.x-file-storage.local-plus[0].platform", () -> "local-plus-1");
+		registry.add("dromara.x-file-storage.local-plus[0].enable-storage", () -> "true");
+		registry.add("dromara.x-file-storage.local-plus[0].enable-access", () -> "true");
+		registry.add("dromara.x-file-storage.local-plus[0].domain", () -> "http://127.0.0.1:8080/file/");
+		registry.add("dromara.x-file-storage.local-plus[0].base-path", () -> "mugsun/");
+		registry.add("dromara.x-file-storage.local-plus[0].path-patterns", () -> "/file/**");
+		// 绝对路径消歧：LocalPlus 对相对 storage-path 的解析基准与测试 JVM 工作目录不一致（OssStorageApiTest 同款教训）
+		registry.add("dromara.x-file-storage.local-plus[0].storage-path",
+			() -> new java.io.File("target/it-files/").getAbsolutePath() + "/");
 		// Redis 容器就绪，推送扇出保持 redis 模式
 		registry.add("mugsun.websocket.sender-type", () -> "redis");
 		// application.yml 的 SMTP 为占位符，邮件健康检查必然 DOWN 拖垮聚合 503；测试环境关闭该指标

@@ -51,6 +51,16 @@ public class TrackIngestMetrics {
 		registry.counter(TrackConstants.METRIC_IDENTITY_REJECTED, Tags.of("reason", reason)).increment();
 	}
 
+	/** 回放块接收数（通过全部校验、已入回放消费队列；G100） */
+	public void replayReceived(long n) {
+		registry.counter(TrackConstants.METRIC_REPLAY_RECEIVED).increment(n);
+	}
+
+	/** 回放块幂等命中丢弃数（同 session+seq 重发；G100） */
+	public void replayDuplicated(long n) {
+		registry.counter(TrackConstants.METRIC_REPLAY_DUPLICATED).increment(n);
+	}
+
 	/** 落库延迟：received_at 与落库时刻差（队列积压时此指标抬头，实时流不受影响） */
 	public void lag(Duration lag) {
 		registry.timer(TrackConstants.METRIC_LAG).record(lag);

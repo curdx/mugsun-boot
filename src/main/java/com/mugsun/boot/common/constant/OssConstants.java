@@ -30,6 +30,11 @@ public interface OssConstants {
 	/** FileInfo attr 扩展键：访问级别（recorder 登记时还原 sys_attach.access） */
 	String ATTR_ACCESS = "access";
 
+	/** FileInfo attr 扩展键：内部对象标记（非附件，AttachFileRecorder 跳过 sys_attach 登记/销户） */
+	String ATTR_INTERNAL_OBJECT = "internalObject";
+	/** 内部对象标记值：埋点会话回放块（G100；元数据自管于 track_replay，不进附件体系） */
+	String INTERNAL_OBJECT_TRACK_REPLAY = "track-replay";
+
 	/** sys_param 键：私有附件预签名下载 URL 有效期（秒） */
 	String PARAM_PRESIGNED_URL_EXPIRE = "oss.presigned-url-expire-seconds";
 	/** 兜底默认：预签名下载 URL 有效期 300 秒 */
