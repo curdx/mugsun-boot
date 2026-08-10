@@ -39,9 +39,10 @@ public class GenController {
 	public R<Map<String, Object>> datasource() {
 		Map<String, Object> ds = new LinkedHashMap<>();
 		ds.put("name", "主数据源");
-		ds.put("url", env.getProperty("spring.datasource.url"));
-		ds.put("username", env.getProperty("spring.datasource.username"));
-		ds.put("driver", env.getProperty("spring.datasource.driver-class-name"));
+		// 数据源配置在 mybatis-flex.datasource.primary.*（本项目多数据源体系），非 spring.datasource.*
+		ds.put("url", env.getProperty("mybatis-flex.datasource.primary.url"));
+		ds.put("username", env.getProperty("mybatis-flex.datasource.primary.username"));
+		ds.put("driver", env.getProperty("mybatis-flex.datasource.primary.driver-class-name"));
 		return R.data(ds);
 	}
 

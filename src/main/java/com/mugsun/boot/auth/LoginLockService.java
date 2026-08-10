@@ -55,4 +55,9 @@ public class LoginLockService {
 		redis.delete(FAIL_KEY + username);
 		redis.delete(LOCK_KEY + username);
 	}
+
+	/** 账号是否处于锁定中（锁键存在即锁定；登录日志页「解锁」按钮显隐依据） */
+	public boolean isLocked(String username) {
+		return Boolean.TRUE.equals(redis.hasKey(LOCK_KEY + username));
+	}
 }

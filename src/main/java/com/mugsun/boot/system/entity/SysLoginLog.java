@@ -28,6 +28,9 @@ public class SysLoginLog extends BaseEntity {
 	private String loginLocation;
 	/** 登录客户端码（web/app…） */
 	private String device;
+	/** 账号当前是否处于登录失败锁定中（非表列，page 接口按 Redis 锁键富化） */
+	@com.mybatisflex.annotation.Column(ignore = true)
+	private Boolean locked;
 
 	public String getUsername() {
 		return username;
@@ -115,5 +118,13 @@ public class SysLoginLog extends BaseEntity {
 
 	public void setDevice(String device) {
 		this.device = device;
+	}
+
+	public Boolean getLocked() {
+		return locked;
+	}
+
+	public void setLocked(Boolean locked) {
+		this.locked = locked;
 	}
 }

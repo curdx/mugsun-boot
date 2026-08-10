@@ -52,6 +52,10 @@ public class SysLoginLogController {
 		Page<SysLoginLog> page = TenantContext.isPlatformSuperAdmin()
 			? TenantContext.ignore(() -> loginLogMapper.paginate(pageNum, Math.min(pageSize, 500), query))
 			: loginLogMapper.paginate(pageNum, Math.min(pageSize, 500), query);
+		// 富化锁定标记（账号密码锁与短信 phone 锁两个维度），前端按此行级状态显隐「解锁」按钮
+		page.getRecords().forEach(row -> row.setLocked(
+			loginLockService.isLocked(loginLockService.keyOf(row.getTenantId(), row.getUsername()))
+				|| loginLockService.isLocked(loginLockService.keyOf("phone", row.getUsername()))));
 		return R.data(page);
 	}
 
