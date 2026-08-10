@@ -365,4 +365,42 @@ public interface TrackConstants {
 	String METRIC_REPLAY_RECEIVED = "track.replay.received";
 	/** 指标：回放块幂等命中丢弃数（同 session+seq 重发） */
 	String METRIC_REPLAY_DUPLICATED = "track.replay.duplicated";
+
+	/* ==================== G101：错误监控增强（sourcemap 堆栈还原支撑 + 错误告警） ==================== */
+
+	/** sourcemap 对象路径前缀：对象键 = sourcemap/{app_key}/{release}/{filename}（私有存储，元数据自管于 track_sourcemap） */
+	String SOURCEMAP_PATH_PREFIX = "sourcemap/";
+	/** sourcemap 文件大小上限（字节，20MB；超限 400） */
+	long SOURCEMAP_MAX_BYTES = 20971520L;
+	/** sourcemap 文件名后缀（仅收 .map，小写比对） */
+	String SOURCEMAP_SUFFIX = ".map";
+	/** sourcemap ContentType（上传登记与 raw 端点下发同口径） */
+	String SOURCEMAP_CONTENT_TYPE = "application/json";
+	/** release 版本号长度上限（对应 VARCHAR(128)） */
+	int SOURCEMAP_RELEASE_MAX_LEN = 128;
+	/** sourcemap 文件名长度上限（对应 VARCHAR(255)） */
+	int SOURCEMAP_FILENAME_MAX_LEN = 255;
+	/** release/filename 对象键路径安全字符集（防路径穿越注入对象键；比 REPLAY_PATH_SAFE 多放行 . ） */
+	java.util.regex.Pattern SOURCEMAP_PATH_SAFE = java.util.regex.Pattern.compile("^[A-Za-z0-9._-]+$");
+
+	/** 错误告警默认同指纹频次阈值（次/10 分钟窗；track_app.alert_threshold 列缺省） */
+	int DEFAULT_ALERT_THRESHOLD = 10;
+	/** 告警频次阈值上限（防误配 0=永不触发 / 超大=形同关闭） */
+	int ALERT_THRESHOLD_MAX = 1000;
+	/** 规则 A 新指纹去重键前缀：SETNX mugsun:track:alert-new:{app_key}:{fingerprint}，命中即本周期内已首告 */
+	String ALERT_NEW_KEY_PREFIX = REDIS_PREFIX + "alert-new:";
+	/** 规则 A 新指纹去重 TTL（秒）：7 天 */
+	long ALERT_NEW_TTL_SECONDS = 604800L;
+	/** 规则 B 频次窗计数键前缀：INCR mugsun:track:alert-freq:{app_key}:{fingerprint}，首置 EXPIRE 窗长 */
+	String ALERT_FREQ_KEY_PREFIX = REDIS_PREFIX + "alert-freq:";
+	/** 规则 B 频次窗长（秒）：10 分钟 */
+	long ALERT_FREQ_WINDOW_SECONDS = 600L;
+	/** 规则 B 窗级告警抑制键前缀：SETNX mugsun:track:alert-sent:{app_key}:{fingerprint}（TTL=频次窗剩余），存在即本窗已告过 */
+	String ALERT_FREQ_SENT_KEY_PREFIX = REDIS_PREFIX + "alert-sent:";
+	/** 告警站内信标题 */
+	String ALERT_MESSAGE_TITLE = "埋点错误告警";
+	/** 告警查看链接（前端错误监控页路由 hash） */
+	String ALERT_ERROR_LINK = "#/track/error";
+	/** 指标：告警站内信发送数（tag reason：new-fingerprint/threshold） */
+	String METRIC_ALERT_SENT = "track.alert.sent";
 }

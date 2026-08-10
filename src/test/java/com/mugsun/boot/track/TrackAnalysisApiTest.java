@@ -381,6 +381,49 @@ class TrackAnalysisApiTest extends AbstractTrackIntegrationTest {
 		post("/system/track/app/remove", Map.of("id", id), adminToken);
 	}
 
+	/** 应用告警配置（G101）：submit 放开 alertEnabled/alertThreshold（0/1、1..1000 校验；缺省 0 关 / 10 次） */
+	@Test
+	void appAlertConfigSubmitAndValidation() {
+		// 新增携带告警配置
+		Map<String, Object> create = new HashMap<>();
+		create.put("appName", "告警配置应用");
+		create.put("alertEnabled", 1);
+		create.put("alertThreshold", 500);
+		JsonNode created = readBody(post("/system/track/app/submit", create, adminToken));
+		assertThat(created.path("code").asInt()).as("新增：" + created.path("msg").asText()).isEqualTo(200);
+		long id = created.path("data").path("id").asLong();
+		assertThat(created.path("data").path("alertEnabled").asInt()).isEqualTo(1);
+		assertThat(created.path("data").path("alertThreshold").asInt()).isEqualTo(500);
+
+		// 缺省：未传字段走默认（0 关 / 阈值 10）
+		JsonNode def = readBody(post("/system/track/app/submit", Map.of("appName", "告警默认应用"), adminToken));
+		assertThat(def.path("code").asInt()).isEqualTo(200);
+		assertThat(def.path("data").path("alertEnabled").asInt()).as("缺省告警关闭").isEqualTo(0);
+		assertThat(def.path("data").path("alertThreshold").asInt()).as("缺省阈值 10")
+			.isEqualTo(TrackConstants.DEFAULT_ALERT_THRESHOLD);
+		post("/system/track/app/remove", Map.of("id", def.path("data").path("id").asLong()), adminToken);
+
+		// 编辑改值生效
+		JsonNode edited = readBody(post("/system/track/app/submit",
+			Map.of("id", id, "alertEnabled", 0, "alertThreshold", 1), adminToken));
+		assertThat(edited.path("code").asInt()).as("编辑：" + edited.path("msg").asText()).isEqualTo(200);
+		assertThat(edited.path("data").path("alertEnabled").asInt()).isEqualTo(0);
+		assertThat(edited.path("data").path("alertThreshold").asInt()).isEqualTo(1);
+
+		// 越界一律 400（ServiceException 经全局兜底转 R 信封 code=400）
+		JsonNode badSwitch = readBody(post("/system/track/app/submit", Map.of("id", id, "alertEnabled", 2), adminToken));
+		assertThat(badSwitch.path("code").asInt()).isEqualTo(400);
+		assertThat(badSwitch.path("msg").asText()).contains("alertEnabled 仅支持 0/1");
+		JsonNode th0 = readBody(post("/system/track/app/submit", Map.of("id", id, "alertThreshold", 0), adminToken));
+		assertThat(th0.path("code").asInt()).isEqualTo(400);
+		assertThat(th0.path("msg").asText()).contains("告警阈值须 1.." + TrackConstants.ALERT_THRESHOLD_MAX);
+		assertThat(readBody(post("/system/track/app/submit", Map.of("id", id, "alertThreshold",
+			TrackConstants.ALERT_THRESHOLD_MAX + 1), adminToken)).path("code").asInt()).isEqualTo(400);
+
+		// 清理（逻辑删除，缓存即时失效）
+		post("/system/track/app/remove", Map.of("id", id), adminToken);
+	}
+
 	/** 事件定义：自动注册 → 分页可见 → 认领（显示名/说明/负责人/停用） */
 	@Test
 	void eventDefClaimAndDisable() {

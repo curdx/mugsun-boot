@@ -105,13 +105,14 @@ public class AttachFileRecorder implements FileRecorder {
 	}
 
 	/** 物理删除的级联销登记：按 url 逻辑删除登记行（幂等，重复删返回未命中）。
-	 *  回放块等内部对象从未登记（url 含 replay/ 路径段），静默跳过不打告警 */
+	 *  回放块/sourcemap 等内部对象从未登记（按 url 路径段识别），静默跳过不打告警 */
 	@Override
 	public boolean delete(String url) {
 		if (url == null || url.isBlank()) {
 			return false;
 		}
-		if (url.contains("/" + TrackConstants.REPLAY_PATH_PREFIX)) {
+		if (url.contains("/" + TrackConstants.REPLAY_PATH_PREFIX)
+			|| url.contains("/" + TrackConstants.SOURCEMAP_PATH_PREFIX)) {
 			return true;
 		}
 		int rows = attachMapper.deleteByQuery(QueryWrapper.create().eq("url", url));

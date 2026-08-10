@@ -32,6 +32,10 @@ public class TrackApp extends BaseEntity {
 	private Integer replaySampleRate;
 	/** 回放保留天数（远短于事件） */
 	private Integer replayRetentionDays;
+	/** 错误告警开关（G101：1=消费侧对 $error 评估告警规则并站内信通知租户管理员） */
+	private Integer alertEnabled;
+	/** 同指纹告警频次阈值（次/10 分钟窗；规则 B 触发线，1..1000） */
+	private Integer alertThreshold;
 	private String remark;
 
 	public String getAppKey() {
@@ -120,6 +124,22 @@ public class TrackApp extends BaseEntity {
 
 	public void setReplayRetentionDays(Integer replayRetentionDays) {
 		this.replayRetentionDays = replayRetentionDays;
+	}
+
+	public Integer getAlertEnabled() {
+		return alertEnabled;
+	}
+
+	public void setAlertEnabled(Integer alertEnabled) {
+		this.alertEnabled = alertEnabled;
+	}
+
+	public Integer getAlertThreshold() {
+		return alertThreshold;
+	}
+
+	public void setAlertThreshold(Integer alertThreshold) {
+		this.alertThreshold = alertThreshold;
 	}
 
 	public String getRemark() {

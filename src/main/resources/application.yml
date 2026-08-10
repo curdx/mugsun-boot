@@ -6,6 +6,11 @@ spring:
   threads:
     virtual:
       enabled: true
+  servlet:
+    multipart:
+      # G101 sourcemap 上限 20MB（服务端校验 400 先于容器截断）：默认 1MB/10MB 不够，放宽到 25MB
+      max-file-size: 25MB
+      max-request-size: 25MB
   task:
     scheduling:
       pool:

@@ -51,11 +51,14 @@ public class TrackEventConsumer {
 	private final TrackEventStore store;
 	private final IpRegionService ipRegionService;
 	private final TrackIngestMetrics metrics;
+	private final TrackAlertService alertService;
 
-	public TrackEventConsumer(TrackEventStore store, IpRegionService ipRegionService, TrackIngestMetrics metrics) {
+	public TrackEventConsumer(TrackEventStore store, IpRegionService ipRegionService, TrackIngestMetrics metrics,
+							  TrackAlertService alertService) {
 		this.store = store;
 		this.ipRegionService = ipRegionService;
 		this.metrics = metrics;
+		this.alertService = alertService;
 	}
 
 	/** 启动消费循环（2 个虚拟线程，小并发档；不占业务数据源连接池——落库走 track 池） */
@@ -107,7 +110,8 @@ public class TrackEventConsumer {
 		}
 	}
 
-	/** 落库一批：富化（UA/IP 属地）→ 事件批量插 → 会话聚合 upsert → identity/event_def upsert → lag 指标 */
+	/** 落库一批：富化（UA/IP 属地）→ 事件批量插 → 会话聚合 upsert → identity/event_def upsert → lag 指标
+	 *  → $error 告警评估（G101，仅落库成功后；evaluateQuietly 非阻塞静默，任何异常不触发批次重试） */
 	private void flush(List<TrackIngestEvent> batch) {
 		if (batch.isEmpty()) {
 			return;
@@ -125,6 +129,12 @@ public class TrackEventConsumer {
 			long now = System.currentTimeMillis();
 			for (TrackIngestEvent e : batch) {
 				metrics.lag(Duration.ofMillis(Math.max(0, now - e.getReceivedAtMs())));
+			}
+			// G101 错误告警：$error 逐条评估（新指纹/频次阈值 → 站内信）；静默语义由 evaluateQuietly 保证
+			for (TrackIngestEvent e : batch) {
+				if (TrackConstants.EVENT_ERROR.equals(e.getEventName())) {
+					alertService.evaluateQuietly(e);
+				}
 			}
 		} catch (Exception e) {
 			log.warn("埋点落库失败（批次重回队列尾重试）：{}", e.getMessage());

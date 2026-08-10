@@ -68,6 +68,8 @@ public class TrackAdminService {
 			app.setReplayEnabled(body.getReplayEnabled() == null ? 0 : normalizeSwitch(body.getReplayEnabled(), "replayEnabled"));
 			app.setReplaySampleRate(validateReplaySampleRate(body.getReplaySampleRate()));
 			app.setReplayRetentionDays(validateReplayRetentionDays(body.getReplayRetentionDays()));
+			app.setAlertEnabled(body.getAlertEnabled() == null ? 0 : normalizeSwitch(body.getAlertEnabled(), "alertEnabled"));
+			app.setAlertThreshold(validateAlertThreshold(body.getAlertThreshold()));
 			app.setRemark(body.getRemark());
 			app.sanitizeForInsert();
 			appMapper.insertSelective(app);
@@ -103,6 +105,12 @@ public class TrackAdminService {
 			}
 			if (body.getReplayRetentionDays() != null) {
 				app.setReplayRetentionDays(validateReplayRetentionDays(body.getReplayRetentionDays()));
+			}
+			if (body.getAlertEnabled() != null) {
+				app.setAlertEnabled(normalizeSwitch(body.getAlertEnabled(), "alertEnabled"));
+			}
+			if (body.getAlertThreshold() != null) {
+				app.setAlertThreshold(validateAlertThreshold(body.getAlertThreshold()));
 			}
 			if (body.getRemark() != null) {
 				app.setRemark(body.getRemark());
@@ -245,6 +253,18 @@ public class TrackAdminService {
 			throw new ServiceException("回放保留天数须 1..30");
 		}
 		return retentionDays;
+	}
+
+	/** 同指纹告警频次阈值 1..{@value TrackConstants#ALERT_THRESHOLD_MAX}（次/10 分钟窗），缺省
+	 *  {@value TrackConstants#DEFAULT_ALERT_THRESHOLD}；0=永不触发、超大=形同关闭，均按误配拦截 */
+	private int validateAlertThreshold(Integer threshold) {
+		if (threshold == null) {
+			return TrackConstants.DEFAULT_ALERT_THRESHOLD;
+		}
+		if (threshold < 1 || threshold > TrackConstants.ALERT_THRESHOLD_MAX) {
+			throw new ServiceException("告警阈值须 1.." + TrackConstants.ALERT_THRESHOLD_MAX);
+		}
+		return threshold;
 	}
 
 	private int normalizeEnabled(Integer enabled) {
