@@ -202,7 +202,7 @@ public interface TrackConstants {
 	String METRIC_RECEIVED = "track.ingest.received";
 	/** 指标：丢弃事件/回放块/响应体数（tag reason：batch_truncated/invalid_event/bad_name/ts_absurd/queue_full/retry_exhausted/persist_failed
 	 *  / replay_session_oversize / replay_banned / replay_queue_full / replay_retry_exhausted / replay_persist_failed
-	 *  / api_body_oversize / api_body_store_failed） */
+	 *  / api_body_oversize / api_body_store_failed / event_disabled（G105：事件定义停用拒收）） */
 	String METRIC_DROPPED = "track.ingest.dropped";
 	/** 指标：限流拒收批次数 */
 	String METRIC_RATELIMITED = "track.ingest.ratelimited";
@@ -468,4 +468,76 @@ public interface TrackConstants {
 	String METRIC_API_BODY_RECEIVED = "track.api-body.received";
 	/** 指标：响应体幂等命中丢弃数（同 event_id 重发） */
 	String METRIC_API_BODY_DUPLICATED = "track.api-body.duplicated";
+
+	/* ==================== G103：漏斗分析 + 留存分析 ==================== */
+
+	/** 权限码：漏斗分析查询 */
+	String PERM_FUNNEL_LIST = "sys:track-funnel:list";
+	/** 权限码：留存分析查询 */
+	String PERM_RETENTION_LIST = "sys:track-retention:list";
+
+	/** 漏斗查询 days 上限（天；漏斗走明细即席查询，必须限窗——§2「明细下钻限时分区」） */
+	int FUNNEL_DAYS_MAX = 30;
+	/** 漏斗步数上限（步；去重后 <2 即 400） */
+	int FUNNEL_STEPS_MAX = 5;
+	/** 漏斗转化窗口可选值（小时）：1h / 24h / 7d */
+	java.util.Set<Long> FUNNEL_WINDOW_OPTIONS_HOURS = java.util.Set.of(1L, 24L, 168L);
+	/** 漏斗转化窗口默认（小时） */
+	long FUNNEL_WINDOW_DEFAULT_HOURS = 24L;
+
+	/** 留存查询 days 上限（天；cohort 窗 = 留存窗同长） */
+	int RETENTION_DAYS_MAX = 30;
+	/** 留存新客回看窗（天）：actor 首活跃日落在回看窗首日 = 窗口截断无法判定新老，保守排除（宁漏不假新客） */
+	int RETENTION_LOOKBACK_DAYS = 30;
+
+	/* ==================== G104：圈选式可视化埋点 ==================== */
+
+	/** 权限码：圈选规则查询 */
+	String PERM_VISUAL_LIST = "sys:track-visual:list";
+	/** 权限码：圈选规则编辑（含令牌签发 / 草稿确认 / 规则增改删） */
+	String PERM_VISUAL_EDIT = "sys:track-visual:edit";
+
+	/** 圈选令牌 Redis 键前缀：mugsun:track:visual-token:{token} → HASH {appKey,tenantId,userId} */
+	String VISUAL_TOKEN_KEY_PREFIX = REDIS_PREFIX + "visual-token:";
+	/** 圈选令牌 TTL（秒）：30 分钟（草稿列表键随其续期） */
+	long VISUAL_TOKEN_TTL_SECONDS = 1800L;
+	/** 圈选令牌随机段长度（hex 字符，192bit 熵） */
+	int VISUAL_TOKEN_RANDOM_LEN = 48;
+
+	/** 圈选草稿 Redis 列表键前缀：LIST mugsun:track:visual-draft:{token}（元素=草稿 JSON，右推） */
+	String VISUAL_DRAFT_KEY_PREFIX = REDIS_PREFIX + "visual-draft:";
+	/** 单令牌草稿上限（条；防单令牌刷爆内存，超出 400 提示先确认） */
+	int VISUAL_DRAFT_MAX_PER_TOKEN = 50;
+	/** 圈选草稿限流阈值（次/分/token+IP 双段键） */
+	int VISUAL_DRAFT_RATE_LIMIT = 60;
+	/** 圈选草稿限流键前缀：INCR mugsun:track:rlv:{token前8段}:{ip}:{yyyyMMddHHmm}，首置 EXPIRE 70s */
+	String VISUAL_RATE_LIMIT_KEY_PREFIX = REDIS_PREFIX + "rlv:";
+
+	/** 圈选规则下发上限（条，/track/config visualRules；按 update_time 倒序截断） */
+	int VISUAL_RULES_MAX = 200;
+	/** 圈选 selector 长度上限（对应 track_visual_rule.selector VARCHAR(512)） */
+	int VISUAL_SELECTOR_MAX_LEN = 512;
+	/** 圈选元素匹配文本长度上限（对应 VARCHAR(128)） */
+	int VISUAL_MATCH_TEXT_MAX_LEN = 128;
+	/** 圈选规则来源标记（track_visual_rule.source 列默认/唯一值；留 source 列防未来手工规则混入无法区分） */
+	String VISUAL_RULE_SOURCE = "visual";
+	/** inspect 圈选激活 URL 参数名（令牌签发拼 targetUrl 用；SDK 端 location.search 同名参数激活，协议对齐） */
+	String VISUAL_INSPECT_PARAM = "__mst_inspect";
+
+	/* ==================== G105：埋点遗留收口 ==================== */
+
+	/** 事件定义本地缓存 TTL（毫秒）：摄入侧停用拒收判定用；多副本各自缓存无广播，管理端变更经 evict 即时生效（同 TrackAppService 口径） */
+	long EVENT_DEF_CACHE_TTL_MS = 30000L;
+
+	/** Redis 调度锁键：事件明细保留清理 */
+	String LOCK_EVENT_CLEAN = REDIS_PREFIX + "lock:event-clean";
+	/** 事件明细清理调度 tick（毫秒）：每小时探一次，内存节流每日一轮（同回放/响应体清理范式） */
+	long EVENT_CLEAN_TICK_MS = 3600000L;
+	/** 事件明细清理单批删除行数（ctid 分批；超出逐轮消化） */
+	int EVENT_CLEAN_BATCH_SIZE = 500;
+	/** 事件明细清理单轮批数上限（单轮最多 5 万行 × 2 表，防长窗口单轮爆量） */
+	int EVENT_CLEAN_MAX_BATCHES = 100;
+
+	/** 回放会话事件条数上限（打点用；按 ts 升序截断，防巨会话拉爆响应） */
+	int REPLAY_SESSION_EVENTS_MAX = 500;
 }

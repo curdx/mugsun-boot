@@ -10,6 +10,8 @@ import com.mugsun.boot.track.TrackAppService;
 import com.mugsun.boot.track.TrackCollectException;
 import com.mugsun.boot.track.TrackIngestService;
 import com.mugsun.boot.track.TrackReplayService;
+import com.mugsun.boot.track.TrackVisualRuleService;
+import com.mugsun.boot.track.TrackVisualService;
 import com.mugsun.boot.track.entity.TrackApp;
 import com.mugsun.core.tool.api.R;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,6 +33,7 @@ import java.util.zip.GZIPInputStream;
  * 埋点采集公开端点（SDK 直连，/track 非 /system 路径天然匿名，无需鉴权登记）：
  * POST /track/collect 批量摄入（gzip/明文 JSON）；POST /track/replay 回放块摄入（G100，base64+gzip 块）；
  * POST /track/api-body 接口响应体摄入（G102，base64+gzip 独立通道，body 永不进事件队列）；
+ * POST /track/visual/draft 圈选草稿上报（G104，独立端点：不落事件表、不进实时流，防采样丢失+防污染统计）；
  * GET /track/config SDK 配置下发。
  * <p>刻意不用 Spring 全局 ObjectMapper 与 @RequestBody：XssJacksonConfig 的净化反序列化器会篡改
  * props 文本（事件属性须原样留存、截断入库，渲染侧由前端 DOMPurify 防存储型 XSS）；
@@ -50,15 +53,20 @@ public class TrackCollectController {
 	private final TrackAppService appService;
 	private final TrackReplayService replayService;
 	private final TrackApiBodyService apiBodyService;
+	private final TrackVisualService visualService;
+	private final TrackVisualRuleService visualRuleService;
 	private final ParamService paramService;
 
 	public TrackCollectController(TrackIngestService ingestService, TrackAppService appService,
 								  TrackReplayService replayService, TrackApiBodyService apiBodyService,
+								  TrackVisualService visualService, TrackVisualRuleService visualRuleService,
 								  ParamService paramService) {
 		this.ingestService = ingestService;
 		this.appService = appService;
 		this.replayService = replayService;
 		this.apiBodyService = apiBodyService;
+		this.visualService = visualService;
+		this.visualRuleService = visualRuleService;
 		this.paramService = paramService;
 	}
 
@@ -170,12 +178,51 @@ public class TrackCollectController {
 	}
 
 	/**
+	 * 圈选草稿上报（G104，SDK inspect 面板独立通道）：同步路径只做令牌校验/限流/字段校验/上限/入 Redis 即返回
+	 * （R 信封 code=200 {received: true}）。协议：{token, event_name, selector, route_path?, match_text?, page_url?,
+	 * element_text?}（application/json 明文，无 gzip——草稿体量小且面板同步提交）。
+	 * 与 collect 同因用原样读体 + PLAIN_MAPPER：XssJacksonConfig 净化会篡改 selector 文本。
+	 * 草稿不落事件表、不进实时流、不复用事件摄入指标（可见性走服务内 log.debug）。
+	 */
+	@PostMapping("/visual/draft")
+	public ResponseEntity<R<?>> visualDraft(HttpServletRequest request) throws IOException {
+		try {
+			byte[] body = request.getInputStream().readAllBytes();
+			if (body.length == 0) {
+				throw new TrackCollectException(400, "请求体为空");
+			}
+			if (body.length > TrackConstants.COLLECT_PAYLOAD_MAX_BYTES) {
+				throw new TrackCollectException(413, "请求体过大");
+			}
+			JsonNode root;
+			try {
+				root = PLAIN_MAPPER.readTree(body);
+			} catch (JsonProcessingException e) {
+				// 畸形 JSON 属客户端错误，转 400（不落入全局 500 兜底刷错误日志）
+				throw new TrackCollectException(400, "请求体 JSON 非法");
+			}
+			if (root == null || !root.isObject()) {
+				throw new TrackCollectException(400, "请求体须为 JSON 对象");
+			}
+			visualService.ingestDraft(root, request.getRemoteAddr());
+			return ResponseEntity.ok(R.data(Map.of("received", true)));
+		} catch (TrackCollectException e) {
+			R<Object> body = R.fail(e.getMessage());
+			body.setCode(e.getStatus());
+			return ResponseEntity.status(e.getStatus()).body(body);
+		}
+	}
+
+	/**
 	 * SDK 配置下发：{enabled, sampleRate, maskSelectors, replayEnabled, replaySampleRate,
-	 * apiMonitorEnabled, apiBodyEnabled, apiBodyMaskEnabled, apiBodyMaxBytes}。
+	 * apiMonitorEnabled, apiBodyEnabled, apiBodyMaskEnabled, apiBodyMaxBytes, visualRules}。
 	 * replayEnabled 读 track_app.replay_enabled（G100 放开：关时 SDK 不启动录制）；
 	 * api* 三项读 track_app 对应开关（G102：默认全关），apiBodyMaxBytes 读 sys_param
-	 * {@value TrackConstants#PARAM_API_BODY_MAX_BYTES}（缺失/非法回退 {@value TrackConstants#DEFAULT_API_BODY_MAX_BYTES}）。
-	 * 本地缓存 30s（与 appKey 校验共用 {@link TrackAppService} 缓存，多副本生效延迟见其 javadoc）。
+	 * {@value TrackConstants#PARAM_API_BODY_MAX_BYTES}（缺失/非法回退 {@value TrackConstants#DEFAULT_API_BODY_MAX_BYTES}）；
+	 * visualRules 读 track_visual_rule 启用集（G104：status=1 按 update_time 倒序限
+	 * {@value TrackConstants#VISUAL_RULES_MAX} 条，投影 [{event, selector, routePath, matchText}]）。
+	 * 本地缓存 30s（与 appKey 校验共用 {@link TrackAppService} 缓存，圈选规则经
+	 * {@link TrackVisualRuleService} 同口径缓存，多副本生效延迟见其 javadoc）。
 	 */
 	@GetMapping("/config")
 	public ResponseEntity<R<?>> config(@RequestParam("app_key") String appKey) {
@@ -192,6 +239,7 @@ public class TrackCollectController {
 			data.put("apiBodyEnabled", app.getApiBodyEnabled() != null && app.getApiBodyEnabled() == 1);
 			data.put("apiBodyMaskEnabled", app.getApiBodyMaskEnabled() != null && app.getApiBodyMaskEnabled() == 1);
 			data.put("apiBodyMaxBytes", apiBodyMaxBytes());
+			data.put("visualRules", visualRuleService.enabledRules(appKey));
 			return ResponseEntity.ok(R.data(data));
 		} catch (TrackCollectException e) {
 			R<Object> body = R.fail(e.getMessage());

@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
  * 兼容「25 日窗口期服务未运行/当月重启」的漏建场景；事件分区带 {@code WITH (fillfactor=100)} 追加不更新）。
  * <p><b>清理</b>：分区为全应用共享的月度物理单元，无法按应用粒度 DROP——故到期线取
  * {@code max(track_app.retention_days)}（最长保留应用决定分区存活），月分区上界整体早于到期线才
- * DETACH→DROP（默认不归档）；单应用更短保留期的差异由 L2 明细级清理承接（本期不做）。
+ * DETACH→DROP（默认不归档）；单应用更短保留期的差异由 L2 明细级清理承接（G105 起已由 TrackEventCleanJob 承接）。
  * <p><b>默认分区告警</b>：track_event_default / track_event_data_default 非空 = 预建失败或数据越界，
  * log 告警 + Micrometer 计数（{@value TrackConstants#METRIC_DEFAULT_PARTITION_ROWS}）。
  */

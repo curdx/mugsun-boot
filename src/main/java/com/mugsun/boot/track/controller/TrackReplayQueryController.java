@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -37,8 +38,8 @@ public class TrackReplayQueryController {
 
 	/**
 	 * 回放会话分页：records=[{id, sessionId, appKey, tenantId, distinctId, userId, startTime(epoch ms),
-	 * durationMs, pageCount, rrwebEvents, sizeBytes, hasError, entryPath, lastSeq}]，startTime 倒序。
-	 * appKey/hasError 可选过滤（hasError=1 仅含错误会话）。
+	 * durationMs, pageCount, rrwebEvents, sizeBytes, hasError, entryPath, lastSeq, firstEventTs, lastEventTs}]，
+	 * startTime 倒序。appKey/hasError 可选过滤（hasError=1 仅含错误会话）。
 	 */
 	@GetMapping("/page")
 	@SaCheckPermission(TrackConstants.PERM_REPLAY_LIST)
@@ -54,6 +55,16 @@ public class TrackReplayQueryController {
 	@SaCheckPermission(TrackConstants.PERM_REPLAY_LIST)
 	public R<Map<String, Object>> detail(@RequestParam String sessionId) {
 		return R.data(replayQueryService.detail(sessionId));
+	}
+
+	/**
+	 * 回放会话事件时间轴打点（G105）：[{eventName, ts(epoch ms), urlPath}] 按 received_at 升序 ≤500。
+	 * 元信息非回放内容，走回放列表码、无审计留痕；会话不存在/跨租户 → 空数组（不报错）。
+	 */
+	@GetMapping("/events")
+	@SaCheckPermission(TrackConstants.PERM_REPLAY_LIST)
+	public R<List<Map<String, Object>>> events(@RequestParam String appKey, @RequestParam String sessionId) {
+		return R.data(replayQueryService.sessionEvents(appKey, sessionId));
 	}
 
 	/**

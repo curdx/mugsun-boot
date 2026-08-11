@@ -32,7 +32,7 @@ import java.util.Map;
 /**
  * 摄入同步路径（目标 p95 &lt; 10ms，零 DB 写）：
  * appKey 校验（本地缓存）→ IP+appKey 分钟窗限流（Redis INCR）→ 批量上限截断
- * → 事件级校验（事件名白名单/正则、props 截断、校时）→ 身份裁定（token 优先，客户端上报值不可信）
+ * → 事件级校验（事件名白名单/正则、事件定义停用拒收（G105，本地缓存判定）、props 截断、校时）→ 身份裁定（token 优先，客户端上报值不可信）
  * → Redis 幂等（SETNX 25h）→ tenant_id 服务端裁定 → 实时流 XADD + 在线 ZADD → 入内存有界队列。
  * <p><b>采样</b>：sample_rate 判定在 SDK 侧已做（会话级一致采样），服务端不重复采样——
  * 二次采样会让 rollup 的量级还原（除以采样率）失真。
@@ -48,14 +48,17 @@ public class TrackIngestService {
 	private static final DateTimeFormatter MINUTE_FORMAT = DateTimeFormatter.ofPattern(TrackConstants.RATE_LIMIT_MINUTE_PATTERN);
 
 	private final TrackAppService appService;
+	private final TrackEventDefService eventDefService;
 	private final TrackEventConsumer consumer;
 	private final ParamService paramService;
 	private final StringRedisTemplate redis;
 	private final TrackIngestMetrics metrics;
 
-	public TrackIngestService(TrackAppService appService, TrackEventConsumer consumer,
-							  ParamService paramService, StringRedisTemplate redis, TrackIngestMetrics metrics) {
+	public TrackIngestService(TrackAppService appService, TrackEventDefService eventDefService,
+							  TrackEventConsumer consumer, ParamService paramService,
+							  StringRedisTemplate redis, TrackIngestMetrics metrics) {
 		this.appService = appService;
+		this.eventDefService = eventDefService;
 		this.consumer = consumer;
 		this.paramService = paramService;
 		this.redis = redis;
@@ -164,6 +167,12 @@ public class TrackIngestService {
 		// 事件名：$ 前缀仅白名单（$ 为保留字）；自定义名走正则
 		if (eventName == null || eventName.length() > TrackConstants.EVENT_NAME_MAX_LEN || !validEventName(eventName)) {
 			metrics.dropped("bad_name", 1);
+			return null;
+		}
+		// 事件定义停用拒收（G105）：无定义/已删 = 未停用（自动注册语义默认启用）；
+		// 事件级静默丢弃（批仍 200，与 invalid_event 同语义；不进队列自然不刷 last_seen/不落库）
+		if (eventDefService.isDisabled(app.getAppKey(), eventName)) {
+			metrics.dropped("event_disabled", 1);
 			return null;
 		}
 		Long clientTs = epochMillis(node.get(TrackConstants.FIELD_TS));

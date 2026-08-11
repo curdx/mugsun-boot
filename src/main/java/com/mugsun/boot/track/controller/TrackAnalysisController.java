@@ -4,6 +4,8 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.boot.common.constant.TrackConstants;
 import com.mugsun.boot.track.TrackAnalysisService;
+import com.mugsun.boot.track.TrackFunnelService;
+import com.mugsun.boot.track.TrackRetentionService;
 import com.mugsun.core.tool.api.R;
 import com.mybatisflex.core.paginate.Page;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,9 +29,14 @@ import java.util.Map;
 public class TrackAnalysisController {
 
 	private final TrackAnalysisService analysisService;
+	private final TrackFunnelService funnelService;
+	private final TrackRetentionService retentionService;
 
-	public TrackAnalysisController(TrackAnalysisService analysisService) {
+	public TrackAnalysisController(TrackAnalysisService analysisService, TrackFunnelService funnelService,
+								   TrackRetentionService retentionService) {
 		this.analysisService = analysisService;
+		this.funnelService = funnelService;
+		this.retentionService = retentionService;
 	}
 
 	/**
@@ -121,5 +128,32 @@ public class TrackAnalysisController {
 													@RequestParam(defaultValue = "1") long pageNum,
 													@RequestParam(defaultValue = "10") long pageSize) {
 		return R.data(analysisService.errorDetail(appKey, fingerprint, days, pageNum, pageSize));
+	}
+
+	/**
+	 * 漏斗分析（G103，§20.1）：{steps:[{eventName, count}...按入参序], days, windowHours, actor:"merged"}。
+	 * actor = identity 归并；有序非紧邻匹配；每层须在前一步后 windowHours（1/24/168，默认 24）小时内触达；
+	 * days 默认 7 上限 30；steps 逗号分隔 2..5 个合法事件名（转化率前端算）。
+	 */
+	@GetMapping("/funnel")
+	@SaCheckPermission(TrackConstants.PERM_FUNNEL_LIST)
+	public R<Map<String, Object>> funnel(@RequestParam String appKey,
+										 @RequestParam String steps,
+										 @RequestParam(required = false) Integer days,
+										 @RequestParam(required = false) Long windowHours) {
+		return R.data(funnelService.funnel(appKey, steps, days, windowHours));
+	}
+
+	/**
+	 * 留存分析（G103，§20.1 新客留存口径）：{rows:[{cohortDate("yyyy-MM-dd"), cohortSize,
+	 * retained:{offset数字字符串: 人数}}...按 cohortDate 升序], days}。
+	 * cohort = 窗口内新客（首活跃日 ∈ [todayUtc-(days-1), todayUtc] 且 > 回看窗首日，30 天回看截断排除）；
+	 * 活跃 = 当天任意事件；日切 UTC 墙钟；days 默认 7 上限 30。
+	 */
+	@GetMapping("/retention")
+	@SaCheckPermission(TrackConstants.PERM_RETENTION_LIST)
+	public R<Map<String, Object>> retention(@RequestParam String appKey,
+											@RequestParam(required = false) Integer days) {
+		return R.data(retentionService.retention(appKey, days));
 	}
 }

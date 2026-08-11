@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 会话回放集成测试（G100）：/track/replay 摄入（校验链/幂等/体积上限/封禁）→ 异步落储（对象存储真文件 +
  * track_replay 元数据 + track_session.has_replay 置位）→ 读取 API（page/detail/data + 401/403/跨租户）
- * → 保留期清理任务 → 操作日志留痕 → /track/config 回放开关下发。
+ * → 保留期清理任务 → 操作日志留痕 → /track/config 回放开关下发 → 会话事件打点端点与墙钟锚点投影（G105）。
  * <p>存储落 target/it-files/（基座动态属性），断言真实文件存在与字节一致；测试数据测后清理
  * （track 域表行 + 对象文件；租户/用户脚手架同 TrackAnalysisApiTest 先例留置，容器随 JVM 销毁）。
  */
@@ -424,6 +424,70 @@ class TrackReplayApiTest extends AbstractTrackIntegrationTest {
 
 	// ---------- 测试工具 ----------
 
+	/** ⑪ 回放会话事件打点（G105）：按 ts 升序返回精确三字段；空会话/不存在会话空数组；跨租户空数组；
+	 *  401/403；page/detail 投影含 firstEventTs/lastEventTs（T5 墙钟锚点） */
+	@Test
+	void replaySessionEventsEndpoint() {
+		String sessionId = uuid();
+		String distinctId = uuid();
+		long t0 = System.currentTimeMillis();
+		// 两事件（$pageview → $click，ts 递增）：打点按 received_at 升序下发
+		collectEvent(APP_R, sessionId, distinctId, "$pageview", t0, "/evt-a");
+		awaitUntil("打点钱会话落库", () -> trackLong(
+			"SELECT count(*) AS c FROM track_session WHERE session_id = ?", sessionId) == 1L);
+		collectEvent(APP_R, sessionId, distinctId, "$click", t0 + 1000, "/evt-b");
+		awaitUntil("打点两事件落库", () -> trackLong(
+			"SELECT count(*) AS c FROM track_event WHERE session_id = ?", sessionId) == 2L);
+
+		// 契约：精确字段 {eventName, ts(epoch ms), urlPath} 按 ts 升序
+		ResponseEntity<String> resp = get(
+			"/system/track/replay/events?appKey=" + APP_R + "&sessionId=" + sessionId, adminToken);
+		assertThat(resp.getStatusCode().value()).isEqualTo(200);
+		JsonNode events = readBody(resp).path("data");
+		assertThat(events.size()).as("会话两事件全部下发").isEqualTo(2);
+		JsonNode first = events.get(0);
+		assertThat(first.size()).as("打点行精确三字段").isEqualTo(3);
+		assertThat(first.path("eventName").asText()).isEqualTo("$pageview");
+		assertThat(first.path("urlPath").asText()).isEqualTo("/evt-a");
+		assertThat(first.path("ts").asLong()).isEqualTo(t0);
+		JsonNode second = events.get(1);
+		assertThat(second.path("eventName").asText()).isEqualTo("$click");
+		assertThat(second.path("urlPath").asText()).isEqualTo("/evt-b");
+		assertThat(second.path("ts").asLong()).as("打点按 ts 升序").isGreaterThan(first.path("ts").asLong());
+
+		// 会话存在但无事件（直灌会话行）→ 空数组；会话不存在 → 空数组（均不报错）
+		String silentSession = uuid();
+		DataSourceKey.use(TrackConstants.DS_KEY, () -> Db.updateBySql(
+			"INSERT INTO track_session (id, session_id, app_key, tenant_id, distinct_id, start_time, end_time,"
+				+ " create_time, update_time, is_deleted) VALUES (?, ?, ?, ?, ?, now(), now(), now(), now(), 0)",
+			IdUtil.getSnowflakeNextId(), silentSession, APP_R, PLATFORM_TENANT, uuid()));
+		JsonNode silent = readBody(get(
+			"/system/track/replay/events?appKey=" + APP_R + "&sessionId=" + silentSession, adminToken)).path("data");
+		assertThat(silent.isArray()).isTrue();
+		assertThat(silent.size()).as("无事件会话应空数组").isEqualTo(0);
+		JsonNode missing = readBody(get(
+			"/system/track/replay/events?appKey=" + APP_R + "&sessionId=" + uuid(), adminToken)).path("data");
+		assertThat(missing.size()).as("不存在会话应空数组（不报错）").isEqualTo(0);
+
+		// 跨租户：B 租户管理员查 A 会话 → 空数组（与「不存在」同口径，不暴露存在性）
+		JsonNode cross = readBody(get(
+			"/system/track/replay/events?appKey=" + APP_R + "&sessionId=" + sessionId, tenantBToken)).path("data");
+		assertThat(cross.size()).as("跨租户打点应空数组").isEqualTo(0);
+
+		// 无 token → 401；低权（无回放列表码）→ 403
+		assertThat(get("/system/track/replay/events?appKey=" + APP_R + "&sessionId=" + sessionId, null)
+			.getStatusCode().value()).isEqualTo(401);
+		assertThat(get("/system/track/replay/events?appKey=" + APP_R + "&sessionId=" + sessionId, lowToken)
+			.getStatusCode().value()).isEqualTo(403);
+
+		// 投影：回放行下发 firstEventTs/lastEventTs（主会话 rrweb 时间戳 1000..12000，LEAST/GREATEST 归并）
+		JsonNode detail = readBody(get("/system/track/replay/detail?sessionId=" + apiSession, adminToken)).path("data");
+		assertThat(detail.path("replay").path("firstEventTs").asLong()).isEqualTo(1000L);
+		assertThat(detail.path("replay").path("lastEventTs").asLong()).isEqualTo(12000L);
+	}
+
+	// ---------- 测试工具 ----------
+
 	/** 播种测试应用（幂等；replay_enabled 逐应用指定，采样 10% 保留 14 天） */
 	private void seedApp(String appKey, String tenantId, int replayEnabled) {
 		DataSourceKey.use(TrackConstants.DS_KEY, () -> Db.updateBySql(
@@ -437,10 +501,15 @@ class TrackReplayApiTest extends AbstractTrackIntegrationTest {
 
 	/** 经真实摄入链路建立一个会话（$pageview 带入口路径） */
 	private void collectPageview(String appKey, String sessionId, String distinctId, String urlPath) {
+		collectEvent(appKey, sessionId, distinctId, "$pageview", System.currentTimeMillis(), urlPath);
+	}
+
+	/** 经真实摄入链路打一条事件（显式 ts 与 url_path；打点升序/精确 ts 断言用） */
+	private void collectEvent(String appKey, String sessionId, String distinctId, String eventName, long ts, String urlPath) {
 		Map<String, Object> event = new HashMap<>();
 		event.put("event_id", uuid());
-		event.put("event", "$pageview");
-		event.put("ts", System.currentTimeMillis());
+		event.put("event", eventName);
+		event.put("ts", ts);
 		event.put("distinct_id", distinctId);
 		event.put("session_id", sessionId);
 		event.put("props", Map.of("url_path", urlPath));

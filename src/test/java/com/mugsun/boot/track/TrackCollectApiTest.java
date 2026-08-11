@@ -11,6 +11,8 @@ import com.mybatisflex.core.datasource.DataSourceKey;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.row.Db;
 import com.mybatisflex.core.row.Row;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,6 +57,8 @@ class TrackCollectApiTest extends AbstractTrackIntegrationTest {
 	private SysUserMapper userMapper;
 	@Autowired
 	private PasswordEncoder passwordEncoder;
+	@Autowired
+	private MeterRegistry meterRegistry;
 
 	/** 播种测试应用（幂等；track_app 在埋点库，经 DataSourceKey 路由） */
 	@BeforeEach
@@ -395,6 +399,68 @@ class TrackCollectApiTest extends AbstractTrackIntegrationTest {
 		ResponseEntity<String> resp = post("/track/collect", "{not-a-json", null);
 		assertThat(resp.getStatusCode().value()).isEqualTo(400);
 		assertThat(readBody(resp).path("code").asInt()).isEqualTo(400);
+	}
+
+	/** ⑭ 事件定义停用拒收（G105）：停用 → 摄入 200 但零落库（dropped reason=event_disabled 计数）；
+	 *  启用恢复落库；eventDefSubmit 后 evict 即时生效（不等 30s TTL） */
+	@Test
+	void eventDefDisabledRejected() {
+		String adminToken = loginAdmin();
+		String sessionId = uuid();
+		String disabledName = "g105_off_evt";
+		long now = System.currentTimeMillis();
+
+		// 未停用（定义尚不存在，自动注册语义默认启用）：摄入落库 + 自动注册定义 + 暖「未停用」缓存（30s TTL）
+		String firstId = uuid();
+		post("/track/collect", payload(APP_A, List.of(
+			event(firstId, disabledName, now, uuid(), sessionId, Map.of()))), null);
+		awaitUntil("未停用事件落库并自动注册定义", () -> trackLong(
+			"SELECT count(*) AS c FROM track_event_def WHERE app_key = ? AND event_name = ?", APP_A, disabledName) == 1L);
+		assertThat(trackLong("SELECT count(*) AS c FROM track_event WHERE event_id = ?", firstId))
+			.as("未停用事件应落库").isEqualTo(1L);
+
+		// 管理端停用（eventDefSubmit 改 status=0；evict 即时失效采集端缓存，不等 TTL）
+		long defId = trackRow("SELECT id FROM track_event_def WHERE app_key = ? AND event_name = ?",
+			APP_A, disabledName).getLong("id");
+		double droppedBefore = droppedCount("event_disabled");
+		Map<String, Object> submit = new HashMap<>();
+		submit.put("id", defId);
+		submit.put("status", 0);
+		ResponseEntity<String> submitResp = post("/system/track/event-def/submit", submit, adminToken);
+		assertThat(readBody(submitResp).path("code").asInt())
+			.as("停用提交应成功：" + submitResp.getBody()).isEqualTo(200);
+
+		// 停用后摄入：批仍 200（同批标记事件入队落库），停用事件静默丢弃零落库 + dropped 计数 +1
+		String disabledId = uuid();
+		String marker = uuid();
+		ResponseEntity<String> resp = post("/track/collect", payload(APP_A, List.of(
+			event(disabledId, disabledName, now + 1000, uuid(), sessionId, Map.of()),
+			event(marker, "$click", now + 1001, uuid(), sessionId, Map.of()))), null);
+		assertThat(resp.getStatusCode().value()).isEqualTo(200);
+		assertThat(readBody(resp).path("data").path("received").asInt())
+			.as("停用事件静默丢弃，仅标记事件入队").isEqualTo(1);
+		awaitUntil("标记事件落库", () -> trackLong(
+			"SELECT count(*) AS c FROM track_event WHERE event_id = ?", marker) == 1L);
+		assertThat(trackLong("SELECT count(*) AS c FROM track_event WHERE event_id = ?", disabledId))
+			.as("停用事件应零落库").isEqualTo(0L);
+		assertThat(droppedCount("event_disabled") - droppedBefore)
+			.as("dropped(reason=event_disabled) 计数应 +1").isEqualTo(1.0);
+
+		// 恢复启用（再次 evict 即时生效）：同名事件恢复落库
+		submit.put("status", 1);
+		assertThat(readBody(post("/system/track/event-def/submit", submit, adminToken)).path("code").asInt())
+			.as("恢复启用提交应成功").isEqualTo(200);
+		String resumedId = uuid();
+		post("/track/collect", payload(APP_A, List.of(
+			event(resumedId, disabledName, now + 2000, uuid(), sessionId, Map.of()))), null);
+		awaitUntil("启用后同名事件恢复落库", () -> trackLong(
+			"SELECT count(*) AS c FROM track_event WHERE event_id = ?", resumedId) == 1L);
+	}
+
+	/** dropped 指标指定 reason 计数（Micrometer 注册表直查；该 reason 尚无计数时按 0） */
+	private double droppedCount(String reason) {
+		Counter counter = meterRegistry.find(TrackConstants.METRIC_DROPPED).tags("reason", reason).counter();
+		return counter == null ? 0.0 : counter.count();
 	}
 
 	// ---------- 测试工具 ----------

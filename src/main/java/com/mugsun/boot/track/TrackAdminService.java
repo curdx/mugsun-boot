@@ -18,7 +18,8 @@ import org.springframework.stereotype.Service;
  * Flex 租户行级插件对两表自动拼 tenant_id 条件（分页/按 id 读写均带隔离，跨租户操作命中「不存在」）。
  * <p><b>纪律</b>：本类严禁调用 Sa-Token 权限校验/业务库 DAO（@TrackDS 范围内一切 DB 访问都落埋点库，
  * 权限校验由控制器在进入本类前完成）。
- * <p>变更/删除后主动失效 {@link TrackAppService} 本地缓存（否则采集端最坏 30s 后才感知停用）。
+ * <p>变更/删除后主动失效 {@link TrackAppService} 本地缓存（否则采集端最坏 30s 后才感知停用）；
+ * 事件定义变更后同样主动失效 {@link TrackEventDefService} 停用判定缓存（G105）。
  */
 @Service
 @TrackDS
@@ -30,11 +31,14 @@ public class TrackAdminService {
 	private final TrackAppMapper appMapper;
 	private final TrackEventDefMapper eventDefMapper;
 	private final TrackAppService appService;
+	private final TrackEventDefService eventDefService;
 
-	public TrackAdminService(TrackAppMapper appMapper, TrackEventDefMapper eventDefMapper, TrackAppService appService) {
+	public TrackAdminService(TrackAppMapper appMapper, TrackEventDefMapper eventDefMapper,
+							 TrackAppService appService, TrackEventDefService eventDefService) {
 		this.appMapper = appMapper;
 		this.eventDefMapper = eventDefMapper;
 		this.appService = appService;
+		this.eventDefService = eventDefService;
 	}
 
 	// ==================== 应用管理 ====================
@@ -186,6 +190,8 @@ public class TrackAdminService {
 		}
 		def.sanitizeForUpdate();
 		eventDefMapper.update(def, true);
+		// 采集端停用判定本地缓存主动失效（G105：停用/启用即时生效，不等 30s TTL）
+		eventDefService.evict(def.getAppKey(), def.getEventName());
 		return def;
 	}
 

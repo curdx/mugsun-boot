@@ -44,6 +44,10 @@ public class TrackReplay extends BaseEntity {
 	private String storagePlatform;
 	/** 首块写入时平台的 basePath（FileInfo 重建坐标；storage_key 含此前缀） */
 	private String storageBasePath;
+	/** 会话内首个 rrweb 事件时间戳（epoch 毫秒，upsert 取 LEAST；回放打点条定位锚） */
+	private Long firstEventTs;
+	/** 会话内末个 rrweb 事件时间戳（epoch 毫秒，upsert 取 GREATEST） */
+	private Long lastEventTs;
 
 	public String getSessionId() {
 		return sessionId;
@@ -171,5 +175,21 @@ public class TrackReplay extends BaseEntity {
 
 	public void setStorageBasePath(String storageBasePath) {
 		this.storageBasePath = storageBasePath;
+	}
+
+	public Long getFirstEventTs() {
+		return firstEventTs;
+	}
+
+	public void setFirstEventTs(Long firstEventTs) {
+		this.firstEventTs = firstEventTs;
+	}
+
+	public Long getLastEventTs() {
+		return lastEventTs;
+	}
+
+	public void setLastEventTs(Long lastEventTs) {
+		this.lastEventTs = lastEventTs;
 	}
 }
