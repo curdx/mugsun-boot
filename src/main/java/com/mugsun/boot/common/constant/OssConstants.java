@@ -36,6 +36,8 @@ public interface OssConstants {
 	String INTERNAL_OBJECT_TRACK_REPLAY = "track-replay";
 	/** 内部对象标记值：埋点 sourcemap 文件（G101；元数据自管于 track_sourcemap，不进附件体系） */
 	String INTERNAL_OBJECT_TRACK_SOURCEMAP = "track-sourcemap";
+	/** 内部对象标记值：埋点接口响应体（G102；无元数据表，键按事件纯推导，不进附件体系） */
+	String INTERNAL_OBJECT_TRACK_API_BODY = "track-api-body";
 
 	/** sys_param 键：私有附件预签名下载 URL 有效期（秒） */
 	String PARAM_PRESIGNED_URL_EXPIRE = "oss.presigned-url-expire-seconds";

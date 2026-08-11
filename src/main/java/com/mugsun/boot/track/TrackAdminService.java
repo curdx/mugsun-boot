@@ -70,6 +70,10 @@ public class TrackAdminService {
 			app.setReplayRetentionDays(validateReplayRetentionDays(body.getReplayRetentionDays()));
 			app.setAlertEnabled(body.getAlertEnabled() == null ? 0 : normalizeSwitch(body.getAlertEnabled(), "alertEnabled"));
 			app.setAlertThreshold(validateAlertThreshold(body.getAlertThreshold()));
+			app.setApiMonitorEnabled(body.getApiMonitorEnabled() == null ? 0 : normalizeSwitch(body.getApiMonitorEnabled(), "apiMonitorEnabled"));
+			app.setApiBodyEnabled(body.getApiBodyEnabled() == null ? 0 : normalizeSwitch(body.getApiBodyEnabled(), "apiBodyEnabled"));
+			app.setApiBodyMaskEnabled(body.getApiBodyMaskEnabled() == null ? 0 : normalizeSwitch(body.getApiBodyMaskEnabled(), "apiBodyMaskEnabled"));
+			app.setApiBodyRetentionDays(validateApiBodyRetentionDays(body.getApiBodyRetentionDays()));
 			app.setRemark(body.getRemark());
 			app.sanitizeForInsert();
 			appMapper.insertSelective(app);
@@ -111,6 +115,18 @@ public class TrackAdminService {
 			}
 			if (body.getAlertThreshold() != null) {
 				app.setAlertThreshold(validateAlertThreshold(body.getAlertThreshold()));
+			}
+			if (body.getApiMonitorEnabled() != null) {
+				app.setApiMonitorEnabled(normalizeSwitch(body.getApiMonitorEnabled(), "apiMonitorEnabled"));
+			}
+			if (body.getApiBodyEnabled() != null) {
+				app.setApiBodyEnabled(normalizeSwitch(body.getApiBodyEnabled(), "apiBodyEnabled"));
+			}
+			if (body.getApiBodyMaskEnabled() != null) {
+				app.setApiBodyMaskEnabled(normalizeSwitch(body.getApiBodyMaskEnabled(), "apiBodyMaskEnabled"));
+			}
+			if (body.getApiBodyRetentionDays() != null) {
+				app.setApiBodyRetentionDays(validateApiBodyRetentionDays(body.getApiBodyRetentionDays()));
 			}
 			if (body.getRemark() != null) {
 				app.setRemark(body.getRemark());
@@ -265,6 +281,18 @@ public class TrackAdminService {
 			throw new ServiceException("告警阈值须 1.." + TrackConstants.ALERT_THRESHOLD_MAX);
 		}
 		return threshold;
+	}
+
+	/** 响应体保留天数 1..{@value TrackConstants#API_BODY_MAX_RETENTION_DAYS}（同回放保留期钳制口径：体量远大于事件流），缺省
+	 *  {@value TrackConstants#API_BODY_DEFAULT_RETENTION_DAYS} */
+	private int validateApiBodyRetentionDays(Integer retentionDays) {
+		if (retentionDays == null) {
+			return TrackConstants.API_BODY_DEFAULT_RETENTION_DAYS;
+		}
+		if (retentionDays < 1 || retentionDays > TrackConstants.API_BODY_MAX_RETENTION_DAYS) {
+			throw new ServiceException("响应体保留天数须 1.." + TrackConstants.API_BODY_MAX_RETENTION_DAYS);
+		}
+		return retentionDays;
 	}
 
 	private int normalizeEnabled(Integer enabled) {

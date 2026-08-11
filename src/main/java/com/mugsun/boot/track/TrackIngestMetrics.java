@@ -61,6 +61,16 @@ public class TrackIngestMetrics {
 		registry.counter(TrackConstants.METRIC_REPLAY_DUPLICATED).increment(n);
 	}
 
+	/** 响应体接收数（通过全部校验、已落对象存储；G102） */
+	public void apiBodyReceived(long n) {
+		registry.counter(TrackConstants.METRIC_API_BODY_RECEIVED).increment(n);
+	}
+
+	/** 响应体幂等命中丢弃数（同 event_id 重发；G102） */
+	public void apiBodyDuplicated(long n) {
+		registry.counter(TrackConstants.METRIC_API_BODY_DUPLICATED).increment(n);
+	}
+
 	/** 落库延迟：received_at 与落库时刻差（队列积压时此指标抬头，实时流不受影响） */
 	public void lag(Duration lag) {
 		registry.timer(TrackConstants.METRIC_LAG).record(lag);

@@ -36,6 +36,14 @@ public class TrackApp extends BaseEntity {
 	private Integer alertEnabled;
 	/** 同指纹告警频次阈值（次/10 分钟窗；规则 B 触发线，1..1000） */
 	private Integer alertThreshold;
+	/** 接口元数据采集开关（G102：1=SDK 上报 api_request 事件） */
+	private Integer apiMonitorEnabled;
+	/** 接口响应体采集开关（G102：1=SDK 经 /track/api-body 独立通道上传响应体） */
+	private Integer apiBodyEnabled;
+	/** 响应体业务字段脱敏开关（G102：默认关；凭证端点硬屏蔽不可关） */
+	private Integer apiBodyMaskEnabled;
+	/** 响应体保留天数（G102：远短于事件明细，1..30） */
+	private Integer apiBodyRetentionDays;
 	private String remark;
 
 	public String getAppKey() {
@@ -140,6 +148,38 @@ public class TrackApp extends BaseEntity {
 
 	public void setAlertThreshold(Integer alertThreshold) {
 		this.alertThreshold = alertThreshold;
+	}
+
+	public Integer getApiMonitorEnabled() {
+		return apiMonitorEnabled;
+	}
+
+	public void setApiMonitorEnabled(Integer apiMonitorEnabled) {
+		this.apiMonitorEnabled = apiMonitorEnabled;
+	}
+
+	public Integer getApiBodyEnabled() {
+		return apiBodyEnabled;
+	}
+
+	public void setApiBodyEnabled(Integer apiBodyEnabled) {
+		this.apiBodyEnabled = apiBodyEnabled;
+	}
+
+	public Integer getApiBodyMaskEnabled() {
+		return apiBodyMaskEnabled;
+	}
+
+	public void setApiBodyMaskEnabled(Integer apiBodyMaskEnabled) {
+		this.apiBodyMaskEnabled = apiBodyMaskEnabled;
+	}
+
+	public Integer getApiBodyRetentionDays() {
+		return apiBodyRetentionDays;
+	}
+
+	public void setApiBodyRetentionDays(Integer apiBodyRetentionDays) {
+		this.apiBodyRetentionDays = apiBodyRetentionDays;
 	}
 
 	public String getRemark() {

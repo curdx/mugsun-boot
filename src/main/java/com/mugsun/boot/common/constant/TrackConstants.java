@@ -200,8 +200,9 @@ public interface TrackConstants {
 
 	/** 指标：摄入接收事件数 */
 	String METRIC_RECEIVED = "track.ingest.received";
-	/** 指标：丢弃事件/回放块数（tag reason：batch_truncated/invalid_event/bad_name/ts_absurd/queue_full/retry_exhausted/persist_failed
-	 *  / replay_session_oversize / replay_banned / replay_queue_full / replay_retry_exhausted / replay_persist_failed） */
+	/** 指标：丢弃事件/回放块/响应体数（tag reason：batch_truncated/invalid_event/bad_name/ts_absurd/queue_full/retry_exhausted/persist_failed
+	 *  / replay_session_oversize / replay_banned / replay_queue_full / replay_retry_exhausted / replay_persist_failed
+	 *  / api_body_oversize / api_body_store_failed） */
 	String METRIC_DROPPED = "track.ingest.dropped";
 	/** 指标：限流拒收批次数 */
 	String METRIC_RATELIMITED = "track.ingest.ratelimited";
@@ -403,4 +404,68 @@ public interface TrackConstants {
 	String ALERT_ERROR_LINK = "#/track/error";
 	/** 指标：告警站内信发送数（tag reason：new-fingerprint/threshold） */
 	String METRIC_ALERT_SENT = "track.alert.sent";
+
+	/* ==================== G102：用户细查（行为时间线）+ 接口监控 + 响应体采集 ==================== */
+
+	/** 权限码：用户细查时间线查询 */
+	String PERM_USER_LIST = "sys:track-user:list";
+	/** 权限码：接口响应体查看（G102；最高敏感，查看必留痕审计） */
+	String PERM_USER_VIEW_BODY = "sys:track-user:view-body";
+
+	/** sys_param 键：单个接口响应体采集上限（字节，解压后口径） */
+	String PARAM_API_BODY_MAX_BYTES = "track.api-body.max-bytes";
+	/** 兜底默认：响应体上限 1MB（安全阀，防大导出响应打爆存储；非业务截断，超限不采） */
+	long DEFAULT_API_BODY_MAX_BYTES = 1048576L;
+
+	/** api-body 限流键前缀：INCR mugsun:track:rla:{ip}:{appKey}:{yyyyMMddHHmm}，首置 EXPIRE 70s
+	 * （阈值 = collect 同级，独立键隔离互不挤占） */
+	String API_BODY_RATE_LIMIT_KEY_PREFIX = REDIS_PREFIX + "rla:";
+	/** api-body 幂等键前缀：SETNX mugsun:track:api-body:{event_id} TTL 25h，命中 = 重复上传丢弃（200 duplicated） */
+	String API_BODY_IDEMPOTENT_KEY_PREFIX = REDIS_PREFIX + "api-body:";
+	/** api-body 域 Redis 键统一 TTL（秒）：25h（与事件幂等同口径，覆盖重发窗口） */
+	long API_BODY_KEY_TTL_SECONDS = 90000L;
+
+	/** api-body 请求信封上限（字节，1.5MB）：base64 体文本 + 协议字段（XssFilter 的 2MB 硬顶之前先拦） */
+	int API_BODY_ENVELOPE_MAX_BYTES = 1572864;
+	/** base64 体文本长度上限（≈1.41MB）：gzip 体压缩字节远低此界（上限以解压后口径判定，见 sys_param
+	 *  {@link #PARAM_API_BODY_MAX_BYTES}）；此界实际钳制 gzip=false 明文体（解码后 ≈1.07MB 封顶，JSON 响应足够） */
+	int API_BODY_PAYLOAD_B64_MAX_LEN = 1442802;
+
+	/** api-body 对象路径前缀：对象键 = api-body/{app_key}/{yyyyMM}/{event_id}.json.gz（私有桶；
+	 *  键按 track_event.props->>'body_ref' + 事件 received_at 纯推导，无元数据表） */
+	String API_BODY_PATH_PREFIX = "api-body/";
+	/** api-body 对象文件名后缀（落储恒 gzip：明文体服务端补压，存储/读取单一口径，键名 .gz 不自欺） */
+	String API_BODY_FILE_SUFFIX = ".json.gz";
+	/** api-body 对象 ContentType */
+	String API_BODY_CONTENT_TYPE = "application/gzip";
+	/** 对象键 yyyyMM 段格式（UTC）：写入取上传到达时刻，读取/清理按事件 received_at 同格式推导——
+	 *  月末边界事件与其 body 分跨两月的极端错位按「body 未采集」诚实口径兜底（at-most-once 域，可接受） */
+	String API_BODY_PATH_MONTH_PATTERN = "yyyyMM";
+
+	/** props 热点键：响应体关联键（api_request 事件；值 = 该事件自身 event_id，即对象键文件名段） */
+	String PROP_BODY_REF = "body_ref";
+
+	/** 应用编辑校验：响应体保留天数上限（天；body 体量远大于事件流，钳短上限防误配长保留撑爆对象存储） */
+	int API_BODY_MAX_RETENTION_DAYS = 30;
+	/** 响应体保留天数兜底默认（应用已删/行缺省时；同 track_app.api_body_retention_days 列默认） */
+	int API_BODY_DEFAULT_RETENTION_DAYS = 7;
+
+	/** 时间线查询范围硬限（毫秒，7 天；超界 400，防全分区扫描） */
+	long TIMELINE_RANGE_MAX_MS = 604800000L;
+	/** 时间线分页默认条数 */
+	int TIMELINE_DEFAULT_PAGE_SIZE = 20;
+	/** 时间线分页条数上限（行含 props 原文，钳制严于通用分页上限） */
+	int TIMELINE_PAGE_SIZE_MAX = 100;
+
+	/** Redis 调度锁键：响应体保留期清理 */
+	String LOCK_API_BODY_CLEAN = REDIS_PREFIX + "lock:api-body-clean";
+	/** 响应体清理调度 tick（毫秒）：每小时探一次，内存节流每日一轮（同回放清理范式） */
+	long API_BODY_CLEAN_TICK_MS = 3600000L;
+	/** 响应体清理单轮处理上限（行）；超出逐轮消化 */
+	int API_BODY_CLEAN_BATCH_SIZE = 500;
+
+	/** 指标：响应体接收数（通过全部校验、已落对象存储） */
+	String METRIC_API_BODY_RECEIVED = "track.api-body.received";
+	/** 指标：响应体幂等命中丢弃数（同 event_id 重发） */
+	String METRIC_API_BODY_DUPLICATED = "track.api-body.duplicated";
 }
