@@ -5,6 +5,7 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import com.mugsun.boot.common.constant.FieldMaskConstants;
 import com.mugsun.boot.common.constant.NotifyConstants;
+import com.mugsun.boot.common.constant.UserConstants;
 import com.mugsun.boot.common.tx.AfterCommit;
 import com.mugsun.boot.datascope.DataScope;
 import com.mugsun.boot.log.AuditService;
@@ -23,6 +24,7 @@ import com.mugsun.boot.system.payload.UserImportResult;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.web.excel.ExcelUtil;
 import com.mybatisflex.core.paginate.Page;
+import com.mybatisflex.core.query.QueryColumn;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
@@ -214,12 +216,27 @@ public class SysUserController {
 		}
 	}
 
-	/** 用户下拉选项（value=id / label=昵称，供收件人选择等场景，仅启用用户）；持码+数据范围约束，防全租户账号枚举 */
+	/** 用户下拉选项（value=id / label=昵称，供收件人选择等场景）；持码+数据范围约束，防全租户账号枚举。
+	 *  成千账号场景不下全量：默认仅返回启用用户前 {@link UserConstants#USER_SELECT_LIMIT} 条，
+	 *  keyword 远程搜索（用户名/昵称模糊）；ids 精确取（编辑回显，不限启用态/条数） */
 	@GetMapping("/select")
 	@SaCheckPermission("sys:user:list")
 	@DataScope
-	public R<List<java.util.Map<String, Object>>> select() {
-		return R.data(userMapper.selectListByQuery(QueryWrapper.create().eq("status", 1).orderBy("id", false)).stream()
+	public R<List<java.util.Map<String, Object>>> select(@RequestParam(required = false) String keyword,
+			@RequestParam(required = false) List<Long> ids) {
+		QueryWrapper query = QueryWrapper.create();
+		if (ids != null && !ids.isEmpty()) {
+			query.in("id", ids);
+		} else {
+			query.eq("status", 1);
+			if (keyword != null && !keyword.isBlank()) {
+				String kw = keyword.trim();
+				// QueryCondition.or 自动加 Brackets 分组（同 DataScopeEngine 惯用法），生成 AND (username LIKE ? OR nickname LIKE ?)
+				query.and(new QueryColumn("username").like(kw).or(new QueryColumn("nickname").like(kw)));
+			}
+			query.orderBy("id", false).limit(UserConstants.USER_SELECT_LIMIT);
+		}
+		return R.data(userMapper.selectListByQuery(query).stream()
 			.map(u -> {
 				java.util.Map<String, Object> option = new java.util.HashMap<>();
 				option.put("value", u.getId());
