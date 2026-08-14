@@ -8,10 +8,11 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.mugsun.boot.common.constant.MonitorConstants;
 import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.mapper.SysUserMapper;
+import com.mugsun.boot.tenant.TenantContext;
 import com.mugsun.boot.websocket.WsMessageSender;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.tool.exception.ServiceException;
-import com.mugsun.boot.tenant.TenantContext;
+import com.mybatisflex.core.query.QueryWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,9 +26,12 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 在线会话管理：枚举当前所有在线终端（多端登录各占一行），支持强制下线
@@ -59,26 +63,34 @@ public class OnlineController {
 		this.wsMessageSender = wsMessageSender;
 	}
 
-	/** 在线会话列表：遍历所有账号会话，展开每个终端为一行。
-	 *  安全红线：tokenValue 永不明文下发（明文即会话凭据，泄露=会话冒用），踢单端由前端回传 loginId+deviceType+tokenMask 服务端解析。 */
+	/**
+	 * 在线会话列表：遍历所有账号会话，展开每个终端为一行。
+	 * 安全红线：tokenValue 永不明文下发（明文即会话凭据，泄露=会话冒用），踢单端由前端回传 loginId+deviceType+tokenMask 服务端解析。
+	 * <p>用户已删/不存在时仍列出终端，并标 {@code stale=true}（账号/昵称不再用裸「-」误导运维）。
+	 */
 	@GetMapping("/list")
 	@SaCheckPermission(PERM_LIST)
 	public R<List<Map<String, Object>>> list() {
+		List<SaSession> sessions = loadSessions();
+		Map<Long, SysUser> users = loadUsers(sessions);
 		List<Map<String, Object>> rows = new ArrayList<>();
-		List<String> sessionIds = StpUtil.searchSessionId("", 0, -1, false);
-		for (String sid : sessionIds) {
-			SaSession session = StpUtil.getSessionBySessionId(sid);
-			if (session == null) {
-				continue;
-			}
+		for (SaSession session : sessions) {
 			Object loginId = session.getLoginId();
-			SysUser user = resolveUser(loginId);
+			Long uid = parseLoginId(loginId);
+			SysUser user = uid == null ? null : users.get(uid);
+			boolean stale = user == null;
 			for (SaTerminalInfo terminal : session.terminalListCopy()) {
 				Map<String, Object> row = new LinkedHashMap<>();
 				row.put("loginId", loginId == null ? null : loginId.toString());
-				row.put("username", user == null ? "-" : user.getUsername());
-				row.put("nickname", user == null ? "-"
-					: (user.getNickname() == null ? user.getUsername() : user.getNickname()));
+				row.put("stale", stale);
+				if (stale) {
+					// 失效会话：展示 loginId 便于定位，昵称标明已失效（e2e/删户残留常见）
+					row.put("username", loginId == null ? "-" : loginId.toString());
+					row.put("nickname", "账号已失效");
+				} else {
+					row.put("username", user.getUsername());
+					row.put("nickname", user.getNickname() == null ? user.getUsername() : user.getNickname());
+				}
 				row.put("tokenMask", mask(terminal.getTokenValue()));
 				row.put("deviceType", terminal.getDeviceType());
 				// 登录时经 SaLoginParameter.terminalExtra 落终端的 IP/UA（G90 补展示，机制不动）
@@ -91,6 +103,32 @@ public class OnlineController {
 			}
 		}
 		return R.data(rows);
+	}
+
+	/**
+	 * 清理失效会话：用户已删或不存在于库中的 Redis 会话整账号踢出并断开推送。
+	 * 返回清理的终端行数（便于前端提示）。
+	 */
+	@PostMapping("/cleanup-stale")
+	@SaCheckPermission(PERM_KICKOUT)
+	public R<Integer> cleanupStale() {
+		List<SaSession> sessions = loadSessions();
+		Map<Long, SysUser> users = loadUsers(sessions);
+		int terminals = 0;
+		for (SaSession session : sessions) {
+			Object loginId = session.getLoginId();
+			Long uid = parseLoginId(loginId);
+			if (uid != null && users.containsKey(uid)) {
+				continue;
+			}
+			if (loginId == null) {
+				continue;
+			}
+			terminals += session.terminalListCopy().size();
+			StpUtil.kickout(loginId);
+			closePushSessions(loginId.toString());
+		}
+		return R.data(terminals);
 	}
 
 	/** 强制下线：传 loginId+deviceType(+tokenMask) 踢单端（服务端按会话终端解析真实 token，前端从不持有明文）；
@@ -134,13 +172,45 @@ public class OnlineController {
 		}
 	}
 
-	private SysUser resolveUser(Object loginId) {
+	private List<SaSession> loadSessions() {
+		List<SaSession> sessions = new ArrayList<>();
+		List<String> sessionIds = StpUtil.searchSessionId("", 0, -1, false);
+		for (String sid : sessionIds) {
+			SaSession session = StpUtil.getSessionBySessionId(sid);
+			if (session != null) {
+				sessions.add(session);
+			}
+		}
+		return sessions;
+	}
+
+	/** 批量解析会话用户（忽略租户 + 一次 IN 查询），避免按终端 N+1 */
+	private Map<Long, SysUser> loadUsers(List<SaSession> sessions) {
+		Set<Long> ids = new HashSet<>();
+		for (SaSession session : sessions) {
+			Long id = parseLoginId(session.getLoginId());
+			if (id != null) {
+				ids.add(id);
+			}
+		}
+		if (ids.isEmpty()) {
+			return Map.of();
+		}
+		List<SysUser> list = TenantContext.ignore(() ->
+			userMapper.selectListByQuery(QueryWrapper.create().in("id", ids)));
+		Map<Long, SysUser> map = new HashMap<>(list.size() * 2);
+		for (SysUser u : list) {
+			map.put(u.getId(), u);
+		}
+		return map;
+	}
+
+	private Long parseLoginId(Object loginId) {
 		if (loginId == null) {
 			return null;
 		}
 		try {
-			Long id = Long.valueOf(loginId.toString());
-			return TenantContext.ignore(() -> userMapper.selectOneById(id));
+			return Long.valueOf(loginId.toString());
 		} catch (NumberFormatException e) {
 			return null;
 		}
