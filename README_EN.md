@@ -121,13 +121,13 @@ Activate the prod profile: `--spring.profiles.active=prod`.
 
 ## 🧪 Testing & Quality
 
-- **Backend integration tests**: powered by Testcontainers — isolated PostgreSQL 16 / Redis 7 containers, zero external dependencies for `mvn test`, exercising real login / permission / tenant / workflow flows (27 test classes)
-- **Frontend e2e**: 80+ Playwright end-to-end cases
+- **Backend integration tests**: powered by Testcontainers — isolated PostgreSQL 16 / Redis 7 containers, zero external dependencies for `mvn test`, covering real login / permission / tenant / workflow / report / help-feedback flows (30 test classes)
+- **Frontend e2e**: 140+ Playwright end-to-end cases (including dedicated flow / tenant / OAuth specs)
 - **api-probe**: performance probes hold p95 ≤ 69ms against a 100k-row log table; all 50 security probes pass
 
 ## 🗺 Roadmap (planned)
 
-- One-command Docker Compose deployment
+- One-command Docker Compose deployment (Dockerfile + postgres init scripts ready; Compose wiring in progress)
 - Microservice distribution
 - AI-powered capabilities (model integration / chat / knowledge base)
 
