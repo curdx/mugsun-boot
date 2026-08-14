@@ -82,7 +82,12 @@ flowchart TB
 ### 1. 初始化数据库
 
 ```bash
+# 本机已有 PostgreSQL（用超级用户执行）
 psql -U postgres -f scripts/init-db.sql
+
+# 或使用 Docker（示例：密码经环境变量注入，勿写进镜像）
+# docker run ... -e MUGSUN_DB_PASSWORD=... -v "$PWD/scripts/init-db.sql:/initdb/init-db.sql:ro" ...
+# 详见 docker/postgres/00-init-db.sh
 ```
 
 脚本会创建 `mugsun` 账号、主库 `mugsun` 与埋点库 `mugsun_track`，并授予 CREATEDB 权限。
@@ -121,13 +126,13 @@ Flyway 自动完成 70+ 个迁移脚本与菜单种子数据，首次启动即�
 
 ## 🧪 测试与质量
 
-- **后端集成测试**：基于 Testcontainers，自动拉起 PostgreSQL 16 / Redis 7 容器隔离运行，`mvn test` 零外部依赖，覆盖真实登录 / 权限 / 租户 / 工作流链路（27 个测试类）
-- **前端 e2e**：Playwright 端到端 80+ 用例
+- **后端集成测试**：基于 Testcontainers，自动拉起 PostgreSQL 16 / Redis 7 容器隔离运行，`mvn test` 零外部依赖，覆盖真实登录 / 权限 / 租户 / 工作流 / 报表 / 帮助反馈链路（30 个测试类）
+- **前端 e2e**：Playwright 端到端 140+ 用例（含流程 / 租户 / OAuth 专属 spec）
 - **api-probe 探针**：性能探针在 10w 行日志表上实测 p95 ≤ 69ms；50 项安全探针全部通过
 
 ## 🗺 路线图（规划中）
 
-- Docker Compose 一键部署
+- Docker Compose 一键部署（Dockerfile + postgres 初始化脚本已就绪，Compose 编排补齐中）
 - 微服务形态
 - AI 增强能力（模型接入 / 对话 / 知识库）
 
