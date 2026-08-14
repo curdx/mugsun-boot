@@ -1,36 +1,144 @@
 # mugsun-boot
 
-Mugsun 平台单体版：将全部功能模块打包为单个可执行应用，开箱即用的企业级快速开发平台。基于 [mugsun-core](https://github.com/curdx/mugsun-core) 构建，管理端为 [mugsun-pc](https://github.com/curdx/mugsun-pc)。
+**中文** | [English](README_EN.md)
 
-## 功能
+![JDK](https://img.shields.io/badge/JDK-21+-blue)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-brightgreen)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
+![Redis](https://img.shields.io/badge/Redis-7-red)
+![License](https://img.shields.io/badge/License-Apache%202.0-green)
 
-- **组织与权限**：用户/角色/菜单/按钮权限、行级数据权限引擎、字段级权限与脱敏、后端菜单驱动（授权一刷新生效）
-- **多租户 SaaS**：字段隔离 + 独立数据源/schema 可插拔、租户套餐与生命周期强制、全局配置平台收口
-- **认证安全**：图形验证码、双因子、等保密码策略、忘记密码（邮件验证码）、第三方社交登录、OAuth2 开放平台（PKCE/刷新轮换/自省/撤销）、接口限流防重、XSS 全局过滤、国密 SM2/SM3/SM4 传输与存储加密
-- **可观测与审计**：操作日志（自动织入+哈希链防篡改验签）、登录日志（UA 解析/IP 归属地/账号解锁）、访问日志与错误日志闭环、全站 traceId、Prometheus 指标、在线会话与强退
-- **效率工具**：代码生成全栈（树懒加载/主子表级联/菜单 SQL）、在线表单与动态建表、Excel 导入导出（模板/覆盖/失败明细）、单号生成器、缓存管理
-- **消息与调度**：站内信+邮件+短信多渠道统一调度（失败重试流水）、WebSocket 实时推送、Warm-Flow 工作流（分支/并行/会签/审批中心）、PowerJob 分布式任务（处理器注册表真实可执行）
+**Mugsun 低代码快速开发平台的单体后端**——把系统管理、工作流、多租户、开放平台、埋点分析装进一个可执行应用，`mvn spring-boot:run` 一键起跑，首启即完整系统。
 
-## 技术栈
+基于 JDK 21 虚拟线程与 Spring Boot 3.5 构建，内置国密 SM2/SM3/SM4 加密体系与全链路审计，从第一天就按生产标准设计。
 
-JDK 21（虚拟线程）· Spring Boot 3.5.x · MyBatis-Flex · Sa-Token · JetCache · Warm-Flow · PowerJob · Knife4j · x-file-storage · SMS4J · PostgreSQL（主推，多方言适配）
+## ✨ 功能特性
 
-## 运行
+| 分组 | 能力 |
+| --- | --- |
+| 🏢 系统管理 | 用户 / 角色 / 菜单 / 部门 / 岗位 / 字典 / 业务字典 / 参数 / 行政区划 |
+| 📨 消息中心 | 站内信 + 邮件 + 短信模板统一调度，WebSocket 实时推送 |
+| 📦 文件存储 | 本地 / MinIO / 云平台多云存储，私有附件授权下载 |
+| 🧩 低代码 | 代码生成器、动态建表、在线表单、表单设计器 |
+| 🔀 工作流 | 可视化流程设计器、条件路由 / 并行会签、待办工作台、审批中心 |
+| 📊 监控运维 | 服务监控、操作 / 登录 / 访问 / 错误日志、在线会话、缓存管理、定时任务 |
+| 🔏 数据变更审计 | SM3 哈希链 + SM2 签名防篡改，diff 时间轴回溯 |
+| 🌐 开放平台 | OAuth2 授权码 + PKCE、API 密钥、HMAC + nonce 防重放、调用日志 |
+| 📈 埋点分析 | 事件采集、概览 / 事件 / 性能 / 错误监控（sourcemap 还原 + 告警）、会话回放、行为细查、漏斗、留存、圈选式可视化埋点 |
+| 🏷 租户运营 | 字段隔离 / 独立数据源三策略、套餐菜单收窄、客户管理 |
+| 🛡 安全 | 国密传输加密、字段级脱敏、数据权限、弱密码策略 + 双因子、接口防重放 |
 
-1. 先在 mugsun-core 执行 `mvn clean install -DskipTests`
-2. 准备 PostgreSQL 16、Redis 7（调度需 PowerJob Server）
+## 🧱 技术栈
 
-```bash
-mvn spring-boot:run          # 开发启动（默认 8080）
-mvn clean package -DskipTests
+JDK 21（虚拟线程）· Spring Boot 3.5 · MyBatis-Flex · Sa-Token · JetCache · Warm-Flow · PostgreSQL 16（主推）· Redis 7 · PowerJob · springdoc-openapi · x-file-storage · SMS4J · Hutool · LiteFlow · Flyway · 国密 SM2/SM3/SM4
+
+## 🗂 仓库全景
+
+Mugsun 由四个仓库组成，本仓是后端主体。四个仓库需**平级 clone**（放在同一目录下）：
+
+```mermaid
+graph LR
+    subgraph 前端
+        PC["mugsun-pc<br/>Vue3 管理端"]
+        TRACK["mugsun-track<br/>埋点 SDK"]
+    end
+    subgraph 后端
+        BOOT["mugsun-boot<br/>单体后端（本仓）"]
+        CORE["mugsun-core<br/>BOM + Starter"]
+    end
+    CORE -->|Maven 依赖| BOOT
+    PC -->|file: 依赖| TRACK
+    PC -->|HTTP / WebSocket| BOOT
+    TRACK -->|数据上报 /track/collect| BOOT
 ```
 
-## 测试
+## 🔄 请求处理管线
 
-```bash
-mvn test    # 69 个集成测试：Testcontainers 自动拉起 PostgreSQL/Redis，真实登录/权限/租户/工作流链路
+每个请求都经过统一的治理链路，可观测性与安全性在框架层一次解决：
+
+```mermaid
+flowchart TB
+    REQ["HTTP 请求"] --> TRACE["TraceIdFilter<br/>X-Trace-Id 生成 / 透传 · MDC"]
+    TRACE --> AUTH["Sa-Token 认证拦截"]
+    AUTH --> TENANT["租户守卫<br/>伪造租户头拦截 · 套餐模块门控"]
+    TENANT --> PERM["@SaCheckPermission 按钮级权限"]
+    PERM --> DATA["数据权限织入 · 字段脱敏"]
+    DATA --> CTRL["Controller<br/>统一 R&lt;T&gt; 响应 · 全局异常转 401 / 403 / 400"]
+    CTRL --> MF["MyBatis-Flex"]
+    MF --> PG[("PostgreSQL")]
+    CTRL -.->|"@Async 虚拟线程 · 租户上下文透传"| LOG["访问日志异步落库"]
+    MF -.-> CACHE["JetCache 二级缓存<br/>Caffeine + Redis"]
 ```
 
-## 许可
+## 🚀 快速开始
+
+### 环境要求
+
+- JDK 21+
+- Maven 3.9+
+- PostgreSQL 16
+- Redis 7
+
+### 1. 初始化数据库
+
+```bash
+psql -U postgres -f scripts/init-db.sql
+```
+
+脚本会创建 `mugsun` 账号、主库 `mugsun` 与埋点库 `mugsun_track`，并授予 CREATEDB 权限。
+
+### 2. 构建内核
+
+```bash
+cd ../mugsun-core && mvn clean install && cd ../mugsun-boot
+```
+
+### 3. 启动
+
+```bash
+mvn spring-boot:run
+```
+
+Flyway 自动完成 70+ 个迁移脚本与菜单种子数据，首次启动即是完整系统。API 文档见 `http://localhost:8080/swagger-ui/index.html`（prod 环境自动关闭）。
+
+### 4. 登录
+
+默认账号 `admin / 123456`，可通过环境变量 `MUGSUN_INIT_PASSWORD` 覆盖——**生产部署必须修改**。
+
+### 5. 前端
+
+管理端见 [mugsun-pc](https://github.com/curdx/mugsun-pc) 仓，按其四仓平级 clone 说明启动即可对接本服务。
+
+## 🛡 生产部署
+
+启用 prod profile：`--spring.profiles.active=prod`。
+
+- `application-prod.yml` 全量环境变量注入（数据源 / Redis / SMTP / 短信 / 存储 / 密钥），仓库内不落任何明文
+- `mugsun.crypto.strict-keys=true`：SM4 / SM2 / 审计签名密钥缺失即拒绝启动
+- Actuator 默认 fail-closed，仅放行 `health`，指标端点需登录授权
+- API 文档（springdoc）prod 环境自动关闭
+- 生产禁用本地文件匿名直出，私有附件全走授权流式下载
+
+## 🧪 测试与质量
+
+- **后端集成测试**：基于 Testcontainers，自动拉起 PostgreSQL 16 / Redis 7 容器隔离运行，`mvn test` 零外部依赖，覆盖真实登录 / 权限 / 租户 / 工作流链路（27 个测试类）
+- **前端 e2e**：Playwright 端到端 80+ 用例
+- **api-probe 探针**：性能探针在 10w 行日志表上实测 p95 ≤ 69ms；50 项安全探针全部通过
+
+## 🗺 路线图（规划中）
+
+- Docker Compose 一键部署
+- 微服务形态
+- AI 增强能力（模型接入 / 对话 / 知识库）
+
+## 🤝 贡献
+
+欢迎 Issue 与 Pull Request。提交前请确保 `mvn test` 全绿，新增功能请附带测试。
+
+## 📄 许可证
 
 [Apache License 2.0](LICENSE)
+
+---
+
+如果这个项目对你有帮助，欢迎 Star ⭐ 支持一下！

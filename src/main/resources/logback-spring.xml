@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  日志收口配置：控制台 + 落盘双通道，级别段注入 traceId（TraceIdFilter 写 MDC）。
+  - 落盘路径默认 ./logs，可用 logging.file.path / logging.file.name 覆盖；
+  - 全量日志按天 + 单文件 100MB 双滚动，保留 30 天、总量 5GB 封顶；
+  - error 单独成文件（排障第一现场），保留 90 天；
+  - 容器化采集 stdout 场景可直接忽略文件通道（文件同时写不影响 console 采集）。
+-->
+<configuration>
+	<includeResource resource="org/springframework/boot/logging/logback/defaults.xml"/>
+	<!-- 级别段带 traceId：须在 defaults.xml 之后、appender 引用之前定义（Boot 的 ${X:-default} 占位由此覆盖生效） -->
+	<property name="LOG_LEVEL_PATTERN" value="%5p [%X{traceId}]"/>
+	<springProperty scope="context" name="LOG_PATH" source="logging.file.path" defaultValue="./logs"/>
+	<springProperty scope="context" name="LOG_FILE" source="logging.file.name" defaultValue="mugsun-boot"/>
+
+	<includeResource resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+	<appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<file>${LOG_PATH}/${LOG_FILE}.log</file>
+		<encoder>
+			<pattern>${FILE_LOG_PATTERN}</pattern>
+			<charset>UTF-8</charset>
+		</encoder>
+		<rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+			<fileNamePattern>${LOG_PATH}/${LOG_FILE}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+			<maxFileSize>100MB</maxFileSize>
+			<maxHistory>30</maxHistory>
+			<totalSizeCap>5GB</totalSizeCap>
+			<cleanHistoryOnStart>true</cleanHistoryOnStart>
+		</rollingPolicy>
+	</appender>
+
+	<appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<file>${LOG_PATH}/${LOG_FILE}-error.log</file>
+		<filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+			<level>ERROR</level>
+		</filter>
+		<encoder>
+			<pattern>${FILE_LOG_PATTERN}</pattern>
+			<charset>UTF-8</charset>
+		</encoder>
+		<rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+			<fileNamePattern>${LOG_PATH}/${LOG_FILE}-error.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+			<maxFileSize>100MB</maxFileSize>
+			<maxHistory>90</maxHistory>
+			<totalSizeCap>2GB</totalSizeCap>
+			<cleanHistoryOnStart>true</cleanHistoryOnStart>
+		</rollingPolicy>
+	</appender>
+
+	<root level="INFO">
+		<appender-ref ref="CONSOLE"/>
+		<appender-ref ref="FILE"/>
+		<appender-ref ref="ERROR_FILE"/>
+	</root>
+</configuration>

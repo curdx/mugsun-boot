@@ -1,0 +1,13 @@
+# 构建上下文为四仓父目录，此处裁剪进镜像的内容（路径相对父目录）
+**/.git
+**/.idea
+**/.vscode
+**/node_modules
+**/dist
+**/target
+**/logs
+**/*.log
+**/.DS_Store
+**/e2e-report
+**/test-results
+_stack-test/

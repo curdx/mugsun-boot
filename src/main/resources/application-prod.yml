@@ -29,7 +29,8 @@ mybatis-flex:
 jetcache:
   remote:
     default:
-      uri: redis://${REDIS_HOST}:${REDIS_PORT:6379}/${REDIS_DB:0}
+      # 密码经 REDIS_PASSWORD 注入（实测：Lettuce 空密码不发起 AUTH，无密码实例留空即可）
+      uri: redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT:6379}/${REDIS_DB:0}
 
 # 对象存储：生产禁用本地 /file/** 匿名直出（私有附件全走授权流式/预签名），启用云平台由 sys_oss 配置驱动
 dromara:

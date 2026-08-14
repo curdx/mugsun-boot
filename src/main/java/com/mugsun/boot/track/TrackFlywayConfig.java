@@ -43,6 +43,8 @@ public class TrackFlywayConfig {
 	private static final Pattern DB_NAME_PATTERN = Pattern.compile("[A-Za-z0-9_]+");
 	/** PG 错误码：duplicate_database（多节点并发启动同时建库时后建者命中，视为已建） */
 	private static final String DUPLICATE_DATABASE_SQL_STATE = "42P04";
+	/** PG 错误码：insufficient_privilege（应用账号无 CREATEDB 权限） */
+	private static final String INSUFFICIENT_PRIVILEGE_SQL_STATE = "42501";
 
 	/**
 	 * 建库 + 迁移埋点库，返回初始化标记 bean（承载库名，供健康检查/日志辨识）。
@@ -96,6 +98,11 @@ public class TrackFlywayConfig {
 				if (DUPLICATE_DATABASE_SQL_STATE.equals(e.getSQLState())) {
 					log.info("埋点库 {} 已被并发节点创建，继续迁移", trackDb);
 					return;
+				}
+				if (INSUFFICIENT_PRIVILEGE_SQL_STATE.equals(e.getSQLState())) {
+					// 账号缺 CREATEDB：给出可操作的修复路径（授权 / 预先手工建库），替代裸栈启动崩溃
+					throw new SQLException("创建埋点库 " + trackDb + " 失败：账号 " + user + " 无 CREATEDB 权限——"
+						+ "执行 ALTER USER " + user + " CREATEDB，或预先手工建库（见 scripts/init-db.sql）", e);
 				}
 				throw e;
 			}

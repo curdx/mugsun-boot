@@ -1,8 +1,13 @@
 server:
   port: 8080
+  # 优雅停机：停接新请求、等待在途请求处理完毕，滚动发布/重启不硬砍在途请求
+  shutdown: graceful
 spring:
   application:
     name: mugsun-boot
+  lifecycle:
+    # 优雅停机在途请求最长等待
+    timeout-per-shutdown-phase: 20s
   threads:
     virtual:
       enabled: true
@@ -51,10 +56,8 @@ management:
     metrics:
       export:
         enabled: true
-# 日志行级别段注入 traceId（TraceIdFilter 写入 MDC；选 yml 而非 logback.xml：项目无 logback 配置先例，yml 为配置约定）
-logging:
-  pattern:
-    level: "%5p [%X{traceId}]"
+# 日志收口 logback-spring.xml：控制台/文件级别段均注入 traceId（TraceIdFilter 写 MDC）；
+# 默认落盘 ./logs（logging.file.path 可覆盖），按天+100MB 双滚动，error 单独成文件保留 90 天
 sa-token:
   token-name: Authorization
   timeout: 2592000
