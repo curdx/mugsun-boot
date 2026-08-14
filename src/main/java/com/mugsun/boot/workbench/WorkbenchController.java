@@ -52,14 +52,16 @@ public class WorkbenchController {
 			charts.put("userStatus", Db.selectListBySql(
 				"SELECT CASE status WHEN 1 THEN '启用' ELSE '停用' END AS name, count(*) AS value "
 					+ "FROM sys_user WHERE is_deleted = 0 GROUP BY status ORDER BY status"));
-			// 逐租户分布属平台级视图，仅超管「查看全部」可见（租户编号+规模为敏感运营数据）
-			charts.put("tenantUser", Db.selectListBySql(
-				"SELECT COALESCE(tenant_id, '未分配') AS name, count(*) AS value "
-					+ "FROM sys_user WHERE is_deleted = 0 GROUP BY tenant_id ORDER BY tenant_id"));
 		} else {
 			charts.put("userStatus", Db.selectListBySql(
 				"SELECT CASE status WHEN 1 THEN '启用' ELSE '停用' END AS name, count(*) AS value "
 					+ "FROM sys_user WHERE is_deleted = 0 AND tenant_id = ? GROUP BY status ORDER BY status", tenant));
+		}
+		// 逐租户分布属平台级敏感运营数据：仅「查看全部」或平台超管可见；普通租户管理员不下发该键，前端隐藏卡片（避免空态误导）
+		if (tenant == null || com.mugsun.boot.tenant.TenantContext.isPlatformSuperAdmin()) {
+			charts.put("tenantUser", Db.selectListBySql(
+				"SELECT COALESCE(tenant_id, '未分配') AS name, count(*) AS value "
+					+ "FROM sys_user WHERE is_deleted = 0 GROUP BY tenant_id ORDER BY tenant_id"));
 		}
 		data.put("charts", charts);
 		return R.data(data);
