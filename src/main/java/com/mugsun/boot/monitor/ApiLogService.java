@@ -25,6 +25,7 @@ public class ApiLogService {
 
 	@Async
 	public void saveAsync(SysApiLog record) {
+		clip(record);
 		try {
 			// 有租户上下文（经 TenantTaskDecorator 透传）→ 正常落库并打租户标
 			apiLogMapper.insertSelective(record);
@@ -37,5 +38,21 @@ public class ApiLogService {
 				log.warn("访问日志落库失败 uri={}：{}", record.getRequestUri(), ex.getMessage());
 			}
 		}
+	}
+
+	/** 与 V55 列宽对齐，避免金仓/达梦 VARCHAR 严格截断导致访问日志整条失败 */
+	private static void clip(SysApiLog r) {
+		r.setTitle(cut(r.getTitle(), 255));
+		r.setMethod(cut(r.getMethod(), 255));
+		r.setRequestUri(cut(r.getRequestUri(), 512));
+		r.setUserAgent(cut(r.getUserAgent(), 512));
+		r.setErrorMsg(cut(r.getErrorMsg(), 512));
+	}
+
+	private static String cut(String s, int max) {
+		if (s == null || s.length() <= max) {
+			return s;
+		}
+		return s.substring(0, max);
 	}
 }

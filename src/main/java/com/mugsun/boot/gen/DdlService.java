@@ -6,12 +6,15 @@ import com.mugsun.boot.gen.mapper.GenColumnMapper;
 import com.mugsun.boot.gen.mapper.GenTableMapper;
 import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.query.QueryWrapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -44,6 +47,10 @@ public class DdlService {
 	private final DataSource dataSource;
 	private final GenTableMapper tableMapper;
 	private final GenColumnMapper columnMapper;
+
+	/** 金仓等：业务 schema；亦用于 information_schema 过滤（避免 JDBC getSchema→坏掉的 pg_catalog） */
+	@Value("${mugsun.db.default-schema:}")
+	private String defaultDbSchema;
 
 	public DdlService(DataSource dataSource, GenTableMapper tableMapper, GenColumnMapper columnMapper) {
 		this.dataSource = dataSource;
@@ -192,12 +199,21 @@ public class DdlService {
 		return !physicalColumns(tn).isEmpty();
 	}
 
-	/** 物理表现有列（JDBC 元数据，跨方言）：列名（小写）→ 类型名 */
+	/**
+	 * 物理表现有列。
+	 * PG 系（含金仓）：只用 information_schema；空结果=表不存在，绝不走 JDBC getColumns
+	 * （社区金仓缺/残 pg_catalog，getColumns 会报 c.oid / pg_namespace 并弄脏事务）。
+	 * Oracle/MySQL 系：仍走 DatabaseMetaData。
+	 */
 	private Map<String, String> physicalColumns(String tn) {
 		Map<String, String> m = new LinkedHashMap<>();
 		try (Connection c = dataSource.getConnection()) {
+			SqlDialect d = dialect();
+			if (d == SqlDialect.POSTGRES) {
+				collectColumnsViaInformationSchema(c, tn, m);
+				return m;
+			}
 			DatabaseMetaData md = c.getMetaData();
-			// 先按小写名内省（PG/MySQL 系）；空则回退大写（Oracle 系/达梦未加引号标识符按大写存储）
 			collectColumns(md, c, tn.toLowerCase(), m);
 			if (m.isEmpty()) {
 				collectColumns(md, c, tn.toUpperCase(), m);
@@ -212,6 +228,27 @@ public class DdlService {
 		try (ResultSet rs = md.getColumns(c.getCatalog(), c.getSchema(), tn, null)) {
 			while (rs.next()) {
 				out.put(rs.getString("COLUMN_NAME").toLowerCase(), rs.getString("TYPE_NAME"));
+			}
+		}
+	}
+
+	/**
+	 * PG 系列内省：information_schema（不碰 JDBC MetaData / pg_catalog）。
+	 * schema：配置 mugsun.db.default-schema → SQL current_schema()（勿用 Connection#getSchema，金仓会炸）。
+	 */
+	private void collectColumnsViaInformationSchema(Connection c, String tn, Map<String, String> out) throws SQLException {
+		String sql = "SELECT column_name, data_type FROM information_schema.columns "
+			+ "WHERE lower(table_name) = lower(?) "
+			+ "AND table_schema = coalesce(nullif(?, ''), current_schema()) "
+			+ "ORDER BY ordinal_position";
+		String schema = StringUtils.hasText(defaultDbSchema) ? defaultDbSchema : "";
+		try (PreparedStatement ps = c.prepareStatement(sql)) {
+			ps.setString(1, tn);
+			ps.setString(2, schema);
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) {
+					out.put(rs.getString(1).toLowerCase(), rs.getString(2));
+				}
 			}
 		}
 	}

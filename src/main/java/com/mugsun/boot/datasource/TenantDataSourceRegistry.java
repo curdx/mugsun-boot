@@ -83,7 +83,8 @@ public class TenantDataSourceRegistry {
 	private void encryptLegacyPasswords() {
 		try {
 			List<Row> rows = TenantContext.ignore(() ->
-				Db.selectListBySql("SELECT id, ds_password FROM sys_tenant_datasource WHERE is_deleted = 0"));
+				Db.selectListBySql("SELECT id, ds_password FROM " + com.mugsun.boot.config.BizTables.of("sys_tenant_datasource")
+					+ " WHERE is_deleted = 0"));
 			for (Row r : rows) {
 				String raw = r.getString("ds_password");
 				if (raw == null || raw.isEmpty() || Sm4Util.looksLikeCipher(raw)) {
@@ -92,7 +93,8 @@ public class TenantDataSourceRegistry {
 				String cipher = Sm4Util.encrypt(raw);
 				if (cipher != null) {
 					TenantContext.ignore(() -> Db.updateBySql(
-						"UPDATE sys_tenant_datasource SET ds_password = ? WHERE id = ?", cipher, r.get("id")));
+						"UPDATE " + com.mugsun.boot.config.BizTables.of("sys_tenant_datasource")
+							+ " SET ds_password = ? WHERE id = ?", cipher, r.get("id")));
 					log.info("回填加密租户数据源密码：id={}", r.get("id"));
 				}
 			}

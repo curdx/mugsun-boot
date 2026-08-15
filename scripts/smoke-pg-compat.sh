@@ -23,11 +23,14 @@ else
   mvn -q -DskipTests package
 fi
 
-echo "==> 3) 请用下列配置启动应用后手工验收："
+echo "==> 3) 请用下列配置启动应用后手工验收（实际键为 mybatis-flex，非 spring.datasource）："
 cat <<EOF
-spring.datasource.url=${JDBC_URL}
-spring.datasource.username=${DB_USER}
-spring.datasource.password=${DB_PASSWORD}
+mybatis-flex.datasource.primary.url=${JDBC_URL}
+mybatis-flex.datasource.primary.username=${DB_USER}
+mybatis-flex.datasource.primary.password=${DB_PASSWORD}
+mybatis-flex.datasource.track.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/mugsun_track
+mybatis-flex.datasource.track.username=${DB_USER}
+mybatis-flex.datasource.track.password=${DB_PASSWORD}
 spring.flyway.locations=classpath:db/migration
 
 验收：启动无报错 → 登录 → /system/user/page → /system/gen DDL 建表出型为 PG 族。

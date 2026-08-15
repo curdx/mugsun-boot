@@ -97,6 +97,14 @@ public enum SqlDialect {
 		return oracleFamily() ? " FETCH FIRST 1 ROWS ONLY" : " LIMIT 1";
 	}
 
+	/**
+	 * 将表达式转为短字符串。达梦 {@code CAST(... AS VARCHAR)} 无长度非法；
+	 * {@code VARCHAR(64)} 在 PG/金仓/达梦/MySQL 均可。
+	 */
+	public String castVarchar(String expr) {
+		return "CAST(" + expr + " AS VARCHAR(64))";
+	}
+
 	/** 雪花主键/Long 列类型 */
 	public String bigintType() {
 		return bigintType;

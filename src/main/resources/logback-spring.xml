@@ -7,13 +7,13 @@
   - 容器化采集 stdout 场景可直接忽略文件通道（文件同时写不影响 console 采集）。
 -->
 <configuration>
-	<includeResource resource="org/springframework/boot/logging/logback/defaults.xml"/>
+	<include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 	<!-- 级别段带 traceId：须在 defaults.xml 之后、appender 引用之前定义（Boot 的 ${X:-default} 占位由此覆盖生效） -->
 	<property name="LOG_LEVEL_PATTERN" value="%5p [%X{traceId}]"/>
 	<springProperty scope="context" name="LOG_PATH" source="logging.file.path" defaultValue="./logs"/>
 	<springProperty scope="context" name="LOG_FILE" source="logging.file.name" defaultValue="mugsun-boot"/>
 
-	<includeResource resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+	<include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
 	<appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
 		<file>${LOG_PATH}/${LOG_FILE}.log</file>

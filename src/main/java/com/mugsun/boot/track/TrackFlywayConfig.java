@@ -26,9 +26,9 @@ import java.util.regex.Pattern;
  * ① 用 primary 连接检查并创建埋点 database（PG 无 CREATE DATABASE IF NOT EXISTS，先查 pg_database；
  * CREATE DATABASE 不能在事务内，须用自动提交的裸连接）；
  * ② 以埋点库连接构建独立 Flyway 并立即 migrate。
- * <p>L1 约定（本期）：埋点库与主库同 PG 实例、同账号。建库与迁移连接的实例坐标一律取 primary URL，
- * 库名取 track URL 的库名段——同实例双 database（含 Testcontainers 同容器双库）天然可用，
- * 不会误连本机或其他实例。L2（切独立 PG 实例）演进时，迁移坐标改为直接取 track URL 即可，运行期代码零改。
+ * <p>L1 约定：埋点库与主库同 PG 实例、同账号——建库坐标取 primary，迁移 URL 仅替换库名。
+ * L2 / 信创混合：主库金仓、埋点独立本机 PG——{@link #samePgInstance} 为 false 时，
+ * 建库与迁移一律走 track URL（禁止拿金仓 primary 查 {@code pg_database}）。
  * <p>返回值刻意不声明为 Flyway 类型：spring.flyway 自动配置的 flywayInitializer 按单实例注入 Flyway，
  * 容器中一旦出现第二个 Flyway 类型 bean，主库迁移会因注入不唯一而启动失败；Flyway 实例仅本类内部持有。
  */
@@ -61,10 +61,29 @@ public class TrackFlywayConfig {
 		String trackPassword = env.getProperty("mybatis-flex.datasource.track.password", primaryPassword);
 		String trackDb = parseDbName(trackUrl);
 
-		ensureDatabase(primaryUrl, primaryUser, primaryPassword, trackDb);
+		// 信创联调：主库金仓手工灌库后可关埋点 Flyway（分区等 PG 专属语法）；或 track 仍指本地 PG
+		if (!env.getProperty("mugsun.track.flyway-enabled", Boolean.class, true)) {
+			log.warn("mugsun.track.flyway-enabled=false，跳过埋点库建库与 Flyway（假定 {} 已就绪）", trackDb);
+			return new TrackFlywayInitializer(trackDb);
+		}
 
-		// 迁移连接坐标：host/port/参数沿用 primary URL（L1 同实例），库名段替换为埋点库名
-		String migrateUrl = replaceDbName(primaryUrl, trackDb);
+		// L1：主/埋点同 PG 实例 → 用 primary 建库，再替换库名迁移
+		// L2 / 信创混合：主库金仓、埋点本机 PG → 禁止用 primary（无 pg_database），直接对 track URL 迁
+		final String migrateUrl;
+		if (samePgInstance(primaryUrl, trackUrl)) {
+			ensureDatabase(primaryUrl, primaryUser, primaryPassword, trackDb);
+			migrateUrl = replaceDbName(primaryUrl, trackDb);
+		} else {
+			log.info("埋点库与主库不同实例，按 track URL 独立 Flyway：{}", maskJdbcUrl(trackUrl));
+			// 已存在则直连；不存在再连维护库 postgres 建库（勿用金仓 primary）
+			try (Connection ignored = DriverManager.getConnection(trackUrl, trackUser, trackPassword)) {
+				log.info("埋点库 {} 已可连", trackDb);
+			} catch (SQLException connectFail) {
+				ensureDatabase(replaceDbName(trackUrl, "postgres"), trackUser, trackPassword, trackDb);
+			}
+			migrateUrl = trackUrl;
+		}
+
 		Flyway flyway = new FluentConfiguration()
 			.dataSource(migrateUrl, trackUser, trackPassword)
 			.locations(TrackConstants.FLYWAY_LOCATIONS)
@@ -127,6 +146,24 @@ public class TrackFlywayConfig {
 		String base = jdbcUrl.substring(0, pathStart + 1);
 		String query = queryStart < 0 ? "" : jdbcUrl.substring(queryStart);
 		return base + dbName + query;
+	}
+
+	/** 同 PG 实例判定：scheme+host+port 一致（忽略库名与 query）。非 PG 主库一律视为异实例（信创混合） */
+	static boolean samePgInstance(String urlA, String urlB) {
+		if (!urlA.startsWith(PG_URL_PREFIX) || !urlB.startsWith(PG_URL_PREFIX)) {
+			return false;
+		}
+		return instanceKey(urlA).equals(instanceKey(urlB));
+	}
+
+	private static String instanceKey(String jdbcUrl) {
+		int pathStart = pathStart(jdbcUrl);
+		return jdbcUrl.substring(0, pathStart).toLowerCase();
+	}
+
+	private static String maskJdbcUrl(String jdbcUrl) {
+		int q = jdbcUrl.indexOf('?');
+		return q < 0 ? jdbcUrl : jdbcUrl.substring(0, q);
 	}
 
 	private static int pathStart(String jdbcUrl) {

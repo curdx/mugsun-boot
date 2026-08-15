@@ -17,5 +17,6 @@ logs/
 *.log
 *.tmp
 application-local.yml
+config/application-*-lab.yml
 .DS_Store
 Thumbs.db
