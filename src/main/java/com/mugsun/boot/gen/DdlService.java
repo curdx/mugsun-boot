@@ -5,7 +5,6 @@ import com.mugsun.boot.gen.entity.GenTable;
 import com.mugsun.boot.gen.mapper.GenColumnMapper;
 import com.mugsun.boot.gen.mapper.GenTableMapper;
 import com.mugsun.core.tool.exception.ServiceException;
-import com.mybatisflex.core.dialect.DbTypeUtil;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -130,14 +129,14 @@ public class DdlService {
 		lines.add("tenant_id " + (d == SqlDialect.ORACLE ? "VARCHAR2(12)" : "VARCHAR(12)"));
 		lines.add("create_time " + d.timestampType());
 		lines.add("update_time " + d.timestampType());
-		lines.add("is_deleted " + d.intType() + " NOT NULL DEFAULT 0");
+		lines.add("is_deleted " + d.intType() + d.notNullDefaultZero());
 		return "CREATE TABLE " + tn + " (\n\t" + String.join(",\n\t", lines) + "\n)";
 	}
 
 	private List<String> buildSync(GenTable t, List<GenColumn> cols, boolean force, SqlDialect d) {
 		String tn = validName(t.getTableName());
 		if (force) {
-			return List.of("DROP TABLE IF EXISTS " + tn, buildCreate(t, cols, d));
+			return List.of(d.dropTable(tn), buildCreate(t, cols, d));
 		}
 		Map<String, String> physical = physicalColumns(tn);
 		Set<String> physSet = physical.keySet();
@@ -153,8 +152,8 @@ public class DdlService {
 			if (old != null && !old.isBlank() && physSet.contains(old.toLowerCase()) && !hasNew) {
 				stmts.add("ALTER TABLE " + tn + " RENAME COLUMN " + validName(old) + " TO " + cn);
 			} else if (!hasNew) {
-				// 新增列须可空（存量行无值），is_deleted 例外给默认值
-				String def = "is_deleted".equals(cn) ? " NOT NULL DEFAULT 0" : "";
+				// 新增列须可空（存量行无值），is_deleted 例外给默认值（Oracle 系 DEFAULT 在 NOT NULL 前）
+				String def = "is_deleted".equals(cn) ? d.notNullDefaultZero() : "";
 				stmts.add("ALTER TABLE " + tn + " ADD COLUMN " + cn + " " + sqlType(c, d) + def);
 			}
 		}
@@ -219,11 +218,7 @@ public class DdlService {
 
 	/** 目标库方言族：以 Flex {@code DbTypeUtil} 探测的 DbType 归族（PG/Oracle/MySQL 系），失败回退平台主库族 PG。 */
 	private SqlDialect dialect() {
-		try {
-			return SqlDialect.of(DbTypeUtil.getDbType(dataSource));
-		} catch (Exception e) {
-			return SqlDialect.POSTGRES;
-		}
+		return DbDialects.of(dataSource);
 	}
 
 	// ==================== 安全 / 取数 ====================

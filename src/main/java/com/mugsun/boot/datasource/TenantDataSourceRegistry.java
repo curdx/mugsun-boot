@@ -3,6 +3,8 @@ package com.mugsun.boot.datasource;
 import com.mugsun.boot.common.crypto.Sm4Util;
 import com.mugsun.boot.datasource.entity.SysTenantDatasource;
 import com.mugsun.boot.datasource.mapper.SysTenantDatasourceMapper;
+import com.mugsun.boot.gen.DbDialects;
+import com.mugsun.boot.gen.SqlDialect;
 import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.datasource.FlexDataSource;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -25,7 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 租户数据源注册中心（隔离策略中央解析）：运行时把租户数据源加入 FlexDataSource，并按当前租户解析路由键。
  * <p>隔离策略：无配置=FIELD（主库 + tenant_id 字段隔离）；配置 isolation_type=1=DATASOURCE（独立库）；
- * =2=SCHEMA（同库独立 schema，专用连接池 connectionInitSql 设 search_path，规避共享池 search_path 泄漏）。
+ * =2=SCHEMA（同库独立 schema，专用连接池 connectionInitSql 设 search_path / ALTER SESSION CURRENT_SCHEMA，
+ * 规避共享池 schema 切换泄漏）。
  * <p>注册前 testConnection 探活，坏配置不入池（不污染主库运行）。密码由 {@code Sm4TypeHandler} 透明解密。
  */
 @Component
@@ -114,11 +117,12 @@ public class TenantDataSourceRegistry {
 		ds.setConnectionTimeout(PROBE_TIMEOUT_MS);
 		// 懒初始化，探活时才真正建连，坏配置不在构造期阻塞
 		ds.setInitializationFailTimeout(-1);
-		// SCHEMA 隔离：专用池 connectionInitSql 设 search_path（每条物理连接建立即生效，随连接生命周期常驻，不泄漏）
+		// SCHEMA 隔离：专用池 connectionInitSql 按方言设 search_path / CURRENT_SCHEMA（随连接生命周期常驻，不泄漏）
+		SqlDialect dialect = DbDialects.ofUrl(cfg.getDsUrl());
 		if (isSchema(cfg)) {
-			ds.setConnectionInitSql("SET search_path TO " + cfg.getSchemaName());
+			ds.setConnectionInitSql(dialect.schemaInitSql(cfg.getSchemaName()));
 		}
-		probe(ds, key, isSchema(cfg) ? cfg.getSchemaName() : null);
+		probe(ds, key, isSchema(cfg) ? cfg.getSchemaName() : null, dialect);
 		// 探活通过后再替换旧的，避免探活失败却先毁了在用的旧源
 		removeQuietly(flex, key);
 		flex.addDataSource(key, ds);
@@ -128,14 +132,13 @@ public class TenantDataSourceRegistry {
 	}
 
 	/** 探活：取一次连接并校验可用；SCHEMA 模式额外校验目标 schema 存在（PG SET search_path 对不存在 schema 不报错，需显式核验）；失败即关闭并抛异常，杜绝坏源污染运行池 */
-	private void probe(HikariDataSource ds, String key, String schemaName) {
+	private void probe(HikariDataSource ds, String key, String schemaName, SqlDialect dialect) {
 		try (Connection c = ds.getConnection()) {
 			if (!c.isValid((int) (PROBE_TIMEOUT_MS / 1000))) {
 				throw new ServiceException("数据源探活失败：连接不可用");
 			}
 			if (schemaName != null) {
-				try (var ps = c.prepareStatement(
-						"SELECT 1 FROM information_schema.schemata WHERE schema_name = ?")) {
+				try (var ps = c.prepareStatement(dialect.schemaExistsSql())) {
 					ps.setString(1, schemaName);
 					try (var rs = ps.executeQuery()) {
 						if (!rs.next()) {

@@ -3,6 +3,8 @@ package com.mugsun.boot.tablecolumn;
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.IdUtil;
+import com.mugsun.boot.gen.DbDialects;
+import com.mugsun.boot.gen.RuntimeSql;
 import com.mugsun.boot.tablecolumn.entity.SysTableColumn;
 import com.mugsun.boot.tablecolumn.mapper.SysTableColumnMapper;
 import com.mugsun.core.tool.api.R;
@@ -38,12 +40,8 @@ public class TableColumnController {
 		if (tableKey == null || tableKey.isBlank()) {
 			throw new ServiceException("表格标识不能为空");
 		}
-		// 单条 upsert 原子化：并发首配同抢时靠 (user_id, table_key) 部分唯一键归并，杜绝抢插冲突
-		Db.updateBySql(
-			"insert into sys_table_column (id, user_id, table_key, config_json, create_time, update_time, is_deleted) "
-				+ "values (?, ?, ?, ?, now(), now(), 0) "
-				+ "on conflict (user_id, table_key) where is_deleted = 0 "
-				+ "do update set config_json = excluded.config_json, update_time = now()",
+		// 单条 upsert 原子化：PG ON CONFLICT / Oracle·达梦 MERGE，参数序一致
+		Db.updateBySql(RuntimeSql.upsertTableColumn(DbDialects.current()),
 			IdUtil.getSnowflakeNextId(), StpUtil.getLoginIdAsLong(), tableKey, body.getConfigJson());
 		return R.success("保存成功");
 	}

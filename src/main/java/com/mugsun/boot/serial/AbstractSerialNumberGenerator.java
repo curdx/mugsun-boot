@@ -1,6 +1,9 @@
 package com.mugsun.boot.serial;
 
 import cn.hutool.core.util.IdUtil;
+import com.mugsun.boot.gen.DbDialects;
+import com.mugsun.boot.gen.RuntimeSql;
+import com.mugsun.boot.gen.SqlDialect;
 import com.mugsun.boot.serial.entity.SysSerialNumber;
 import com.mugsun.boot.serial.mapper.SysSerialNumberMapper;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -84,10 +87,9 @@ public abstract class AbstractSerialNumberGenerator implements SerialNumberGener
 	 *                  false 时精确覆盖（DB 版行锁精确，且跨周期重置需允许变小）
 	 */
 	protected void persist(GenerateResult result, int count, boolean monotonic) {
+		SqlDialect d = DbDialects.current();
 		if (monotonic) {
-			Db.updateBySql(
-				"update sys_serial_number set last_number = greatest(coalesce(last_number, 0), ?), "
-					+ "last_time = greatest(coalesce(last_time, ?), ?) where code = ?",
+			Db.updateBySql(RuntimeSql.updateSerialLastMonotonic(d),
 				result.lastNumber(), result.lastTime(), result.lastTime(), result.code());
 		} else {
 			SysSerialNumber patch = new SysSerialNumber();
@@ -97,14 +99,8 @@ public abstract class AbstractSerialNumberGenerator implements SerialNumberGener
 		}
 
 		LocalDate today = result.lastTime().toLocalDate();
-		// 单条 upsert 原子化：并发冷启动同抢当日记录时靠 (serial_code, record_date) 唯一键归并，杜绝抢插冲突
-		Db.updateBySql(
-			"insert into sys_serial_number_record (id, serial_code, record_date, last_number, last_time, gen_count, create_time, is_deleted) "
-				+ "values (?, ?, ?, ?, ?, ?, now(), 0) "
-				+ "on conflict (serial_code, record_date) do update set "
-				+ "last_number = greatest(sys_serial_number_record.last_number, excluded.last_number), "
-				+ "last_time = excluded.last_time, "
-				+ "gen_count = sys_serial_number_record.gen_count + excluded.gen_count",
+		// 单条 upsert：PG ON CONFLICT / Oracle·达梦 MERGE，靠 (serial_code, record_date) 归并
+		Db.updateBySql(RuntimeSql.upsertSerialRecord(d),
 			IdUtil.getSnowflakeNextId(), result.code(), today, result.lastNumber(), result.lastTime(), (long) count);
 	}
 }
