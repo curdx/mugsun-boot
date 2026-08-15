@@ -7,6 +7,9 @@ import cn.hutool.core.util.IdUtil;
 import com.mugsun.boot.common.constant.WsConstants;
 import com.mugsun.boot.common.tx.AfterCommit;
 import com.mugsun.boot.datascope.DataScopeContext;
+import com.mugsun.boot.gen.DbDialects;
+import com.mugsun.boot.gen.RuntimeSql;
+import com.mugsun.boot.gen.SqlDialect;
 import com.mugsun.boot.system.entity.SysDept;
 import com.mugsun.boot.system.entity.SysNotice;
 import com.mugsun.boot.system.entity.SysNoticeRead;
@@ -197,15 +200,27 @@ public class SysNoticeController {
 		if (!visibleToMe(noticeId)) {
 			throw new ServiceException("通知不存在");
 		}
-		// 原子 upsert，RETURNING xmax=0 精确区分「首次插入」与「已存在再读」，据此累计 UV
-		Row row = Db.selectOneBySql(
-			"insert into sys_notice_read (id, notice_id, user_id, read_count, first_time, last_time, create_time, update_time, is_deleted) "
-				+ "values (?, ?, ?, 1, now(), now(), now(), now(), 0) "
-				+ "on conflict (notice_id, user_id) where is_deleted = 0 "
-				+ "do update set read_count = sys_notice_read.read_count + 1, last_time = now(), update_time = now() "
-				+ "returning (xmax = 0) as first_read",
-			IdUtil.getSnowflakeNextId(), noticeId, userId);
-		boolean firstRead = row != null && Boolean.TRUE.equals(row.getBoolean("first_read"));
+		// PG：原子 upsert + xmax 判首读；Oracle/达梦无 xmax，应用层先查后写
+		boolean firstRead;
+		SqlDialect d = DbDialects.current();
+		if (d.oracleFamily()) {
+			Row existed = Db.selectOneBySql(
+				"select id from sys_notice_read where notice_id = ? and user_id = ? and is_deleted = 0"
+					+ d.limitOne(),
+				noticeId, userId);
+			if (existed == null) {
+				Db.updateBySql(RuntimeSql.insertNoticeRead(d),
+					IdUtil.getSnowflakeNextId(), noticeId, userId);
+				firstRead = true;
+			} else {
+				Db.updateBySql(RuntimeSql.bumpNoticeRead(d), noticeId, userId);
+				firstRead = false;
+			}
+		} else {
+			Row row = Db.selectOneBySql(RuntimeSql.upsertNoticeReadPg(),
+				IdUtil.getSnowflakeNextId(), noticeId, userId);
+			firstRead = row != null && Boolean.TRUE.equals(row.getBoolean("first_read"));
+		}
 		Db.updateBySql("update sys_notice set view_pv = view_pv + 1" + (firstRead ? ", view_uv = view_uv + 1" : "")
 			+ " where id = ?", noticeId);
 		return R.success("已读");

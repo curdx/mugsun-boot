@@ -3,6 +3,8 @@ package com.mugsun.boot.workbench;
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.IdUtil;
+import com.mugsun.boot.gen.DbDialects;
+import com.mugsun.boot.gen.RuntimeSql;
 import com.mugsun.boot.workbench.entity.SysWorkbenchShortcut;
 import com.mugsun.boot.workbench.mapper.SysWorkbenchShortcutMapper;
 import com.mugsun.core.tool.api.R;
@@ -78,11 +80,7 @@ public class WorkbenchController {
 	/** 保存快捷入口（原子 upsert，按 user_id 归并，对齐 G43/G44） */
 	@PostMapping("/shortcuts")
 	public R<Void> saveShortcuts(@RequestBody Map<String, String> body) {
-		Db.updateBySql(
-			"insert into sys_workbench_shortcut (id, user_id, config_json, create_time, update_time, is_deleted) "
-				+ "values (?, ?, ?, now(), now(), 0) "
-				+ "on conflict (user_id) where is_deleted = 0 "
-				+ "do update set config_json = excluded.config_json, update_time = now()",
+		Db.updateBySql(RuntimeSql.upsertWorkbenchShortcut(DbDialects.current()),
 			IdUtil.getSnowflakeNextId(), StpUtil.getLoginIdAsLong(), body.get("configJson"));
 		return R.success("保存成功");
 	}

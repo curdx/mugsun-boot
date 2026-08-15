@@ -3,6 +3,8 @@ package com.mugsun.boot.system.service;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.IdUtil;
 import com.mugsun.boot.common.constant.FlowConstants;
+import com.mugsun.boot.gen.DbDialects;
+import com.mugsun.boot.gen.RuntimeSql;
 import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.row.Db;
 import com.mybatisflex.core.row.Row;
@@ -464,9 +466,7 @@ public class FlowService {
 		assertHandlersInTenant(userIds);
 		Long instanceId = task.getInstanceId();
 		for (String u : userIds) {
-			Db.updateBySql(
-				"insert into flow_user(id, type, processed_by, associated, create_time, del_flag) "
-					+ "values (?, ?, ?, ?, now(), '0')",
+			Db.updateBySql(RuntimeSql.insertFlowUser(DbDialects.current()),
 				IdUtil.getSnowflakeNextId(), USER_TYPE_COPY, u, instanceId);
 		}
 	}
@@ -482,7 +482,8 @@ public class FlowService {
 				continue;
 			}
 			boolean inTenant = !Db.selectListBySql(
-				"select 1 from sys_user where cast(id as varchar) = ? and tenant_id = ? and is_deleted = 0 limit 1",
+				"select 1 from sys_user where cast(id as varchar) = ? and tenant_id = ? and is_deleted = 0"
+					+ DbDialects.current().limitOne(),
 				h, tenant).isEmpty();
 			if (!inTenant) {
 				throw new ServiceException("目标办理人不属于本租户");
