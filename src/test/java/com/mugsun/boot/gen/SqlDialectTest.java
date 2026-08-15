@@ -95,4 +95,10 @@ class SqlDialectTest {
 		assertThat(SqlDialect.POSTGRES.limitOne()).isEqualTo(" LIMIT 1");
 		assertThat(SqlDialect.ORACLE.limitOne()).isEqualTo(" FETCH FIRST 1 ROWS ONLY");
 	}
+
+	@Test
+	void castVarcharUsesLengthForAllFamilies() {
+		assertThat(SqlDialect.ORACLE.castVarchar("su.id")).isEqualTo("CAST(su.id AS VARCHAR(64))");
+		assertThat(SqlDialect.POSTGRES.castVarchar("id")).isEqualTo("CAST(id AS VARCHAR(64))");
+	}
 }

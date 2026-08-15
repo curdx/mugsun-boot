@@ -205,7 +205,8 @@ public class SysNoticeController {
 		SqlDialect d = DbDialects.current();
 		if (d.oracleFamily()) {
 			Row existed = Db.selectOneBySql(
-				"select id from sys_notice_read where notice_id = ? and user_id = ? and is_deleted = 0"
+				"select id from " + com.mugsun.boot.config.BizTables.of("sys_notice_read")
+					+ " where notice_id = ? and user_id = ? and is_deleted = 0"
 					+ d.limitOne(),
 				noticeId, userId);
 			if (existed == null) {
@@ -221,7 +222,8 @@ public class SysNoticeController {
 				IdUtil.getSnowflakeNextId(), noticeId, userId);
 			firstRead = row != null && Boolean.TRUE.equals(row.getBoolean("first_read"));
 		}
-		Db.updateBySql("update sys_notice set view_pv = view_pv + 1" + (firstRead ? ", view_uv = view_uv + 1" : "")
+		Db.updateBySql("update " + com.mugsun.boot.config.BizTables.of("sys_notice")
+			+ " set view_pv = view_pv + 1" + (firstRead ? ", view_uv = view_uv + 1" : "")
 			+ " where id = ?", noticeId);
 		return R.success("已读");
 	}
@@ -232,7 +234,8 @@ public class SysNoticeController {
 		Long userId = StpUtil.getLoginIdAsLong();
 		QueryWrapper query = QueryWrapper.create();
 		applyVisibleScope(query);
-		query.and("id not in (select notice_id from sys_notice_read where is_deleted = 0 and user_id = ?)", userId);
+		query.and("id not in (select notice_id from " + com.mugsun.boot.config.BizTables.of("sys_notice_read")
+			+ " where is_deleted = 0 and user_id = ?)", userId);
 		return R.data(noticeMapper.selectCountByQuery(query));
 	}
 
@@ -245,8 +248,9 @@ public class SysNoticeController {
 		}
 		Long userId = StpUtil.getLoginIdAsLong();
 		Long deptId = deptIdOf(userId);
-		query.and("(all_visible = 1 or id in (select notice_id from sys_notice_scope "
-			+ "where is_deleted = 0 and ((scope_type = 1 and scope_id = ?) or (scope_type = 2 and scope_id = ?))))",
+		query.and("(all_visible = 1 or id in (select notice_id from "
+			+ com.mugsun.boot.config.BizTables.of("sys_notice_scope")
+			+ " where is_deleted = 0 and ((scope_type = 1 and scope_id = ?) or (scope_type = 2 and scope_id = ?))))",
 			userId, deptId == null ? -1L : deptId);
 	}
 

@@ -1,6 +1,7 @@
 package com.mugsun.boot.system.service;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.mugsun.boot.config.BizTables;
 import com.mybatisflex.core.row.Db;
 import org.dromara.warm.flow.core.handler.PermissionHandler;
 import org.springframework.stereotype.Component;
@@ -38,8 +39,8 @@ public class MugsunPermissionHandler implements PermissionHandler {
 		List<String> flags = new ArrayList<>();
 		flags.add(StpUtil.getLoginIdAsString());
 		Db.selectListBySql(
-			"select r.role_code as \"rc\" from sys_user_role ur "
-				+ "join sys_role r on r.id = ur.role_id and r.is_deleted = 0 "
+			"select r.role_code as \"rc\" from " + BizTables.of("sys_user_role") + " ur "
+				+ "join " + BizTables.of("sys_role") + " r on r.id = ur.role_id and r.is_deleted = 0 "
 				+ "where ur.user_id = ? and ur.is_deleted = 0", StpUtil.getLoginIdAsLong())
 			.forEach(row -> flags.add(row.getString("rc")));
 		return flags;

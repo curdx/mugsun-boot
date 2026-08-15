@@ -2,6 +2,7 @@ package com.mugsun.boot.system.service;
 
 import com.mugsun.boot.common.constant.FlowConstants;
 import com.mugsun.boot.common.constant.RoleConstants;
+import com.mugsun.boot.config.BizTables;
 import com.mybatisflex.core.row.Db;
 import org.springframework.stereotype.Service;
 
@@ -49,14 +50,14 @@ public class HandlerSelectService {
 	public List<String> byRole(String roleCode) {
 		String tenant = com.mugsun.boot.tenant.TenantContext.current();
 		if (tenant == null) {
-			return column("select u.id as \"v\" from sys_user u "
-				+ "join sys_user_role ur on ur.user_id = u.id and ur.is_deleted = 0 "
-				+ "join sys_role r on r.id = ur.role_id and r.is_deleted = 0 "
+			return column("select u.id as \"v\" from " + BizTables.of("sys_user") + " u "
+				+ "join " + BizTables.of("sys_user_role") + " ur on ur.user_id = u.id and ur.is_deleted = 0 "
+				+ "join " + BizTables.of("sys_role") + " r on r.id = ur.role_id and r.is_deleted = 0 "
 				+ "where r.role_code = ? and u.is_deleted = 0", roleCode);
 		}
-		return column("select u.id as \"v\" from sys_user u "
-			+ "join sys_user_role ur on ur.user_id = u.id and ur.is_deleted = 0 "
-			+ "join sys_role r on r.id = ur.role_id and r.is_deleted = 0 "
+		return column("select u.id as \"v\" from " + BizTables.of("sys_user") + " u "
+			+ "join " + BizTables.of("sys_user_role") + " ur on ur.user_id = u.id and ur.is_deleted = 0 "
+			+ "join " + BizTables.of("sys_role") + " r on r.id = ur.role_id and r.is_deleted = 0 "
 			+ "where r.role_code = ? and u.is_deleted = 0 and u.tenant_id = '" + tenantSql(tenant) + "'", roleCode);
 	}
 
@@ -64,9 +65,9 @@ public class HandlerSelectService {
 	public List<String> byDept(String deptId) {
 		String tenant = com.mugsun.boot.tenant.TenantContext.current();
 		if (tenant == null) {
-			return column("select id as \"v\" from sys_user where dept_id = ? and is_deleted = 0", asLong(deptId));
+			return column("select id as \"v\" from " + BizTables.of("sys_user") + " where dept_id = ? and is_deleted = 0", asLong(deptId));
 		}
-		return column("select id as \"v\" from sys_user where dept_id = ? and is_deleted = 0 and tenant_id = '"
+		return column("select id as \"v\" from " + BizTables.of("sys_user") + " where dept_id = ? and is_deleted = 0 and tenant_id = '"
 			+ tenantSql(tenant) + "'", asLong(deptId));
 	}
 
@@ -74,9 +75,9 @@ public class HandlerSelectService {
 	public List<String> byPost(String postId) {
 		String tenant = com.mugsun.boot.tenant.TenantContext.current();
 		if (tenant == null) {
-			return column("select id as \"v\" from sys_user where post_id = ? and is_deleted = 0", asLong(postId));
+			return column("select id as \"v\" from " + BizTables.of("sys_user") + " where post_id = ? and is_deleted = 0", asLong(postId));
 		}
-		return column("select id as \"v\" from sys_user where post_id = ? and is_deleted = 0 and tenant_id = '"
+		return column("select id as \"v\" from " + BizTables.of("sys_user") + " where post_id = ? and is_deleted = 0 and tenant_id = '"
 			+ tenantSql(tenant) + "'", asLong(postId));
 	}
 
@@ -90,8 +91,8 @@ public class HandlerSelectService {
 
 	/** 某用户所在部门的负责人 id（sys_dept.leader_id） */
 	public List<String> deptLeaderByUser(String userId) {
-		return column("select d.leader_id as \"v\" from sys_user u "
-			+ "join sys_dept d on d.id = u.dept_id and d.is_deleted = 0 "
+		return column("select d.leader_id as \"v\" from " + BizTables.of("sys_user") + " u "
+			+ "join " + BizTables.of("sys_dept") + " d on d.id = u.dept_id and d.is_deleted = 0 "
 			+ "where u.id = ? and u.is_deleted = 0 and d.leader_id is not null", asLong(userId));
 	}
 
@@ -139,7 +140,8 @@ public class HandlerSelectService {
 		for (String id : userIds) {
 			String name = id;
 			if (id != null && id.chars().allMatch(Character::isDigit)) {
-				List<String> n = column("select username as \"v\" from sys_user where id = ? and is_deleted = 0", asLong(id));
+				List<String> n = column("select username as \"v\" from " + BizTables.of("sys_user")
+					+ " where id = ? and is_deleted = 0", asLong(id));
 				if (!n.isEmpty()) {
 					name = n.get(0);
 				}

@@ -86,8 +86,9 @@ public class GlobalSearchController {
 			Long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
 			com.mugsun.boot.system.entity.SysUser me = userMapper.selectOneById(userId);
 			Long deptId = me == null ? null : me.getDeptId();
-			nq.and("(all_visible = 1 or id in (select notice_id from sys_notice_scope "
-				+ "where is_deleted = 0 and ((scope_type = 1 and scope_id = ?) or (scope_type = 2 and scope_id = ?))))",
+			nq.and("(all_visible = 1 or id in (select notice_id from "
+				+ com.mugsun.boot.config.BizTables.of("sys_notice_scope")
+				+ " where is_deleted = 0 and ((scope_type = 1 and scope_id = ?) or (scope_type = 2 and scope_id = ?))))",
 				userId, deptId == null ? -1L : deptId);
 		}
 		for (SysNotice n : noticeMapper.selectListByQuery(nq)) {

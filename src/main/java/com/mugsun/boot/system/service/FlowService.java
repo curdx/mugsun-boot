@@ -12,7 +12,9 @@ import org.dromara.warm.flow.core.FlowEngine;
 import org.dromara.warm.flow.core.dto.FlowParams;
 import org.dromara.warm.flow.core.entity.Instance;
 import org.dromara.warm.flow.core.entity.Task;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -36,9 +38,25 @@ public class FlowService {
 	private final HandlerSelectService selectService;
 	private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
+	/**
+	 * 金仓：裸名 {@code sys_*} 会命中 SYS_CATALOG，裸 SQL 须 schema 限定业务表。
+	 */
+	@Value("${mugsun.db.default-schema:}")
+	private String defaultDbSchema;
+
 	public FlowService(HandlerSelectService selectService, com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
 		this.selectService = selectService;
 		this.objectMapper = objectMapper;
+	}
+
+	/** 业务表名（可带 default-schema；金仓裸 sys_* 会进 SYS_CATALOG） */
+	private String bizTable(String table) {
+		return StringUtils.hasText(defaultDbSchema) ? defaultDbSchema + "." + table : table;
+	}
+
+	/** 业务 sys_user 表名（可带 schema） */
+	private String sysUserTable() {
+		return bizTable("sys_user");
 	}
 
 	// ==================== 列表读取 ====================
@@ -325,7 +343,7 @@ public class FlowService {
 			return r;
 		}
 		Row form = firstRow("select name as \"n\", form_schema as \"s\", form_option as \"o\" "
-			+ "from sys_form where form_key = ? and is_deleted = 0 and status = 1", formKey);
+			+ "from " + bizTable("sys_form") + " where form_key = ? and is_deleted = 0 and status = 1", formKey);
 		if (form == null || form.getString("s") == null) {
 			r.put("hasForm", false);
 			return r;
@@ -482,7 +500,8 @@ public class FlowService {
 				continue;
 			}
 			boolean inTenant = !Db.selectListBySql(
-				"select 1 from sys_user where cast(id as varchar) = ? and tenant_id = ? and is_deleted = 0"
+				"select 1 from " + sysUserTable() + " where " + DbDialects.current().castVarchar("id")
+					+ " = ? and tenant_id = ? and is_deleted = 0"
 					+ DbDialects.current().limitOne(),
 				h, tenant).isEmpty();
 			if (!inTenant) {
@@ -532,11 +551,13 @@ public class FlowService {
 		args.add(instanceId);
 		boolean participant = !Db.selectListBySql(
 			"select 1 from flow_user u where coalesce(u.del_flag,'0') <> '1' and u.processed_by in (" + in + ") "
-				+ "and (u.associated = ? or u.associated in (select id from flow_task where instance_id = ?)) limit 1",
+				+ "and (u.associated = ? or u.associated in (select id from flow_task where instance_id = ?))"
+				+ DbDialects.current().limitOne(),
 			args.toArray()).isEmpty();
 		// 历史办理人
 		boolean handledBefore = !Db.selectListBySql(
-			"select 1 from flow_his_task where instance_id = ? and approver = ? limit 1", instanceId, me).isEmpty();
+			"select 1 from flow_his_task where instance_id = ? and approver = ?"
+				+ DbDialects.current().limitOne(), instanceId, me).isEmpty();
 		if (!participant && !handledBefore) {
 			throw new ServiceException("无权查看该流程");
 		}
@@ -549,7 +570,9 @@ public class FlowService {
 			return;
 		}
 		boolean inTenant = !Db.selectListBySql(
-			"select 1 from sys_user where cast(id as varchar) = ? and tenant_id = ? and is_deleted = 0 limit 1",
+			"select 1 from " + sysUserTable() + " where " + DbDialects.current().castVarchar("id")
+				+ " = ? and tenant_id = ? and is_deleted = 0"
+				+ DbDialects.current().limitOne(),
 			ins.getCreateBy(), tenant).isEmpty();
 		if (!inTenant) {
 			throw new ServiceException("流程实例不存在");
@@ -573,7 +596,9 @@ public class FlowService {
 		if (tenant == null) {
 			return null;
 		}
-		return "i.create_by in (select cast(id as varchar) from sys_user where tenant_id = ? and is_deleted = 0)";
+		// 子查询列必须表别名限定：金仓/PG 在多表 JOIN 下裸 id 会报「字段关联不明确」
+		return "i.create_by in (select " + DbDialects.current().castVarchar("su.id") + " from " + sysUserTable()
+			+ " su where su.tenant_id = ? and su.is_deleted = 0)";
 	}
 
 	/** 引擎办理参数基座：当前办理人 + 权限标识集（ignore 默认 false → 引擎校验办理权限） */
@@ -589,8 +614,8 @@ public class FlowService {
 	private List<String> userFlags() {
 		List<String> flags = new ArrayList<>();
 		Db.selectListBySql(
-			"select r.role_code as \"roleCode\" from sys_user_role ur "
-				+ "join sys_role r on r.id = ur.role_id "
+			"select r.role_code as \"roleCode\" from " + bizTable("sys_user_role") + " ur "
+				+ "join " + bizTable("sys_role") + " r on r.id = ur.role_id "
 				+ "where ur.user_id = ? and ur.is_deleted = 0", StpUtil.getLoginIdAsLong())
 			.forEach(row -> flags.add(String.valueOf(row.getString("roleCode"))));
 		flags.add(uid());

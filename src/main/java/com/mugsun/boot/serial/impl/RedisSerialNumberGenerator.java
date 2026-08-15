@@ -120,7 +120,8 @@ public class RedisSerialNumberGenerator extends AbstractSerialNumberGenerator {
 	private long dbFloor(SerialNumberInfo info) {
 		try {
 			com.mybatisflex.core.row.Row row = com.mybatisflex.core.row.Db.selectOneBySql(
-				"SELECT last_number, last_time FROM sys_serial_number WHERE code = ? AND is_deleted = 0", info.code());
+				"SELECT last_number, last_time FROM " + com.mugsun.boot.config.BizTables.of("sys_serial_number")
+					+ " WHERE code = ? AND is_deleted = 0", info.code());
 			if (row == null || row.getLong("last_number") == null) {
 				return info.initNumber();
 			}

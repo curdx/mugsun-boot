@@ -24,12 +24,16 @@ import java.util.Map;
 public class SysReportController {
 
 	/** 内置数据集：key -> 聚合 SQL（预置白名单，杜绝任意 SQL 注入） */
-	private static final Map<String, String> DATASETS = Map.of(
-		"user_status", "SELECT CASE status WHEN 1 THEN '启用' ELSE '停用' END AS name, count(*) AS value "
-			+ "FROM sys_user WHERE is_deleted = 0 GROUP BY status",
-		"tenant_user", "SELECT COALESCE(tenant_id, '未分配') AS name, count(*) AS value "
-			+ "FROM sys_user WHERE is_deleted = 0 GROUP BY tenant_id"
-	);
+	private static String datasetSql(String key) {
+		String u = com.mugsun.boot.config.BizTables.of("sys_user");
+		return switch (key) {
+			case "user_status" -> "SELECT CASE status WHEN 1 THEN '启用' ELSE '停用' END AS \"name\", count(*) AS \"value\" "
+				+ "FROM " + u + " WHERE is_deleted = 0 GROUP BY status";
+			case "tenant_user" -> "SELECT COALESCE(tenant_id, '未分配') AS \"name\", count(*) AS \"value\" "
+				+ "FROM " + u + " WHERE is_deleted = 0 GROUP BY tenant_id";
+			default -> null;
+		};
+	}
 
 	/** 数据集展示名（供设计端下拉） */
 	private static final Map<String, String> DATASET_LABELS = Map.of(
@@ -87,7 +91,7 @@ public class SysReportController {
 		if (report == null) {
 			throw new ServiceException("报表不存在");
 		}
-		String sql = DATASETS.get(report.getReportKey());
+		String sql = datasetSql(report.getReportKey());
 		if (sql == null) {
 			throw new ServiceException("未知数据集：" + report.getReportKey());
 		}
@@ -97,7 +101,7 @@ public class SysReportController {
 	/** 数据集预览：按内置数据集 key 执行聚合（多图表仪表盘按图逐个取数） */
 	@GetMapping("/preview-dataset")
 	public R<List<Row>> previewDataset(@RequestParam String key) {
-		String sql = DATASETS.get(key);
+		String sql = datasetSql(key);
 		if (sql == null) {
 			throw new ServiceException("未知数据集：" + key);
 		}

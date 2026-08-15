@@ -67,16 +67,20 @@ public class LogCleanJob {
 		try {
 			LocalDateTime deadline = LocalDateTime.now().minusDays(clampedDays(
 				paramService.getValue(MonitorConstants.PARAM_RETENTION_DAYS), MonitorConstants.DEFAULT_RETENTION_DAYS));
-			int api = Db.deleteBySql("DELETE FROM sys_api_log WHERE create_time < ?", deadline);
-			int error = Db.deleteBySql("DELETE FROM sys_error_log WHERE create_time < ?", deadline);
+			int api = Db.deleteBySql("DELETE FROM " + com.mugsun.boot.config.BizTables.of("sys_api_log")
+				+ " WHERE create_time < ?", deadline);
+			int error = Db.deleteBySql("DELETE FROM " + com.mugsun.boot.config.BizTables.of("sys_error_log")
+				+ " WHERE create_time < ?", deadline);
 			int operDays = clampedDays(paramService.getValue(MonitorConstants.PARAM_OPER_RETENTION_DAYS),
 				MonitorConstants.DEFAULT_OPER_RETENTION_DAYS);
 			LocalDateTime operDeadline = LocalDateTime.now().minusDays(operDays);
 			// 截断锚点：记录将被删除的末条记录（id 最大）哈希，验签从锚点续起（无锚点且首条 prev 非创世即报断链）
 			com.mybatisflex.core.row.Row anchor = Db.selectOneBySql(
-				"SELECT id, record_hash FROM sys_oper_log WHERE create_time < ? AND record_hash IS NOT NULL "
-					+ "ORDER BY id DESC LIMIT 1", operDeadline);
-			int oper = Db.deleteBySql("DELETE FROM sys_oper_log WHERE create_time < ?", operDeadline);
+				"SELECT id, record_hash FROM " + com.mugsun.boot.config.BizTables.of("sys_oper_log")
+					+ " WHERE create_time < ? AND record_hash IS NOT NULL "
+					+ "ORDER BY id DESC" + com.mugsun.boot.gen.DbDialects.current().limitOne(), operDeadline);
+			int oper = Db.deleteBySql("DELETE FROM " + com.mugsun.boot.config.BizTables.of("sys_oper_log")
+				+ " WHERE create_time < ?", operDeadline);
 			if (oper > 0 && anchor != null && anchor.getString("record_hash") != null) {
 				paramService.setValue(MonitorConstants.PARAM_CHAIN_ANCHOR,
 					anchor.getLong("id") + ":" + anchor.getString("record_hash"));

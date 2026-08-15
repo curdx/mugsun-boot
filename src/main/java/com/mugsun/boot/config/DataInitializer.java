@@ -15,6 +15,9 @@ import com.mugsun.boot.system.mapper.SysRoleMenuMapper;
 import com.mugsun.boot.system.mapper.SysUserMapper;
 import com.mugsun.boot.system.mapper.SysUserRoleMapper;
 import com.mybatisflex.core.query.QueryWrapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -26,6 +29,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class DataInitializer implements CommandLineRunner {
 
+	private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);
+
 	private final SysUserMapper userMapper;
 	private final SysRoleMapper roleMapper;
 	private final SysMenuMapper menuMapper;
@@ -33,6 +38,10 @@ public class DataInitializer implements CommandLineRunner {
 	private final SysRoleMenuMapper roleMenuMapper;
 	private final PasswordEncoder passwordEncoder;
 	private final com.mugsun.boot.security.SecurityPolicyService securityPolicyService;
+
+	/** 开发/联调：幂等播种低权账号 fronttest（sec 探针与 e2e 约定密码 123456） */
+	@Value("${mugsun.lab.seed-fronttest:false}")
+	private boolean seedFronttest;
 
 	public DataInitializer(SysUserMapper userMapper, SysRoleMapper roleMapper, SysMenuMapper menuMapper,
 						   SysUserRoleMapper userRoleMapper, SysRoleMenuMapper roleMenuMapper,
@@ -53,9 +62,44 @@ public class DataInitializer implements CommandLineRunner {
 		TenantContext.ignore(() -> {
 			seed();
 			seedCommonRole();
+			seedFronttestUser();
 			reanchorSeedMenus();
 			return null;
 		});
+	}
+
+	/**
+	 * 联调低权用户：挂普通用户角色（无管理写权限），供 api-probe sec / 浏览器越权对照。
+	 */
+	private void seedFronttestUser() {
+		if (!seedFronttest) {
+			return;
+		}
+		if (userMapper.selectCountByQuery(QueryWrapper.create().eq("username", "fronttest")) > 0) {
+			return;
+		}
+		seedCommonRole();
+		SysRole common = roleMapper.selectOneByQuery(QueryWrapper.create()
+			.eq("role_code", RoleConstants.USER)
+			.eq("tenant_id", TenantConstants.DEFAULT_TENANT_ID));
+		if (common == null) {
+			return;
+		}
+		SysUser u = new SysUser();
+		u.setUsername("fronttest");
+		u.setPassword(passwordEncoder.encode("123456"));
+		u.setNickname("前端测试");
+		u.setStatus(1);
+		u.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
+		try {
+			userMapper.insert(u);
+			SysUserRole ur = new SysUserRole();
+			ur.setUserId(u.getId());
+			ur.setRoleId(common.getId());
+			userRoleMapper.insert(ur);
+		} catch (Exception e) {
+			log.warn("播种 fronttest 跳过（可能已存在或唯一约束差异）：{}", e.getMessage());
+		}
 	}
 
 	/**
@@ -83,20 +127,28 @@ public class DataInitializer implements CommandLineRunner {
 	 * 启动时按业务键（permission/role_code）把种子菜单挂回真实父菜单、授权挂回 datatest 角色。
 	 */
 	private void reanchorSeedMenus() {
+		String menu = BizTables.of("sys_menu");
+		String role = BizTables.of("sys_role");
+		String roleMenu = BizTables.of("sys_role_menu");
+		String lim = com.mugsun.boot.gen.DbDialects.current().limitOne();
 		com.mybatisflex.core.row.Db.updateBySql(
-			"UPDATE sys_menu SET parent_id = (SELECT id FROM sys_menu WHERE permission = 'sys:user:list' AND is_deleted = 0 LIMIT 1) "
+			"UPDATE " + menu + " SET parent_id = (SELECT id FROM " + menu
+				+ " WHERE permission = 'sys:user:list' AND is_deleted = 0" + lim + ") "
 				+ "WHERE permission IN ('sys:user:add','sys:user:edit','sys:user:remove','sys:user:grant','sys:user:reset',"
 				+ "'sys:user:phone','sys:user:phone:plain','sys:user:idcard','sys:user:idcard:plain') AND is_deleted = 0 "
-				+ "AND EXISTS (SELECT 1 FROM sys_menu WHERE permission = 'sys:user:list' AND is_deleted = 0)");
+				+ "AND EXISTS (SELECT 1 FROM " + menu + " WHERE permission = 'sys:user:list' AND is_deleted = 0)");
 		com.mybatisflex.core.row.Db.updateBySql(
-			"UPDATE sys_menu SET parent_id = (SELECT parent_id FROM sys_menu WHERE permission = 'sys:user:list' AND is_deleted = 0 LIMIT 1) "
+			"UPDATE " + menu + " SET parent_id = (SELECT parent_id FROM " + menu
+				+ " WHERE permission = 'sys:user:list' AND is_deleted = 0" + lim + ") "
 				+ "WHERE permission = 'sys:gen:list' AND is_deleted = 0 "
-				+ "AND EXISTS (SELECT 1 FROM sys_menu WHERE permission = 'sys:user:list' AND is_deleted = 0)");
+				+ "AND EXISTS (SELECT 1 FROM " + menu + " WHERE permission = 'sys:user:list' AND is_deleted = 0)");
 		com.mybatisflex.core.row.Db.updateBySql(
-			"UPDATE sys_role_menu SET role_id = (SELECT id FROM sys_role WHERE role_code = 'datatest' AND is_deleted = 0 LIMIT 1) "
-				+ "WHERE menu_id IN (SELECT id FROM sys_menu WHERE permission IN ('sys:user:add','sys:user:phone') AND is_deleted = 0) "
-				+ "AND is_deleted = 0 AND role_id NOT IN (SELECT id FROM sys_role) "
-				+ "AND EXISTS (SELECT 1 FROM sys_role WHERE role_code = 'datatest' AND is_deleted = 0)");
+			"UPDATE " + roleMenu + " SET role_id = (SELECT id FROM " + role
+				+ " WHERE role_code = 'datatest' AND is_deleted = 0" + lim + ") "
+				+ "WHERE menu_id IN (SELECT id FROM " + menu
+				+ " WHERE permission IN ('sys:user:add','sys:user:phone') AND is_deleted = 0) "
+				+ "AND is_deleted = 0 AND role_id NOT IN (SELECT id FROM " + role + ") "
+				+ "AND EXISTS (SELECT 1 FROM " + role + " WHERE role_code = 'datatest' AND is_deleted = 0)");
 	}
 
 	private void seed() {
