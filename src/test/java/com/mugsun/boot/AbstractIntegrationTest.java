@@ -215,4 +215,40 @@ public abstract class AbstractIntegrationTest {
 	protected String loginAdmin() {
 		return login(PLATFORM_TENANT, ADMIN_USERNAME, ADMIN_PASSWORD);
 	}
+
+	/** Testcontainers 主库 JDBC（租户独立源等联调用） */
+	protected static String primaryJdbcUrl() {
+		return POSTGRES.getJdbcUrl();
+	}
+
+	protected static String primaryJdbcUsername() {
+		return POSTGRES.getUsername();
+	}
+
+	protected static String primaryJdbcPassword() {
+		return POSTGRES.getPassword();
+	}
+
+	/**
+	 * 在同容器创建附加库（idempotent）。用于租户独立数据源联调，不污染主库 schema。
+	 */
+	protected static void ensureExtraDatabase(String databaseName) {
+		String adminUrl = POSTGRES.getJdbcUrl().replaceFirst("/[^/]+$", "/postgres");
+		try (java.sql.Connection c = java.sql.DriverManager.getConnection(
+			adminUrl, POSTGRES.getUsername(), POSTGRES.getPassword());
+			 java.sql.Statement st = c.createStatement();
+			 java.sql.ResultSet rs = st.executeQuery(
+				"SELECT 1 FROM pg_database WHERE datname = '" + databaseName.replace("'", "") + "'")) {
+			if (!rs.next()) {
+				st.execute("CREATE DATABASE " + databaseName);
+			}
+		} catch (Exception e) {
+			throw new IllegalStateException("创建附加库失败：" + databaseName, e);
+		}
+	}
+
+	/** 将主库 JDBC URL 的库名段替换为指定库 */
+	protected static String jdbcUrlForDatabase(String databaseName) {
+		return POSTGRES.getJdbcUrl().replaceFirst("/[^/]+$", "/" + databaseName);
+	}
 }
