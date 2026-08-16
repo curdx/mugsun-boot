@@ -2,6 +2,7 @@ package com.mugsun.boot.oauth;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
+import com.mugsun.boot.common.config.WebProperties;
 import com.mugsun.boot.oauth.entity.SysOauthClient;
 import com.mugsun.core.tool.api.R;
 import jakarta.servlet.http.HttpServletResponse;
@@ -32,13 +33,13 @@ import java.util.Map;
 @RequestMapping("/oauth2")
 public class OAuthController {
 
-	/** 前端同意页 SPA 路由（hash 模式） */
-	private static final String CONSENT_PAGE = "http://localhost:3006/#/oauth-consent";
-
 	private final OAuthService oauthService;
 
-	public OAuthController(OAuthService oauthService) {
+	private final WebProperties webProperties;
+
+	public OAuthController(OAuthService oauthService, WebProperties webProperties) {
 		this.oauthService = oauthService;
+		this.webProperties = webProperties;
 	}
 
 	/** 令牌端点：grant_type=authorization_code / refresh_token / client_credentials，form 入参，标准 JSON 响应 */
@@ -112,7 +113,7 @@ public class OAuthController {
 			throw OAuth2Exception.invalidRequest("仅支持 response_type=code");
 		}
 		oauthService.loadEnabledClient(clientId);
-		StringBuilder url = new StringBuilder(CONSENT_PAGE).append("?client_id=").append(enc(clientId));
+		StringBuilder url = new StringBuilder(webProperties.oauthConsentPage()).append("?client_id=").append(enc(clientId));
 		appendParam(url, "redirect_uri", redirectUri);
 		appendParam(url, "scope", scope);
 		appendParam(url, "state", state);

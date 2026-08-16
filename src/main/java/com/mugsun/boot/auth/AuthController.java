@@ -53,6 +53,7 @@ public class AuthController {
 	private final com.mugsun.boot.system.mapper.SysUserRoleMapper userRoleMapper;
 	private final IpRegionService ipRegionService;
 	private final ForgetPasswordService forgetPasswordService;
+	private final com.mugsun.boot.gis.GisModuleService gisModuleService;
 
 	/**
 	 * 金仓等独立 schema：裸 SQL 必须 schema 限定，否则 {@code sys_user} 会命中 SYS_CATALOG。
@@ -77,7 +78,8 @@ public class AuthController {
 						  com.mugsun.boot.system.mapper.SysRoleMapper roleMapper,
 						  com.mugsun.boot.system.mapper.SysUserRoleMapper userRoleMapper,
 						  IpRegionService ipRegionService,
-						  ForgetPasswordService forgetPasswordService) {
+						  ForgetPasswordService forgetPasswordService,
+						  com.mugsun.boot.gis.GisModuleService gisModuleService) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
 		this.loginLockService = loginLockService;
@@ -98,6 +100,7 @@ public class AuthController {
 		this.userRoleMapper = userRoleMapper;
 		this.ipRegionService = ipRegionService;
 		this.forgetPasswordService = forgetPasswordService;
+		this.gisModuleService = gisModuleService;
 	}
 
 	/** SM2 传输公钥：前端登录/改密/注册前取此公钥加密密码；gmEnabled=false 时前端明文传输 */
@@ -551,6 +554,7 @@ public class AuthController {
 		data.put("buttons", StpUtil.getPermissionList());
 		data.put("needChangePassword", securityPolicyService.needChangePassword(user.getId()));
 		data.put("watermark", securityPolicyService.isWatermarkEnabled());
+		data.put("gisEnabled", gisModuleService.isEnabled());
 		// 个人中心展示：邮箱明文（无脱敏注记列），手机号由 @ColumnMask 既有裁决（明文/脱敏/不可见）
 		data.put("email", user.getEmail());
 		data.put("phone", user.getPhone());

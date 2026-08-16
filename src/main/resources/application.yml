@@ -5,6 +5,9 @@ server:
 spring:
   application:
     name: mugsun-boot
+  # 本地密钥/验证码回显：把 config/application-local.yml.example 复制为 application-local.yml（gitignore）
+  config:
+    import: optional:file:./config/application-local.yml
   lifecycle:
     # 优雅停机在途请求最长等待
     timeout-per-shutdown-phase: 20s
@@ -98,8 +101,8 @@ jetcache:
     default:
       type: redis.lettuce
       keyConvertor: bean:tenantKeyConvertor
-      valueEncoder: java
-      valueDecoder: java
+      valueEncoder: bean:jsonValueEncoder
+      valueDecoder: bean:jsonValueDecoder
       uri: redis://localhost:6379/3
 dromara:
   x-file-storage:
@@ -123,7 +126,7 @@ sms:
       template-id: SMS_000000
 powerjob:
   worker:
-    enabled: true
+    enabled: false
     app-name: mugsun
     server-address: 127.0.0.1:7700
     protocol: http
@@ -132,6 +135,9 @@ powerjob:
 liteflow:
   rule-source: flow/*.el.xml
 mugsun:
+  web:
+    # 管理端 origin；e2e :3007 / 反代域名设 MUGSUN_FRONT_URL，禁止代码写死端口
+    front-url: ${MUGSUN_FRONT_URL:http://localhost:3006}
   captcha:
     enabled: true
     show-code: false         # 验证码回显仅 dev profile 开启（生产开启=防爆破体系架空）
@@ -155,6 +161,9 @@ mugsun:
     enabled: ${MUGSUN_SOCIAL_ENABLED:true}
     # mock 社交来源仅 dev profile 配置（身份固定=后门，主配置绝不携带）
     mock-enabled: ${MUGSUN_SOCIAL_MOCK:false}
+  gis:
+    # 地理信息模块总开关（默认开）；sys_param gis.module.enabled=false 可运行时关闭，无需配任何底图 Key
+    enabled: ${MUGSUN_GIS_ENABLED:true}
   ip2region:
     # 离线 IP 归属地（登录日志 login_location 列）：缺省关闭。
     # xdb 数据文件（约 11MB）不入库——官方仅经 GitHub 仓库 data/ 分发且不定期更新，

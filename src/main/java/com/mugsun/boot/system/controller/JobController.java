@@ -4,6 +4,8 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.core.tool.api.R;
 import com.mugsun.core.tool.exception.ServiceException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.web.bind.annotation.*;
 import tech.powerjob.client.PowerJobClient;
@@ -29,6 +31,8 @@ import java.util.TreeMap;
 @RequestMapping("/system/job")
 @SaCheckLogin
 public class JobController {
+
+	private static final Logger log = LoggerFactory.getLogger(JobController.class);
 
 	/** PowerJob OpenAPI 地址/凭据外置（默认本地联调值，生产经环境变量覆盖） */
 	@org.springframework.beans.factory.annotation.Value("${powerjob.openapi.address:${powerjob.worker.server-address:127.0.0.1:7700}}")
@@ -59,11 +63,23 @@ public class JobController {
 		return client;
 	}
 
+	/** OpenAPI 调用失败转友好业务错误，避免 Server 未起时整页 500 */
+	private <T> T callOpenApi(java.util.function.Supplier<T> action) {
+		try {
+			return action.get();
+		} catch (ServiceException e) {
+			throw e;
+		} catch (Exception e) {
+			log.warn("PowerJob OpenAPI 不可用 address={}", serverAddress, e);
+			throw new ServiceException("定时任务服务不可用，请先启动 PowerJob Server（" + serverAddress + "）");
+		}
+	}
+
 	/** 任务列表（过滤已删除 status=99） */
 	@SaCheckPermission("sys:job:list")
 	@GetMapping("/list")
 	public R<List<JobInfoDTO>> list() {
-		List<JobInfoDTO> jobs = client().fetchAllJob().getData();
+		List<JobInfoDTO> jobs = callOpenApi(() -> client().fetchAllJob().getData());
 		return R.data(jobs == null ? List.of()
 			: jobs.stream().filter(j -> j.getStatus() == null || j.getStatus() != 99).toList());
 	}
@@ -101,7 +117,7 @@ public class JobController {
 		if (type == TimeExpressionType.CRON) {
 			req.setTimeExpression(param.timeExpression());
 		}
-		return R.data(client().saveJob(req).getData());
+		return R.data(callOpenApi(() -> client().saveJob(req).getData()));
 	}
 
 	/** 处理器校验：必须已在注册表（Spring 容器 BasicProcessor 实现）中，防保存指向不存在类的死任务 */
@@ -122,16 +138,19 @@ public class JobController {
 	@SaCheckPermission("sys:job:run")
 	@PostMapping("/run/{jobId}")
 	public R<Long> run(@PathVariable Long jobId) {
-		JobInfoDTO job = client().fetchJob(jobId).getData();
+		JobInfoDTO job = callOpenApi(() -> client().fetchJob(jobId).getData());
 		String instanceParams = job == null || job.getJobParams() == null ? "" : job.getJobParams();
-		return R.data(client().runJob(jobId, instanceParams, 0L).getData());
+		return R.data(callOpenApi(() -> client().runJob(jobId, instanceParams, 0L).getData()));
 	}
 
 	/** 启用任务 */
 	@SaCheckPermission("sys:job:edit")
 	@PostMapping("/enable/{jobId}")
 	public R<Void> enable(@PathVariable Long jobId) {
-		client().enableJob(jobId);
+		callOpenApi(() -> {
+			client().enableJob(jobId);
+			return null;
+		});
 		return R.success("已启用");
 	}
 
@@ -139,7 +158,10 @@ public class JobController {
 	@SaCheckPermission("sys:job:edit")
 	@PostMapping("/disable/{jobId}")
 	public R<Void> disable(@PathVariable Long jobId) {
-		client().disableJob(jobId);
+		callOpenApi(() -> {
+			client().disableJob(jobId);
+			return null;
+		});
 		return R.success("已停用");
 	}
 
@@ -147,7 +169,10 @@ public class JobController {
 	@SaCheckPermission("sys:job:remove")
 	@PostMapping("/delete/{jobId}")
 	public R<Void> delete(@PathVariable Long jobId) {
-		client().deleteJob(jobId);
+		callOpenApi(() -> {
+			client().deleteJob(jobId);
+			return null;
+		});
 		return R.success("删除成功");
 	}
 
@@ -159,14 +184,14 @@ public class JobController {
 		query.setJobIdEq(jobId);
 		query.setIndex(0);
 		query.setPageSize(20);
-		return R.data(client().queryInstanceInfo(query).getData().getData());
+		return R.data(callOpenApi(() -> client().queryInstanceInfo(query).getData().getData()));
 	}
 
 	/** 查询执行实例状态（3 运行中 / 5 成功 / 4 失败） */
 	@SaCheckPermission("sys:job:list")
 	@GetMapping("/status")
 	public R<Integer> status(@RequestParam Long instanceId) {
-		return R.data(client().fetchInstanceStatus(instanceId).getData());
+		return R.data(callOpenApi(() -> client().fetchInstanceStatus(instanceId).getData()));
 	}
 
 	/** 任务参数：id 为空则新建；processorInfo 处理器全限定类名；jobParams 任务固定参数；时间表达式类型 API（手动）/ CRON（定时） */
