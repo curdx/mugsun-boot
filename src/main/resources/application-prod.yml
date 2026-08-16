@@ -55,8 +55,8 @@ sms:
 
 powerjob:
   worker:
-    enabled: ${POWERJOB_ENABLED:true}
-    server-address: ${POWERJOB_SERVER}
+    enabled: ${POWERJOB_ENABLED:false}
+    server-address: ${POWERJOB_SERVER:}
     app-name: ${POWERJOB_APP_NAME:mugsun}
 
 # API 文档生产关闭（类型生成走 CI 内网拉取）
@@ -67,6 +67,8 @@ springdoc:
     enabled: false
 
 mugsun:
+  web:
+    front-url: ${MUGSUN_FRONT_URL}
   captcha:
     enabled: true
     show-code: false

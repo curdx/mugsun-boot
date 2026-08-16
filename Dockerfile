@@ -9,7 +9,8 @@
 #
 # 构建（在父目录或本仓库执行均可）：
 #   docker build -f mugsun-boot/Dockerfile -t mugsun/boot:latest <父目录>
-# 日常推荐直接使用 docker-compose.yml（已内置上述上下文配置）。
+# 日常开发先起基础设施：在本仓库执行 `docker compose up -d`（Postgres + Redis）。
+# 应用本体默认在宿主机 `mvn spring-boot:run` / `java -jar`，以便加载 config/application-local.yml。
 # ============================================================
 
 # ---------- 阶段 1：源码构建 ----------

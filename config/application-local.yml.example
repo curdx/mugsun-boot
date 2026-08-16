@@ -1,0 +1,28 @@
+# 本地联调覆盖：复制为同目录 application-local.yml（gitignore，不提交）。
+# 启动时 Spring 会 optional import ./config/application-local.yml，无需再写 additional-location。
+# 工作目录须为 mugsun-boot（mvn spring-boot:run 或 java -jar target/*.jar）。
+mugsun:
+  captcha:
+    show-code: true
+  sms:
+    show-code: true
+  web:
+    # e2e 走 :3007 时改为 http://localhost:3007，或导出 MUGSUN_FRONT_URL
+    front-url: http://localhost:3006
+  crypto:
+    sm4-key: mugsun-local-sm4
+    api-key: mugsun-local-apk
+    # 下列占位须换成你自己的密钥对；留空则每次启动临时生成（登录会 flake）
+    sm2-private-key:
+    sm2-public-key:
+    sign-private-key:
+    sign-public-key:
+  social:
+    enabled: true
+    mock-enabled: true
+    mock-authorize-url: http://localhost:8080/auth/social/mock-authorize
+    type:
+      mock:
+        client-id: mock-client
+        client-secret: mock-secret
+        redirect-uri: "http://localhost:3006/#/auth/social-callback?source=mock"

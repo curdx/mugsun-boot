@@ -38,7 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 		"mugsun.captcha.show-code=true",
 		"mugsun.sms.show-code=true",
 		"mugsun.crypto.sm4-key=mugsun-test-sm4k16",
-		"mugsun.crypto.api-key=mugsun-test-apk16"
+		"mugsun.crypto.api-key=mugsun-test-apk16",
+		"mugsun.web.front-url=http://frontend.test:3006"
 	})
 public abstract class AbstractIntegrationTest {
 

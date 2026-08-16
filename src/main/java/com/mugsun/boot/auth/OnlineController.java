@@ -5,6 +5,7 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.session.SaSession;
 import cn.dev33.satoken.session.SaTerminalInfo;
 import cn.dev33.satoken.stp.StpUtil;
+import com.mugsun.boot.cache.RedisScanSupport;
 import com.mugsun.boot.common.constant.MonitorConstants;
 import com.mugsun.boot.system.entity.SysUser;
 import com.mugsun.boot.system.mapper.SysUserMapper;
@@ -15,6 +16,8 @@ import com.mugsun.core.tool.exception.ServiceException;
 import com.mybatisflex.core.query.QueryWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -57,10 +60,16 @@ public class OnlineController {
 
 	private final SysUserMapper userMapper;
 	private final WsMessageSender wsMessageSender;
+	private final StringRedisTemplate redisTemplate;
 
-	public OnlineController(SysUserMapper userMapper, WsMessageSender wsMessageSender) {
+	@Value("${sa-token.token-name:Authorization}")
+	private String tokenName;
+
+	public OnlineController(SysUserMapper userMapper, WsMessageSender wsMessageSender,
+		StringRedisTemplate redisTemplate) {
 		this.userMapper = userMapper;
 		this.wsMessageSender = wsMessageSender;
+		this.redisTemplate = redisTemplate;
 	}
 
 	/**
@@ -174,8 +183,8 @@ public class OnlineController {
 
 	private List<SaSession> loadSessions() {
 		List<SaSession> sessions = new ArrayList<>();
-		List<String> sessionIds = StpUtil.searchSessionId("", 0, -1, false);
-		for (String sid : sessionIds) {
+		String pattern = tokenName + ":" + StpUtil.getLoginType() + ":session:*";
+		for (String sid : RedisScanSupport.scan(redisTemplate, pattern)) {
 			SaSession session = StpUtil.getSessionBySessionId(sid);
 			if (session != null) {
 				sessions.add(session);

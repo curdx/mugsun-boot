@@ -79,21 +79,35 @@ flowchart TB
 - PostgreSQL 16
 - Redis 7
 
-### 1. Initialize the database
+### 1. Infrastructure (Docker Compose)
 
 ```bash
-psql -U postgres -f scripts/init-db.sql
+# From the mugsun-boot directory: Postgres 16 (mugsun-pg) + Redis 7 (blade-redis)
+docker compose up -d
 ```
 
-The script creates the `mugsun` role, the `mugsun` primary database, and the `mugsun_track` analytics database, and grants CREATEDB.
+This creates the `mugsun` role, the `mugsun` primary database, and `mugsun_track`, and grants CREATEDB. If you already have PostgreSQL locally: `psql -U postgres -f scripts/init-db.sql`.
 
 ### 2. Build the core
 
 ```bash
-cd ../mugsun-core && mvn clean install && cd ../mugsun-boot
+cd ../mugsun-core && mvn clean install -DskipTests && cd ../mugsun-boot
 ```
 
-### 3. Run
+### 3. Local config (recommended)
+
+```bash
+cp config/application-local.yml.example config/application-local.yml
+# Fill in a fixed SM2 key pair (empty keys generate a new pair on every boot — login will flake)
+```
+
+`application-local.yml` is gitignored. `mvn spring-boot:run` **auto-imports** `./config/application-local.yml` when the working directory is `mugsun-boot`. That file pins crypto keys and sets `show-code: true` so captchas echo in the JSON.
+
+The OAuth consent redirect uses `mugsun.web.front-url` (`MUGSUN_FRONT_URL`). Daily UI on `:3006` can keep the default; e2e on `:3007` must set `MUGSUN_FRONT_URL=http://localhost:3007`.
+
+The PowerJob worker is **off by default**. The job admin page talks to a standalone PowerJob Server (`127.0.0.1:7700`); if it is down the API returns a business error instead of HTTP 500. Enable the worker with `POWERJOB_ENABLED=true` only when the Server is up.
+
+### 4. Run
 
 ```bash
 mvn spring-boot:run
@@ -101,11 +115,11 @@ mvn spring-boot:run
 
 Flyway automatically applies 70+ migrations plus menu seed data, so the very first boot is already a complete system. API docs live at `http://localhost:8080/swagger-ui/index.html` (disabled under the prod profile).
 
-### 4. Sign in
+### 5. Sign in
 
-Default credentials: `admin / 123456`. Override with the `MUGSUN_INIT_PASSWORD` environment variable — **you must change this in production**.
+The only seeded account is **`admin / 123456`**. Override with `MUGSUN_INIT_PASSWORD` — **you must change this in production**. `fronttest` is not seeded on a cold start (it is created only when `mugsun.lab.seed-fronttest` is on).
 
-### 5. Frontend
+### 6. Frontend
 
 The admin UI lives in [mugsun-pc](https://github.com/curdx/mugsun-pc). Follow its side-by-side clone instructions to connect it to this service.
 
@@ -113,7 +127,7 @@ The admin UI lives in [mugsun-pc](https://github.com/curdx/mugsun-pc). Follow it
 
 Activate the prod profile: `--spring.profiles.active=prod`.
 
-- `application-prod.yml` reads everything from environment variables (datasources / Redis / SMTP / SMS / storage / keys) — no plaintext secrets in the repo
+- `application-prod.yml` reads everything from environment variables (datasources / Redis / SMTP / SMS / storage / keys / `MUGSUN_FRONT_URL`) — no plaintext secrets in the repo
 - `mugsun.crypto.strict-keys=true`: startup fails fast if any SM4 / SM2 / audit-signing key is missing
 - Actuator is fail-closed by default; only `health` is public, and metric endpoints require authenticated authorization
 - springdoc API docs are disabled automatically in prod
@@ -127,7 +141,6 @@ Activate the prod profile: `--spring.profiles.active=prod`.
 
 ## 🗺 Roadmap (planned)
 
-- One-command Docker Compose deployment (Dockerfile + postgres init scripts ready; Compose wiring in progress)
 - Microservice distribution
 - AI-powered capabilities (model integration / chat / knowledge base)
 

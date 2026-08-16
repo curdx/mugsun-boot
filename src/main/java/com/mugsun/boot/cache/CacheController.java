@@ -3,8 +3,6 @@ package com.mugsun.boot.cache;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.mugsun.core.tool.api.R;
 import org.springframework.data.redis.connection.DataType;
-import org.springframework.data.redis.core.Cursor;
-import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
@@ -79,13 +77,7 @@ public class CacheController {
 		return R.success("已清除");
 	}
 
-	/** SCAN 遍历匹配键，避免 KEYS 阻塞 */
 	private List<String> scan(String pattern) {
-		List<String> keys = new ArrayList<>();
-		try (Cursor<String> cursor = redisTemplate.scan(
-			ScanOptions.scanOptions().match(pattern).count(200).build())) {
-			cursor.forEachRemaining(keys::add);
-		}
-		return keys;
+		return RedisScanSupport.scan(redisTemplate, pattern);
 	}
 }

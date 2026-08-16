@@ -79,26 +79,35 @@ flowchart TB
 - PostgreSQL 16
 - Redis 7
 
-### 1. 初始化数据库
+### 1. 基础设施（Docker Compose）
 
 ```bash
-# 本机已有 PostgreSQL（用超级用户执行）
-psql -U postgres -f scripts/init-db.sql
-
-# 或使用 Docker（示例：密码经环境变量注入，勿写进镜像）
-# docker run ... -e MUGSUN_DB_PASSWORD=... -v "$PWD/scripts/init-db.sql:/initdb/init-db.sql:ro" ...
-# 详见 docker/postgres/00-init-db.sh
+# 在 mugsun-boot 目录：拉起 Postgres 16（mugsun-pg）与 Redis 7（blade-redis）
+docker compose up -d
 ```
 
-脚本会创建 `mugsun` 账号、主库 `mugsun` 与埋点库 `mugsun_track`，并授予 CREATEDB 权限。
+脚本会创建 `mugsun` 账号、主库 `mugsun` 与埋点库 `mugsun_track`，并授予 CREATEDB 权限。本机已有 PostgreSQL 时也可：`psql -U postgres -f scripts/init-db.sql`。
 
 ### 2. 构建内核
 
 ```bash
-cd ../mugsun-core && mvn clean install && cd ../mugsun-boot
+cd ../mugsun-core && mvn clean install -DskipTests && cd ../mugsun-boot
 ```
 
-### 3. 启动
+### 3. 本地配置（强烈建议）
+
+```bash
+cp config/application-local.yml.example config/application-local.yml
+# 写入固定 SM2 密钥对（留空则每次启动临时生成，登录会 flake）
+```
+
+`application-local.yml` 已被 gitignore。`mvn spring-boot:run` **会自动 import** `./config/application-local.yml`（工作目录须为 `mugsun-boot`），用于固定密钥并 `show-code: true` 回显验证码。
+
+OAuth 同意页跳转地址取自 `mugsun.web.front-url`（环境变量 `MUGSUN_FRONT_URL`）。日常前端 `:3006` 用默认值；e2e `:3007` 须设 `MUGSUN_FRONT_URL=http://localhost:3007`。
+
+PowerJob Worker **默认关闭**。定时任务页依赖独立 PowerJob Server（`127.0.0.1:7700`）；未启动时接口返回业务错误而非 500。需要 Worker 时设 `POWERJOB_ENABLED=true` 并保证 Server 已起。
+
+### 4. 启动
 
 ```bash
 mvn spring-boot:run
@@ -106,11 +115,11 @@ mvn spring-boot:run
 
 Flyway 自动完成 70+ 个迁移脚本与菜单种子数据，首次启动即是完整系统。API 文档见 `http://localhost:8080/swagger-ui/index.html`（prod 环境自动关闭）。
 
-### 4. 登录
+### 5. 登录
 
-默认账号 `admin / 123456`，可通过环境变量 `MUGSUN_INIT_PASSWORD` 覆盖——**生产部署必须修改**。
+默认账号 **只有** `admin / 123456`，可通过环境变量 `MUGSUN_INIT_PASSWORD` 覆盖——**生产部署必须修改**。冷启动不播种 `fronttest`（该账号仅 `mugsun.lab.seed-fronttest` 打开时生成，默认关闭）。
 
-### 5. 前端
+### 6. 前端
 
 管理端见 [mugsun-pc](https://github.com/curdx/mugsun-pc) 仓，按其四仓平级 clone 说明启动即可对接本服务。
 
@@ -118,7 +127,7 @@ Flyway 自动完成 70+ 个迁移脚本与菜单种子数据，首次启动即�
 
 启用 prod profile：`--spring.profiles.active=prod`。
 
-- `application-prod.yml` 全量环境变量注入（数据源 / Redis / SMTP / 短信 / 存储 / 密钥），仓库内不落任何明文
+- `application-prod.yml` 全量环境变量注入（数据源 / Redis / SMTP / 短信 / 存储 / 密钥 / `MUGSUN_FRONT_URL`），仓库内不落任何明文
 - `mugsun.crypto.strict-keys=true`：SM4 / SM2 / 审计签名密钥缺失即拒绝启动
 - Actuator 默认 fail-closed，仅放行 `health`，指标端点需登录授权
 - API 文档（springdoc）prod 环境自动关闭
@@ -132,7 +141,6 @@ Flyway 自动完成 70+ 个迁移脚本与菜单种子数据，首次启动即�
 
 ## 🗺 路线图（规划中）
 
-- Docker Compose 一键部署（Dockerfile + postgres 初始化脚本已就绪，Compose 编排补齐中）
 - 微服务形态
 - AI 增强能力（模型接入 / 对话 / 知识库）
 

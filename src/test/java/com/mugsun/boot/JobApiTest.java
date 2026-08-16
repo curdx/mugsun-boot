@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 定时任务回归（不依赖 PowerJob Server）：处理器注册表可读；未注册处理器保存被拒；未登录 401。
- * list/save 连 Server 的路径在无 7700 时会失败，故本类只覆盖本地可断言契约。
+ * list 在无 7700 时应业务失败而非 500；save 未注册处理器被拒；未登录 401。
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class JobApiTest extends AbstractIntegrationTest {
@@ -40,6 +40,18 @@ class JobApiTest extends AbstractIntegrationTest {
 		JsonNode first = r.path("data").get(0);
 		assertThat(first.path("value").asText()).isNotBlank();
 		assertThat(first.path("label").asText()).isNotBlank();
+	}
+
+	@Test
+	void listDoesNotReturnHttp500() {
+		ResponseEntity<String> resp = get("/system/job/list", adminToken);
+		assertThat(resp.getStatusCode().value()).as("连不上 Server 时也应走 R 信封而非 5xx").isLessThan(500);
+		JsonNode r = readBody(resp);
+		if (r.path("code").asInt() != 200) {
+			assertThat(r.path("msg").asText()).contains("定时任务服务不可用");
+		} else {
+			assertThat(r.path("data").isArray()).as("Server 可用时返回任务数组").isTrue();
+		}
 	}
 
 	@Test
