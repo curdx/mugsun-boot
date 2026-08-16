@@ -50,6 +50,7 @@ public final class TenantPackageModules {
 		GATED.put("/system/message", Set.of("MessageSend"));
 		GATED.put("/system/mail-template", Set.of("MailTemplate"));
 		GATED.put("/system/client", Set.of("Client"));
+		GATED.put("/system/gis", Set.of("GisWorkspace", "GisProvider", "GisLayer", "GisScene", "GisAnalyze"));
 	}
 
 	/** 跨模块只读助手后缀（选择器 / 字典运行时批量），永远放行——套餐外模块仍可作只读选择器数据源 */

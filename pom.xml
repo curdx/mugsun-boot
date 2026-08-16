@@ -191,6 +191,12 @@
 			<artifactId>postgresql</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!-- GIS 空间分析：缓冲/相交/融合等（Web Mercator 米制，入出 WGS84 GeoJSON） -->
+		<dependency>
+			<groupId>org.locationtech.jts</groupId>
+			<artifactId>jts-core</artifactId>
+			<version>1.20.0</version>
+		</dependency>
 		<!-- 集成测试假 SMTP（jakarta 兼容 2.x）：邮件渠道 fan-out 真实收发断言 -->
 		<dependency>
 			<groupId>com.icegreen</groupId>

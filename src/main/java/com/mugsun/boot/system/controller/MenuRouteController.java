@@ -33,12 +33,15 @@ public class MenuRouteController {
 	private final SysMenuMapper menuMapper;
 	private final SysUserRoleMapper userRoleMapper;
 	private final SysRoleMenuMapper roleMenuMapper;
+	private final com.mugsun.boot.gis.GisModuleService gisModuleService;
 
 	public MenuRouteController(SysMenuMapper menuMapper, SysUserRoleMapper userRoleMapper,
-							   SysRoleMenuMapper roleMenuMapper) {
+							   SysRoleMenuMapper roleMenuMapper,
+							   com.mugsun.boot.gis.GisModuleService gisModuleService) {
 		this.menuMapper = menuMapper;
 		this.userRoleMapper = userRoleMapper;
 		this.roleMenuMapper = roleMenuMapper;
+		this.gisModuleService = gisModuleService;
 	}
 
 	@GetMapping("/menus")
@@ -83,6 +86,14 @@ public class MenuRouteController {
 				String probe = m.getComponent() != null && !m.getComponent().isBlank()
 					? m.getComponent() : m.getPath();
 				if (probe != null && com.mugsun.boot.tenant.TenantPackageModules.isPlatformOnly(probe)) {
+					visible.remove(m.getId());
+				}
+			}
+		}
+		if (!gisModuleService.isEnabled()) {
+			for (SysMenu m : all) {
+				String path = m.getPath();
+				if (path != null && (path.equals("/gis") || path.startsWith("/gis/"))) {
 					visible.remove(m.getId());
 				}
 			}
