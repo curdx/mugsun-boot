@@ -121,7 +121,7 @@ Flyway 自动完成 70+ 个迁移脚本与菜单种子数据，首次启动即�
 
 ### 6. 前端
 
-管理端见 [mugsun-pc](https://github.com/curdx/mugsun-pc) 仓，按其四仓平级 clone 说明启动即可对接本服务。
+管理端见 [mugsun-pc](https://github.com/mugsun/mugsun-pc) 仓，按其四仓平级 clone 说明启动即可对接本服务。
 
 ## 🛡 生产部署
 

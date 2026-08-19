@@ -13,11 +13,45 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: mugsun
+          POSTGRES_USER: mugsun
+          POSTGRES_PASSWORD: mugsun
+        options: >-
+          --health-cmd="pg_isready -U mugsun"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      # 在 CI 中优先使用服务容器（Postgres/Redis），避免 Testcontainers 环境差异
+      MUGSUN_TEST_USE_SERVICES: "true"
+      # 与 AbstractIntegrationTest 中的默认一致
+      POSTGRES_DB: mugsun
+      POSTGRES_USER: mugsun
+      POSTGRES_PASSWORD: mugsun
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
     steps:
       - name: Checkout mugsun-core
         uses: actions/checkout@v4
         with:
-          repository: curdx/mugsun-core
+          repository: mugsun/mugsun-core
           path: mugsun-core
 
       - name: Checkout mugsun-boot
@@ -26,7 +60,7 @@ jobs:
           path: mugsun-boot
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
