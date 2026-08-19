@@ -24,6 +24,7 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -55,6 +56,23 @@ public abstract class AbstractIntegrationTest {
 	/** Sa-Token 令牌请求头（裸 token，无前缀） */
 	protected static final String TOKEN_HEADER = "Authorization";
 
+	/** CI 可通过环境变量切换到外部服务（GitHub Actions services: Postgres/Redis） */
+	private static boolean useExternalServices() {
+		String flag = System.getenv("MUGSUN_TEST_USE_SERVICES");
+		return flag != null && ("true".equalsIgnoreCase(flag) || "1".equals(flag));
+	}
+	private static String envOr(String key, String def) {
+		String v = System.getenv(key);
+		return v == null || v.isBlank() ? def : v;
+	}
+	private static final String EXT_PG_HOST = envOr("POSTGRES_HOST", "127.0.0.1");
+	private static final int EXT_PG_PORT = Integer.parseInt(envOr("POSTGRES_PORT", "5432"));
+	private static final String EXT_PG_DB   = envOr("POSTGRES_DB", "mugsun");
+	private static final String EXT_PG_USER = envOr("POSTGRES_USER", "mugsun");
+	private static final String EXT_PG_PASS = envOr("POSTGRES_PASSWORD", "mugsun");
+	private static final String EXT_REDIS_HOST = envOr("REDIS_HOST", "127.0.0.1");
+	private static final int EXT_REDIS_PORT = Integer.parseInt(envOr("REDIS_PORT", "6379"));
+
 	private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
 		DockerImageName.parse("postgres:16-alpine"))
 		.withDatabaseName("mugsun")
@@ -69,32 +87,51 @@ public abstract class AbstractIntegrationTest {
 	protected static final String TRACK_DB = "mugsun_track";
 
 	static {
-		POSTGRES.start();
-		REDIS.start();
+		if (!useExternalServices()) {
+			POSTGRES.start();
+			REDIS.start();
+		}
 	}
 
 	/** 同容器双库：把容器 JDBC URL 的库名段替换为埋点库名 */
 	private static String trackJdbcUrl() {
-		String url = POSTGRES.getJdbcUrl();
+		String url = useExternalServices()
+			? "jdbc:postgresql://" + EXT_PG_HOST + ":" + EXT_PG_PORT + "/" + EXT_PG_DB
+			: POSTGRES.getJdbcUrl();
 		return url.substring(0, url.lastIndexOf('/')) + "/" + TRACK_DB;
 	}
 
 	@DynamicPropertySource
 	static void containerProperties(DynamicPropertyRegistry registry) {
-		registry.add("mybatis-flex.datasource.primary.url", POSTGRES::getJdbcUrl);
-		registry.add("mybatis-flex.datasource.primary.username", POSTGRES::getUsername);
-		registry.add("mybatis-flex.datasource.primary.password", POSTGRES::getPassword);
+		if (useExternalServices()) {
+			registry.add("mybatis-flex.datasource.primary.url",
+				() -> "jdbc:postgresql://" + EXT_PG_HOST + ":" + EXT_PG_PORT + "/" + EXT_PG_DB);
+			registry.add("mybatis-flex.datasource.primary.username", () -> EXT_PG_USER);
+			registry.add("mybatis-flex.datasource.primary.password", () -> EXT_PG_PASS);
+		} else {
+			registry.add("mybatis-flex.datasource.primary.url", POSTGRES::getJdbcUrl);
+			registry.add("mybatis-flex.datasource.primary.username", POSTGRES::getUsername);
+			registry.add("mybatis-flex.datasource.primary.password", POSTGRES::getPassword);
+		}
 		// 埋点独立数据源（G99）：指向同容器 mugsun_track 库（同容器双库，零新增基建）。
 		// 统一在基座声明而非各 track 测试类自报——全测试套件共享同一 Spring 上下文（上下文缓存键一致），
 		// 规避 warm-flow 静态 SpringUtil 的多上下文地雷（第二上下文 initFlow 按类型查 WarmFlowProperties
 		// 会命中上一上下文的同名实例，NoUniqueBeanDefinitionException 启动失败）
 		registry.add("mybatis-flex.datasource.track.url", () -> trackJdbcUrl());
-		registry.add("mybatis-flex.datasource.track.username", POSTGRES::getUsername);
-		registry.add("mybatis-flex.datasource.track.password", POSTGRES::getPassword);
-		registry.add("spring.data.redis.host", REDIS::getHost);
-		registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+		registry.add("mybatis-flex.datasource.track.username",
+			() -> useExternalServices() ? EXT_PG_USER : POSTGRES.getUsername());
+		registry.add("mybatis-flex.datasource.track.password",
+			() -> useExternalServices() ? EXT_PG_PASS : POSTGRES.getPassword());
+		if (useExternalServices()) {
+			registry.add("spring.data.redis.host", () -> EXT_REDIS_HOST);
+			registry.add("spring.data.redis.port", () -> EXT_REDIS_PORT);
+		} else {
+			registry.add("spring.data.redis.host", REDIS::getHost);
+			registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+		}
 		registry.add("jetcache.remote.default.uri",
-			() -> "redis://" + REDIS.getHost() + ":" + REDIS.getMappedPort(6379) + "/3");
+			() -> "redis://" + (useExternalServices() ? EXT_REDIS_HOST : REDIS.getHost()) + ":"
+				+ (useExternalServices() ? EXT_REDIS_PORT : REDIS.getMappedPort(6379)) + "/3");
 		// 测试环境不连 PowerJob Server
 		registry.add("powerjob.worker.enabled", () -> "false");
 		// 文件存储落 target 下临时目录，不污染 /tmp。
@@ -126,8 +163,10 @@ public abstract class AbstractIntegrationTest {
 
 	@BeforeAll
 	static void containersRunning() {
-		assertThat(POSTGRES.isRunning()).as("PostgreSQL 容器已启动").isTrue();
-		assertThat(REDIS.isRunning()).as("Redis 容器已启动").isTrue();
+		if (!useExternalServices()) {
+			assertThat(POSTGRES.isRunning()).as("PostgreSQL 容器已启动").isTrue();
+			assertThat(REDIS.isRunning()).as("Redis 容器已启动").isTrue();
+		}
 	}
 
 	/** 解析 R 信封响应体 */
@@ -219,24 +258,28 @@ public abstract class AbstractIntegrationTest {
 
 	/** Testcontainers 主库 JDBC（租户独立源等联调用） */
 	protected static String primaryJdbcUrl() {
-		return POSTGRES.getJdbcUrl();
+		return useExternalServices()
+			? "jdbc:postgresql://" + EXT_PG_HOST + ":" + EXT_PG_PORT + "/" + EXT_PG_DB
+			: POSTGRES.getJdbcUrl();
 	}
 
 	protected static String primaryJdbcUsername() {
-		return POSTGRES.getUsername();
+		return useExternalServices() ? EXT_PG_USER : POSTGRES.getUsername();
 	}
 
 	protected static String primaryJdbcPassword() {
-		return POSTGRES.getPassword();
+		return useExternalServices() ? EXT_PG_PASS : POSTGRES.getPassword();
 	}
 
 	/**
 	 * 在同容器创建附加库（idempotent）。用于租户独立数据源联调，不污染主库 schema。
 	 */
 	protected static void ensureExtraDatabase(String databaseName) {
-		String adminUrl = POSTGRES.getJdbcUrl().replaceFirst("/[^/]+$", "/postgres");
+		String adminUrl = (useExternalServices()
+			? ("jdbc:postgresql://" + EXT_PG_HOST + ":" + EXT_PG_PORT + "/postgres")
+			: POSTGRES.getJdbcUrl().replaceFirst("/[^/]+$", "/postgres"));
 		try (java.sql.Connection c = java.sql.DriverManager.getConnection(
-			adminUrl, POSTGRES.getUsername(), POSTGRES.getPassword());
+			adminUrl, primaryJdbcUsername(), primaryJdbcPassword());
 			 java.sql.Statement st = c.createStatement();
 			 java.sql.ResultSet rs = st.executeQuery(
 				"SELECT 1 FROM pg_database WHERE datname = '" + databaseName.replace("'", "") + "'")) {
@@ -250,6 +293,7 @@ public abstract class AbstractIntegrationTest {
 
 	/** 将主库 JDBC URL 的库名段替换为指定库 */
 	protected static String jdbcUrlForDatabase(String databaseName) {
-		return POSTGRES.getJdbcUrl().replaceFirst("/[^/]+$", "/" + databaseName);
+		String base = primaryJdbcUrl();
+		return base.replaceFirst("/[^/]+$", "/" + databaseName);
 	}
 }
