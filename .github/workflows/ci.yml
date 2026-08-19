@@ -51,7 +51,7 @@ jobs:
       - name: Checkout mugsun-core
         uses: actions/checkout@v4
         with:
-          repository: curdx/mugsun-core
+          repository: mugsun/mugsun-core
           path: mugsun-core
 
       - name: Checkout mugsun-boot

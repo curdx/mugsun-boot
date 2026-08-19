@@ -121,7 +121,7 @@ The only seeded account is **`admin / 123456`**. Override with `MUGSUN_INIT_PASS
 
 ### 6. Frontend
 
-The admin UI lives in [mugsun-pc](https://github.com/curdx/mugsun-pc). Follow its side-by-side clone instructions to connect it to this service.
+The admin UI lives in [mugsun-pc](https://github.com/mugsun/mugsun-pc). Follow its side-by-side clone instructions to connect it to this service.
 
 ## 🛡 Production Deployment
 
