@@ -32,7 +32,7 @@ FROM eclipse-temurin:21-jre-jammy
 
 LABEL org.opencontainers.image.title="mugsun-boot" \
       org.opencontainers.image.description="Mugsun 快速开发平台后端" \
-      org.opencontainers.image.source="https://github.com/curdx/mugsun-boot"
+      org.opencontainers.image.source="https://github.com/mugsun/mugsun-boot"
 
 RUN groupadd -r mugsun && useradd -r -g mugsun -d /app mugsun \
     && mkdir -p /app/logs /var/lib/mugsun/files \
