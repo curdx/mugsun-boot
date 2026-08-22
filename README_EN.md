@@ -148,6 +148,10 @@ Activate the prod profile: `--spring.profiles.active=prod`.
 
 Issues and pull requests are welcome. Please make sure `mvn test` stays green and include tests for new features.
 
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=mugsun/mugsun-boot&type=Date)](https://star-history.com/#mugsun/mugsun-boot&Date)
+
 ## 📄 License
 
 [Apache License 2.0](LICENSE)

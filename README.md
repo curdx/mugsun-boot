@@ -148,6 +148,10 @@ Flyway 自动完成 70+ 个迁移脚本与菜单种子数据，首次启动即�
 
 欢迎 Issue 与 Pull Request。提交前请确保 `mvn test` 全绿，新增功能请附带测试。
 
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=mugsun/mugsun-boot&type=Date)](https://star-history.com/#mugsun/mugsun-boot&Date)
+
 ## 📄 许可证
 
 [Apache License 2.0](LICENSE)
