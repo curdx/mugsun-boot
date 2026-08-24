@@ -31,14 +31,17 @@ public class GisSearchController {
 	@GetMapping("/search")
 	public R<List<Map<String, Object>>> search(@RequestParam(required = false) String q,
 											   @RequestParam(required = false) Double lon,
-											   @RequestParam(required = false) Double lat) {
+											   @RequestParam(required = false) Double lat,
+											   @RequestParam(required = false) String provider) {
 		moduleService.requireEnabled();
-		return R.data(searchService.search(q, lon, lat));
+		return R.data(searchService.search(q, lon, lat, provider));
 	}
 
 	@GetMapping("/reverse")
-	public R<Map<String, Object>> reverse(@RequestParam double lon, @RequestParam double lat) {
+	public R<Map<String, Object>> reverse(@RequestParam double lon,
+										  @RequestParam double lat,
+										  @RequestParam(required = false) String provider) {
 		moduleService.requireEnabled();
-		return R.data(searchService.reverse(lon, lat));
+		return R.data(searchService.reverse(lon, lat, provider));
 	}
 }

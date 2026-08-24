@@ -472,8 +472,68 @@ public class TrackAnalysisService {
 			+ cond + " ORDER BY received_at DESC LIMIT ? OFFSET ?";
 		pageArgs.add(size);
 		pageArgs.add((pageNum - 1) * size);
-		List<Map<String, Object>> records = jdbc.queryForList(rowsSql, pageArgs.toArray());
+		List<Map<String, Object>> 		records = jdbc.queryForList(rowsSql, pageArgs.toArray());
 		return new Page<>(records, pageNum, size, total == null ? 0L : total);
+	}
+
+	// ==================== 地理（G106） ====================
+
+	/**
+	 * 地域分布 + 精确热力点。属地按 IP 省份归一（明细限窗，不进 rollup）；
+	 * 坐标点取最近 {@link TrackConstants#GEO_POINTS_MAX} 条有列事件。
+	 */
+	public Map<String, Object> geo(String appKey, Integer days) {
+		assertAppKey(appKey);
+		String tenant = currentTenant();
+		assertAppVisible(appKey, tenant);
+		int d = clampDays(days);
+		return queryGeo(appKey, d, tenant);
+	}
+
+	/** 即席查询（无缓存）：摄入后立刻可在概览/工作台看见，便于验收与运营排障。 */
+	public Map<String, Object> queryGeo(String appKey, int days, String tenant) {
+		OffsetDateTime from = LocalDate.now(ZoneOffset.UTC).minusDays(days - 1L).atStartOfDay().atOffset(ZoneOffset.UTC);
+		String regionExpr = "CASE"
+			+ " WHEN e.ip_region IS NULL OR btrim(e.ip_region) = '' THEN '" + TrackConstants.GEO_REGION_UNKNOWN + "'"
+			+ " WHEN e.ip_region LIKE '%内网%' THEN '" + TrackConstants.GEO_REGION_INTRANET + "'"
+			+ " WHEN split_part(e.ip_region, '|', 3) NOT IN ('', '0') THEN split_part(e.ip_region, '|', 3)"
+			+ " WHEN split_part(e.ip_region, '|', 4) NOT IN ('', '0') THEN split_part(e.ip_region, '|', 4)"
+			+ " WHEN split_part(e.ip_region, '|', 1) NOT IN ('', '0') THEN split_part(e.ip_region, '|', 1)"
+			+ " ELSE '" + TrackConstants.GEO_REGION_UNKNOWN + "' END";
+
+		List<Object> regionArgs = new ArrayList<>(List.of(appKey, from));
+		List<Map<String, Object>> regions = jdbc.queryForList(
+			"SELECT " + regionExpr + " AS \"region\","
+				+ " count(*) FILTER (WHERE e.event_name = '" + TrackConstants.EVENT_PAGEVIEW + "') AS pv,"
+				+ " count(*) AS \"eventCount\","
+				+ " count(DISTINCT coalesce(m.user_id::text, e.distinct_id)) AS uv"
+				+ " FROM track_event e" + IDENTITY_JOIN
+				+ " WHERE e.app_key = ? AND e.received_at >= ?" + tenantFrag("e", tenant, regionArgs)
+				+ " GROUP BY 1 ORDER BY \"eventCount\" DESC, \"region\" LIMIT " + TrackConstants.GEO_REGIONS_MAX,
+			regionArgs.toArray());
+
+		List<Object> pointArgs = new ArrayList<>(List.of(appKey, from));
+		List<Map<String, Object>> points = jdbc.queryForList(
+			"SELECT e.geo_lon AS lon, e.geo_lat AS lat, e.event_name AS \"eventName\","
+				+ " CAST(EXTRACT(EPOCH FROM e.ts) * 1000 AS BIGINT) AS ts,"
+				+ " e.url_path AS \"urlPath\""
+				+ " FROM track_event e WHERE e.app_key = ? AND e.received_at >= ?"
+				+ " AND e.geo_lon IS NOT NULL AND e.geo_lat IS NOT NULL"
+				+ tenantFrag("e", tenant, pointArgs)
+				+ " ORDER BY e.received_at DESC LIMIT " + TrackConstants.GEO_POINTS_MAX,
+			pointArgs.toArray());
+
+		List<Object> countArgs = new ArrayList<>(List.of(appKey, from));
+		Long geoCount = jdbc.queryForObject(
+			"SELECT count(*) FROM track_event e WHERE e.app_key = ? AND e.received_at >= ?"
+				+ " AND e.geo_lon IS NOT NULL" + tenantFrag("e", tenant, countArgs),
+			Long.class, countArgs.toArray());
+
+		Map<String, Object> result = new LinkedHashMap<>();
+		result.put("regions", regions);
+		result.put("points", points);
+		result.put("geoCount", geoCount == null ? 0L : geoCount);
+		return result;
 	}
 
 	// ==================== 内部工具 ====================

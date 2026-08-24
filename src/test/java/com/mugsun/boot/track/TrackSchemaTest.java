@@ -39,6 +39,15 @@ class TrackSchemaTest extends AbstractTrackIntegrationTest {
 		Row history = DataSourceKey.use(TrackConstants.DS_KEY, () -> Db.selectOneBySql(
 			"SELECT count(*) AS c FROM flyway_schema_history WHERE script = ? AND success", "T1__track_init.sql"));
 		assertThat(history.getLong("c")).as("track 库独立 Flyway 历史应记录 T1").isEqualTo(1L);
+
+		Row t9 = DataSourceKey.use(TrackConstants.DS_KEY, () -> Db.selectOneBySql(
+			"SELECT count(*) AS c FROM flyway_schema_history WHERE script = ? AND success", "T9__track_geo.sql"));
+		assertThat(t9.getLong("c")).as("track 库 Flyway 应记录 T9 地理列").isEqualTo(1L);
+		Row geoCols = DataSourceKey.use(TrackConstants.DS_KEY, () -> Db.selectOneBySql(
+			"SELECT count(*) AS c FROM information_schema.columns WHERE table_schema = 'public'"
+				+ " AND table_name IN ('track_event', 'track_app')"
+				+ " AND column_name IN ('geo_lon', 'geo_lat', 'geo_enabled')"));
+		assertThat(geoCols.getLong("c")).as("G106 三列：geo_lon/geo_lat/geo_enabled").isEqualTo(3L);
 	}
 
 	/** ② track_event 插入落到正确月分区（tableoid 反证实际落点） */

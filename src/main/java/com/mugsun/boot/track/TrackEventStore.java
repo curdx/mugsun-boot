@@ -54,8 +54,8 @@ public class TrackEventStore {
 	private static final String EVENT_INSERT = "INSERT INTO track_event (id, event_id, app_key, event_name,"
 		+ " client_ts, ts, received_at, clock_skewed, distinct_id, user_id, session_id, tenant_id,"
 		+ " url_path, route_path, page_title, referrer_domain, utm_source, utm_medium, utm_campaign,"
-		+ " browser, os, device, ip, ip_region, duration_ms, error_fingerprint, props)"
-		+ " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)"
+		+ " browser, os, device, ip, ip_region, duration_ms, error_fingerprint, geo_lon, geo_lat, props)"
+		+ " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)"
 		+ " ON CONFLICT (event_id, received_at) DO NOTHING";
 
 	/** 会话增量 upsert：乱序安全语义写死（LEAST/GREATEST/CASE WHEN/累加/置位不回退） */
@@ -141,8 +141,18 @@ public class TrackEventStore {
 					ps.setInt(25, e.getDurationMs());
 				}
 				ps.setString(26, e.getErrorFingerprint());
+				if (e.getGeoLon() == null) {
+					ps.setNull(27, Types.NUMERIC);
+				} else {
+					ps.setDouble(27, e.getGeoLon());
+				}
+				if (e.getGeoLat() == null) {
+					ps.setNull(28, Types.NUMERIC);
+				} else {
+					ps.setDouble(28, e.getGeoLat());
+				}
 				// jsonb 列：Types.OTHER 传 JSON 文本（PG 驱动按 jsonb 绑定）
-				ps.setObject(27, e.getPropsJson() == null ? "{}" : e.getPropsJson(), Types.OTHER);
+				ps.setObject(29, e.getPropsJson() == null ? "{}" : e.getPropsJson(), Types.OTHER);
 			}
 
 			@Override

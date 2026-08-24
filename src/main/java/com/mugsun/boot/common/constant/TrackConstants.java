@@ -540,4 +540,26 @@ public interface TrackConstants {
 
 	/** 回放会话事件条数上限（打点用；按 ts 升序截断，防巨会话拉爆响应） */
 	int REPLAY_SESSION_EVENTS_MAX = 500;
+
+	/* ==================== G106：埋点地理 ==================== */
+
+	/** 精确经度（WGS84）props 键；服务端圆整后提升为列 */
+	String PROP_GEO_LON = "geo_lon";
+	/** 精确纬度（WGS84）props 键 */
+	String PROP_GEO_LAT = "geo_lat";
+	/** SDK 超属性别名（$ 前缀不进事件名白名单，仅 props） */
+	String PROP_GEO_LON_ALT = "$geo_lon";
+	String PROP_GEO_LAT_ALT = "$geo_lat";
+	/** 定位精度（米，仅 props，不提升为列） */
+	String PROP_GEO_ACC = "geo_acc";
+	/** 坐标小数位（4 位 ≈ 11m，隐私圆整） */
+	int GEO_SCALE = 4;
+	/** 热力点查询上限（明细下钻，不进 rollup） */
+	int GEO_POINTS_MAX = 2000;
+	/** 地域聚合行上限 */
+	int GEO_REGIONS_MAX = 50;
+	/** 属地无法解析时的展示桶 */
+	String GEO_REGION_UNKNOWN = "未知";
+	/** 内网 IP 展示桶 */
+	String GEO_REGION_INTRANET = "内网";
 }

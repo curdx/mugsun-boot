@@ -229,6 +229,11 @@ public class TrackIngestService {
 		event.setDevice(truncate(text(props, TrackConstants.PROP_DEVICE), TrackConstants.DEVICE_MAX_LEN));
 		event.setErrorFingerprint(resolveFingerprint(eventName, props));
 		event.setPropsJson(propsJson);
+		double[] geo = TrackGeo.parseLonLat(props);
+		if (geo != null) {
+			event.setGeoLon(geo[0]);
+			event.setGeoLat(geo[1]);
+		}
 		event.setIp(ip);
 		event.setUserAgent(userAgent);
 		event.setPlatform(platform);

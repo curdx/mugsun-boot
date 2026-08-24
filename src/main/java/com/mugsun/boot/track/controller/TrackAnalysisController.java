@@ -131,6 +131,17 @@ public class TrackAnalysisController {
 	}
 
 	/**
+	 * 地理分析（G106）：{regions:[{region, pv, uv, eventCount}], points:[{lon, lat, eventName, ts, urlPath}], geoCount}。
+	 * 属地按 IP 省份归一（空/内网独立桶）；精确点仅服务端圆整后的 geo_lon/geo_lat 列，上限 2000。
+	 */
+	@GetMapping("/geo")
+	@SaCheckPermission(TrackConstants.PERM_OVERVIEW_LIST)
+	public R<Map<String, Object>> geo(@RequestParam String appKey,
+									  @RequestParam(required = false) Integer days) {
+		return R.data(analysisService.geo(appKey, days));
+	}
+
+	/**
 	 * 漏斗分析（G103，§20.1）：{steps:[{eventName, count}...按入参序], days, windowHours, actor:"merged"}。
 	 * actor = identity 归并；有序非紧邻匹配；每层须在前一步后 windowHours（1/24/168，默认 24）小时内触达；
 	 * days 默认 7 上限 30；steps 逗号分隔 2..5 个合法事件名（转化率前端算）。

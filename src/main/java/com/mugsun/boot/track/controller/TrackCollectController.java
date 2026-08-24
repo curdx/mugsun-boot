@@ -215,7 +215,7 @@ public class TrackCollectController {
 
 	/**
 	 * SDK 配置下发：{enabled, sampleRate, maskSelectors, replayEnabled, replaySampleRate,
-	 * apiMonitorEnabled, apiBodyEnabled, apiBodyMaskEnabled, apiBodyMaxBytes, visualRules}。
+	 * apiMonitorEnabled, apiBodyEnabled, apiBodyMaskEnabled, apiBodyMaxBytes, visualRules, geoEnabled}。
 	 * replayEnabled 读 track_app.replay_enabled（G100 放开：关时 SDK 不启动录制）；
 	 * api* 三项读 track_app 对应开关（G102：默认全关），apiBodyMaxBytes 读 sys_param
 	 * {@value TrackConstants#PARAM_API_BODY_MAX_BYTES}（缺失/非法回退 {@value TrackConstants#DEFAULT_API_BODY_MAX_BYTES}）；
@@ -240,6 +240,7 @@ public class TrackCollectController {
 			data.put("apiBodyMaskEnabled", app.getApiBodyMaskEnabled() != null && app.getApiBodyMaskEnabled() == 1);
 			data.put("apiBodyMaxBytes", apiBodyMaxBytes());
 			data.put("visualRules", visualRuleService.enabledRules(appKey));
+			data.put("geoEnabled", app.getGeoEnabled() != null && app.getGeoEnabled() == 1);
 			return ResponseEntity.ok(R.data(data));
 		} catch (TrackCollectException e) {
 			R<Object> body = R.fail(e.getMessage());

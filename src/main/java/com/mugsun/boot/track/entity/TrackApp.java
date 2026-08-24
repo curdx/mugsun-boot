@@ -44,6 +44,8 @@ public class TrackApp extends BaseEntity {
 	private Integer apiBodyMaskEnabled;
 	/** 响应体保留天数（G102：远短于事件明细，1..30） */
 	private Integer apiBodyRetentionDays;
+	/** 精确位置采集开关（G106：1=SDK 征求定位后上报坐标，默认关） */
+	private Integer geoEnabled;
 	private String remark;
 
 	public String getAppKey() {
@@ -180,6 +182,14 @@ public class TrackApp extends BaseEntity {
 
 	public void setApiBodyRetentionDays(Integer apiBodyRetentionDays) {
 		this.apiBodyRetentionDays = apiBodyRetentionDays;
+	}
+
+	public Integer getGeoEnabled() {
+		return geoEnabled;
+	}
+
+	public void setGeoEnabled(Integer geoEnabled) {
+		this.geoEnabled = geoEnabled;
 	}
 
 	public String getRemark() {

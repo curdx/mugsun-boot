@@ -19,8 +19,8 @@ import java.util.Map;
 @Service
 public class GisFormatService {
 
-	private static final String[] LON_KEYS = { "lon", "lng", "longitude", "x", "$lon", "gcjLon" };
-	private static final String[] LAT_KEYS = { "lat", "latitude", "y", "$lat", "gcjLat" };
+	private static final String[] LON_KEYS = { "lon", "lng", "longitude", "x", "$lon", "gcjLon", "geo_lon", "$geo_lon" };
+	private static final String[] LAT_KEYS = { "lat", "latitude", "y", "$lat", "gcjLat", "geo_lat", "$geo_lat" };
 
 	private static final java.util.Set<String> GEOM_TYPES = java.util.Set.of(
 		"Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon");

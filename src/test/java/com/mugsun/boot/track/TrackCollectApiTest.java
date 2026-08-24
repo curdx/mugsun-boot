@@ -388,6 +388,7 @@ class TrackCollectApiTest extends AbstractTrackIntegrationTest {
 		assertThat(data.path("replayEnabled").asBoolean()).as("回放 G100 才开，本期恒 false").isFalse();
 		assertThat(data.has("maskSelectors")).isTrue();
 		assertThat(data.has("replaySampleRate")).isTrue();
+		assertThat(data.path("geoEnabled").asBoolean()).as("G106 默认关").isFalse();
 
 		ResponseEntity<String> unknown = get("/track/config?app_key=no-such-app", null);
 		assertThat(unknown.getStatusCode().value()).isEqualTo(400);

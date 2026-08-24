@@ -302,6 +302,7 @@ class TrackAnalysisApiTest extends AbstractTrackIntegrationTest {
 		assertThat(appKey).as("app_key 服务端生成规则").startsWith(TrackConstants.APP_KEY_PREFIX);
 		assertThat(created.path("data").path("tenantId").asText()).isEqualTo(PLATFORM_TENANT);
 		assertThat(created.path("data").path("sampleRate").asInt()).isEqualTo(80);
+		assertThat(created.path("data").path("geoEnabled").asInt()).as("G106 精确位置默认关").isEqualTo(0);
 
 		JsonNode found = findAppInPage(adminToken, appKey);
 		assertThat(found).as("分页应能查到新应用").isNotNull();

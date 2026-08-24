@@ -67,6 +67,10 @@ public class TrackIngestEvent {
 	private String device;
 	/** IP 归属地（消费侧富化，可空） */
 	private String ipRegion;
+	/** WGS84 经度（摄入侧校验圆整，非法为 null） */
+	private Double geoLon;
+	/** WGS84 纬度（摄入侧校验圆整，非法为 null） */
+	private Double geoLat;
 	/** 落库重试计数（批次失败重回队列时递增） */
 	private int attempts;
 
@@ -300,6 +304,22 @@ public class TrackIngestEvent {
 
 	public void setIpRegion(String ipRegion) {
 		this.ipRegion = ipRegion;
+	}
+
+	public Double getGeoLon() {
+		return geoLon;
+	}
+
+	public void setGeoLon(Double geoLon) {
+		this.geoLon = geoLon;
+	}
+
+	public Double getGeoLat() {
+		return geoLat;
+	}
+
+	public void setGeoLat(Double geoLat) {
+		this.geoLat = geoLat;
 	}
 
 	public int getAttempts() {

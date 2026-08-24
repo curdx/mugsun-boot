@@ -78,6 +78,7 @@ public class TrackAdminService {
 			app.setApiBodyEnabled(body.getApiBodyEnabled() == null ? 0 : normalizeSwitch(body.getApiBodyEnabled(), "apiBodyEnabled"));
 			app.setApiBodyMaskEnabled(body.getApiBodyMaskEnabled() == null ? 0 : normalizeSwitch(body.getApiBodyMaskEnabled(), "apiBodyMaskEnabled"));
 			app.setApiBodyRetentionDays(validateApiBodyRetentionDays(body.getApiBodyRetentionDays()));
+			app.setGeoEnabled(body.getGeoEnabled() == null ? 0 : normalizeSwitch(body.getGeoEnabled(), "geoEnabled"));
 			app.setRemark(body.getRemark());
 			app.sanitizeForInsert();
 			appMapper.insertSelective(app);
@@ -131,6 +132,9 @@ public class TrackAdminService {
 			}
 			if (body.getApiBodyRetentionDays() != null) {
 				app.setApiBodyRetentionDays(validateApiBodyRetentionDays(body.getApiBodyRetentionDays()));
+			}
+			if (body.getGeoEnabled() != null) {
+				app.setGeoEnabled(normalizeSwitch(body.getGeoEnabled(), "geoEnabled"));
 			}
 			if (body.getRemark() != null) {
 				app.setRemark(body.getRemark());

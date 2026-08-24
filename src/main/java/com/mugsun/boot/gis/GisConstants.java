@@ -80,7 +80,8 @@ public final class GisConstants {
 	public static final String MSG_PROVIDER_KEY = "请先配置该底图的访问密钥";
 	public static final String MSG_SCENE_MISSING = "场景不存在";
 	public static final String MSG_JSON_INVALID = "场景配置不是合法 JSON";
-	public static final String MSG_SEARCH_NO_KEY = "请先配置并启用天地图密钥后再使用地名搜索";
+	public static final String MSG_SEARCH_NO_KEY = "请先配置并启用底图密钥后再使用地名搜索";
+	public static final String MSG_SEARCH_PROVIDER = "请指定底图供应商";
 	public static final String MSG_SEARCH_KEYWORD = "请输入 2～64 个字的检索词";
 	public static final String MSG_SEARCH_UPSTREAM = "地名检索暂时不可用，请稍后重试";
 	public static final String MSG_LAYER_MISSING = "图层不存在";
@@ -94,6 +95,22 @@ public final class GisConstants {
 	public static final String MSG_ANALYZE_EMPTY = "没有可运算的几何";
 	public static final String MSG_RASTER_URL = "栅格图层需要 http(s) 服务地址；XYZ 须含 {z}/{x}/{y}，WMS 须含 layers";
 	public static final String MSG_DEMO_MISSING = "没有这个示例";
+
+	public static String searchNoKey(String provider) {
+		if (PROVIDER_AMAP.equals(provider)) {
+			return "请先配置并启用高德密钥";
+		}
+		if (PROVIDER_TIANDITU.equals(provider)) {
+			return "请先配置并启用天地图密钥";
+		}
+		if (PROVIDER_BAIDU.equals(provider)) {
+			return "请先配置并启用百度密钥";
+		}
+		if (PROVIDER_GOOGLE.equals(provider)) {
+			return "请先配置并启用 Google 密钥";
+		}
+		return MSG_SEARCH_NO_KEY;
+	}
 
 	private GisConstants() {
 	}

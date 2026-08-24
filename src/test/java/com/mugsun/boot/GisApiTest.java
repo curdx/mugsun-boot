@@ -89,6 +89,12 @@ class GisApiTest extends AbstractIntegrationTest {
 		JsonNode blank = readBody(get("/system/gis/search?q=a", adminToken));
 		assertThat(blank.path("code").asInt()).isEqualTo(400);
 		assertThat(blank.path("msg").asText()).contains("2");
+		JsonNode missingProvider = readBody(get("/system/gis/search?q=beijing", adminToken));
+		assertThat(missingProvider.path("code").asInt()).isEqualTo(400);
+		assertThat(missingProvider.path("msg").asText()).contains("指定");
+		JsonNode unknownProvider = readBody(get("/system/gis/search?q=beijing&provider=not-a-vendor", adminToken));
+		assertThat(unknownProvider.path("code").asInt()).isEqualTo(400);
+		assertThat(unknownProvider.path("msg").asText()).contains("未知");
 	}
 
 	@Test
