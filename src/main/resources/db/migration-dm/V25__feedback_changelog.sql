@@ -34,7 +34,7 @@ COMMENT ON TABLE sys_changelog IS '版本更新记录';
 COMMENT ON COLUMN sys_changelog.type IS '类型：feature新增/optimize优化/fix修复';
 
 -- 更新日志种子（首页卡即时展示）
-INSERT INTO sys_changelog (id, version, "TYPE", title, content, publish_time, sort, create_time) VALUES
+INSERT INTO sys_changelog (id, version, type, title, content, publish_time, sort, create_time) VALUES
 (1080000000000000001, 'v1.2.0', 'feature', '新增在线帮助文档与全局帮助抽屉', '<p>支持按页面绑定帮助文档，右侧抽屉随当前页展示。</p>', SYSDATE, 3, SYSDATE),
 (1080000000000000002, 'v1.1.0', 'optimize', '表格支持自定义列并持久化', '<p>列顺序、显隐、宽度可保存，刷新与重登后保持。</p>', SYSDATE, 2, SYSDATE),
 (1080000000000000003, 'v1.0.0', 'fix', '修复若干已知问题并发布首个稳定版', '<p>修复登录与权限相关问题，平台首个稳定版本。</p>', SYSDATE, 1, SYSDATE);

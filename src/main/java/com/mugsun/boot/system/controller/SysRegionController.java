@@ -59,6 +59,15 @@ public class SysRegionController {
 	@SaCheckPermission("sys:region:remove")
 	@PostMapping("/remove/{id}")
 	public R<Void> remove(@PathVariable Long id) {
+		SysRegion region = regionMapper.selectOneById(id);
+		if (region == null) {
+			return R.success("删除成功");
+		}
+		long childCount = regionMapper.selectCountByQuery(
+			QueryWrapper.create().eq("parent_code", region.getCode()));
+		if (childCount > 0) {
+			throw new com.mugsun.core.tool.exception.ServiceException("存在下级区划，请先删除子级");
+		}
 		regionMapper.deleteById(id);
 		return R.success("删除成功");
 	}

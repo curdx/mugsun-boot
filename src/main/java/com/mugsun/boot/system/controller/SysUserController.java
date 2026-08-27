@@ -117,13 +117,14 @@ public class SysUserController {
 		return query;
 	}
 
-	/** 组织信息富化：部门/岗位/角色名批量回填（按 id 集批量查，避免 N+1） */
+	/** 组织信息富化：部门/岗位/角色名/主管名批量回填（按 id 集批量查，避免 N+1） */
 	private void enrichOrg(List<SysUser> records) {
 		if (records == null || records.isEmpty()) {
 			return;
 		}
 		java.util.Set<Long> deptIds = new java.util.HashSet<>();
 		java.util.Set<Long> postIds = new java.util.HashSet<>();
+		java.util.Set<Long> leaderIds = new java.util.HashSet<>();
 		List<Long> userIds = new java.util.ArrayList<>();
 		for (SysUser u : records) {
 			if (u.getDeptId() != null) {
@@ -131,6 +132,9 @@ public class SysUserController {
 			}
 			if (u.getPostId() != null) {
 				postIds.add(u.getPostId());
+			}
+			if (u.getLeaderId() != null) {
+				leaderIds.add(u.getLeaderId());
 			}
 			userIds.add(u.getId());
 		}
@@ -143,6 +147,16 @@ public class SysUserController {
 		if (!postIds.isEmpty()) {
 			postMapper.selectListByQuery(QueryWrapper.create().in("id", postIds))
 				.forEach(p -> postMap.put(p.getId(), p.getPostName()));
+		}
+		Map<Long, String> leaderMap = new java.util.HashMap<>();
+		if (!leaderIds.isEmpty()) {
+			userMapper.selectListByQuery(QueryWrapper.create().in("id", leaderIds))
+				.forEach(l -> {
+					String label = l.getRealName() != null && !l.getRealName().isBlank()
+						? l.getRealName()
+						: (l.getNickname() != null ? l.getNickname() : l.getUsername());
+					leaderMap.put(l.getId(), label);
+				});
 		}
 		// 角色名：user_role 批量取回后按角色 id 集查名
 		List<SysUserRole> userRoles = userRoleMapper.selectListByQuery(QueryWrapper.create().in("user_id", userIds));
@@ -162,6 +176,7 @@ public class SysUserController {
 		for (SysUser u : records) {
 			u.setDeptName(deptMap.get(u.getDeptId()));
 			u.setPostName(postMap.get(u.getPostId()));
+			u.setLeaderName(leaderMap.get(u.getLeaderId()));
 			List<String> names = namesByUser.get(u.getId());
 			u.setRoleNames(names == null ? null : String.join("、", names));
 		}
@@ -179,6 +194,7 @@ public class SysUserController {
 			// 角色回显（建档弹窗编辑态）
 			user.setRoleIds(userRoleMapper.selectListByQuery(QueryWrapper.create().eq("user_id", id))
 				.stream().map(SysUserRole::getRoleId).toList());
+			enrichOrg(List.of(user));
 		}
 		return R.data(user);
 	}
@@ -192,6 +208,15 @@ public class SysUserController {
 		if (user.getPostId() != null
 			&& postMapper.selectCountByQuery(QueryWrapper.create().eq("id", user.getPostId())) == 0) {
 			throw new com.mugsun.core.tool.exception.ServiceException("岗位不存在");
+		}
+		if (user.getLeaderId() != null) {
+			if (user.getId() != null && user.getLeaderId().equals(user.getId())) {
+				throw new com.mugsun.core.tool.exception.ServiceException("直属主管不能是本人");
+			}
+			SysUser leader = userMapper.selectOneById(user.getLeaderId());
+			if (leader == null) {
+				throw new com.mugsun.core.tool.exception.ServiceException("直属主管不存在");
+			}
 		}
 	}
 
@@ -247,6 +272,81 @@ public class SysUserController {
 			.toList());
 	}
 
+	/**
+	 * 切换是否主管（对齐 BladeX set-leader）：is_leader 0↔1。
+	 * 标记为主管后可出现在 leader-list，供他人选直属主管。
+	 */
+	@PostMapping("/set-leader")
+	@SaCheckPermission("sys:user:edit")
+	@OperationLog("设置主管")
+	public R<Void> setLeader(@RequestParam Long userId) {
+		assertTargetOperable(userId, true);
+		SysUser user = userMapper.selectOneById(userId);
+		if (user == null) {
+			throw new com.mugsun.core.tool.exception.ServiceException("用户不存在");
+		}
+		int next = (user.getIsLeader() != null && user.getIsLeader() == 1) ? 0 : 1;
+		SysUser patch = new SysUser();
+		patch.setId(userId);
+		patch.setIsLeader(next);
+		patch.sanitizeForUpdate();
+		userMapper.update(patch);
+		return R.success(next == 1 ? "已设为主管" : "已取消主管");
+	}
+
+	/** 当前用户的直属主管信息（单 id；无则空列表） */
+	@GetMapping("/leader-info")
+	@SaCheckPermission("sys:user:list")
+	@DataScope
+	public R<List<SysUser>> leaderInfo(@RequestParam Long userId) {
+		SysUser user = userMapper.selectOneByQuery(QueryWrapper.create().eq("id", userId));
+		if (user == null) {
+			throw new com.mugsun.core.tool.exception.ServiceException("用户不存在");
+		}
+		if (user.getLeaderId() == null) {
+			return R.data(List.of());
+		}
+		SysUser leader = userMapper.selectOneByQuery(QueryWrapper.create().eq("id", user.getLeaderId()));
+		if (leader == null) {
+			return R.data(List.of());
+		}
+		leader.setPassword(null);
+		return R.data(List.of(leader));
+	}
+
+	/**
+	 * 主管候选列表（is_leader=1 且启用）：供建档选直属主管。
+	 * realName 模糊匹配真实姓名/昵称/用户名。
+	 */
+	@GetMapping("/leader-list")
+	@SaCheckPermission("sys:user:list")
+	@DataScope
+	public R<List<java.util.Map<String, Object>>> leaderList(
+			@RequestParam(required = false) String realName) {
+		QueryWrapper query = QueryWrapper.create()
+			.eq("is_leader", 1)
+			.eq("status", 1);
+		if (realName != null && !realName.isBlank()) {
+			String kw = realName.trim();
+			query.and(new QueryColumn("real_name").like(kw)
+				.or(new QueryColumn("nickname").like(kw))
+				.or(new QueryColumn("username").like(kw)));
+		}
+		query.orderBy("id", false).limit(UserConstants.USER_SELECT_LIMIT);
+		return R.data(userMapper.selectListByQuery(query).stream()
+			.map(u -> {
+				java.util.Map<String, Object> option = new java.util.HashMap<>();
+				option.put("value", u.getId());
+				String name = u.getRealName() != null && !u.getRealName().isBlank()
+					? u.getRealName()
+					: (u.getNickname() != null ? u.getNickname() : u.getUsername());
+				option.put("label", name + "（" + u.getUsername() + "）");
+				option.put("realName", name);
+				return option;
+			})
+			.toList());
+	}
+
 	@PostMapping("/submit")
 	@OperationLog("保存用户")
 	public R<Void> submit(@RequestBody SysUser user) {
@@ -279,6 +379,9 @@ public class SysUserController {
 			// 服务端清洗：审计字段与租户归属一律服务端裁定（Flex 仅对 null tenantId 才填充当前租户）
 			user.sanitizeForInsert();
 			user.setTenantId(null);
+			if (user.getIsLeader() == null) {
+				user.setIsLeader(0);
+			}
 			// 账号配额检查+插入在租户级 Redis 锁内串行（防并发 TOCTOU 超额；集群安全）
 			String raw = (user.getPassword() == null || user.getPassword().isBlank()) ? securityPolicyService.getInitPassword() : user.getPassword();
 			user.setPassword(passwordEncoder.encode(raw));

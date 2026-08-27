@@ -121,6 +121,9 @@ public class SysNoticeController {
 		if (notice.getId() == null) {
 			notice.sanitizeForInsert();
 			notice.setTenantId(null);
+			if (notice.getReleaseTime() == null) {
+				notice.setReleaseTime(LocalDateTime.now());
+			}
 			noticeMapper.insertSelective(notice);
 			authoritativeTenant = notice.getTenantId();
 		} else {

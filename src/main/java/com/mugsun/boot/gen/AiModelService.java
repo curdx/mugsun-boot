@@ -72,7 +72,7 @@ public class AiModelService {
 		t.setTableName(tableName);
 		t.setTableComment(comment);
 		t.setEntityName(GenNaming.toCamel(stripped, true));
-		t.setBusinessName(GenNaming.toCamel(stripped, false));
+		t.setBusinessName(GenNaming.toBusinessName(stripped));
 		t.setModuleName("system");
 		t.setFunctionName(comment == null || comment.isBlank() ? GenNaming.toCamel(stripped, true) : comment);
 		t.setFunctionAuthor("mugsun");

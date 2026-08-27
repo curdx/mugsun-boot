@@ -85,9 +85,9 @@ public class DdlService {
 		execute(List.of(buildCreate(t, columns(tableId), dialect())));
 	}
 
-	/** 增量/强制同步：执行 DDL，并在改名完成后清空 column_name_old；force 重建毁数据，仅平台超管 */
+	/** 增量/强制同步：执行 DDL，并在改名完成后清空 column_name_old；force 重建毁数据，仅平台超管。无增量变更时返回提示文案（非异常）。 */
 	@Transactional(rollbackFor = Exception.class)
-	public void syncTable(Long tableId, boolean force) {
+	public String syncTable(Long tableId, boolean force) {
 		GenTable t = table(tableId);
 		String tn = validName(t.getTableName());
 		guardNotProtected(tn);
@@ -98,23 +98,24 @@ public class DdlService {
 		SqlDialect d = dialect();
 		if (force) {
 			execute(buildSync(t, cols, true, d));
-		} else {
-			if (!physicalExists(tn)) {
-				throw new ServiceException("物理表不存在，请先建表：" + tn);
-			}
-			List<String> stmts = buildSync(t, cols, false, d);
-			if (stmts.isEmpty()) {
-				throw new ServiceException("无结构变更");
-			}
-			execute(stmts);
-			// 改名已落库，清除追踪标记避免二次 RENAME
-			for (GenColumn c : cols) {
-				if (c.getColumnNameOld() != null && !c.getColumnNameOld().isBlank()) {
-					c.setColumnNameOld(null);
-					columnMapper.update(c, false);
-				}
+			return "重建成功";
+		}
+		if (!physicalExists(tn)) {
+			throw new ServiceException("物理表不存在，请先建表：" + tn);
+		}
+		List<String> stmts = buildSync(t, cols, false, d);
+		if (stmts.isEmpty()) {
+			return "无结构变更";
+		}
+		execute(stmts);
+		// 改名已落库，清除追踪标记避免二次 RENAME
+		for (GenColumn c : cols) {
+			if (c.getColumnNameOld() != null && !c.getColumnNameOld().isBlank()) {
+				c.setColumnNameOld(null);
+				columnMapper.update(c, false);
 			}
 		}
+		return "同步成功";
 	}
 
 	// ==================== DDL 构建 ====================

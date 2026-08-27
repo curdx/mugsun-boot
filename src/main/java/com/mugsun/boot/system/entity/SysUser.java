@@ -8,6 +8,8 @@ import com.mybatisflex.annotation.Column;
 import com.mybatisflex.annotation.ColumnMask;
 import com.mybatisflex.annotation.Table;
 
+import java.time.LocalDate;
+
 /**
  * 系统用户
  */
@@ -18,6 +20,23 @@ public class SysUser extends BaseEntity {
 	private String password;
 	@AuditField("昵称")
 	private String nickname;
+	/** 真实姓名（档案/主管选择展示） */
+	@AuditField("真实姓名")
+	private String realName;
+	/** 性别：0 未知 / 1 男 / 2 女（字典 user_sex） */
+	@AuditField(value = "性别", dict = "user_sex")
+	private Integer sex;
+	/** 生日 */
+	private LocalDate birthday;
+	/** 头像 URL（列自 V61；个人中心亦可直写） */
+	private String avatar;
+	/** 工号/用户编号 */
+	@AuditField("工号")
+	private String code;
+	/** 直属主管用户 id */
+	private Long leaderId;
+	/** 是否主管：1 是 / 0 否（供 leader-list / 流程选人） */
+	private Integer isLeader;
 	@AuditField(value = "状态", dict = "user_status")
 	private Integer status;
 	private Long deptId;
@@ -44,6 +63,9 @@ public class SysUser extends BaseEntity {
 	/** 角色名串（展示用，非表列，顿号分隔） */
 	@Column(ignore = true)
 	private String roleNames;
+	/** 直属主管展示名（非表列，page 富化） */
+	@Column(ignore = true)
+	private String leaderName;
 	/** 角色 id 集合（建档/编辑挂角色入参 + detail 回显，非表列） */
 	@Column(ignore = true)
 	private java.util.List<Long> roleIds;
@@ -70,6 +92,62 @@ public class SysUser extends BaseEntity {
 
 	public void setNickname(String nickname) {
 		this.nickname = nickname;
+	}
+
+	public String getRealName() {
+		return realName;
+	}
+
+	public void setRealName(String realName) {
+		this.realName = realName;
+	}
+
+	public Integer getSex() {
+		return sex;
+	}
+
+	public void setSex(Integer sex) {
+		this.sex = sex;
+	}
+
+	public LocalDate getBirthday() {
+		return birthday;
+	}
+
+	public void setBirthday(LocalDate birthday) {
+		this.birthday = birthday;
+	}
+
+	public String getAvatar() {
+		return avatar;
+	}
+
+	public void setAvatar(String avatar) {
+		this.avatar = avatar;
+	}
+
+	public String getCode() {
+		return code;
+	}
+
+	public void setCode(String code) {
+		this.code = code;
+	}
+
+	public Long getLeaderId() {
+		return leaderId;
+	}
+
+	public void setLeaderId(Long leaderId) {
+		this.leaderId = leaderId;
+	}
+
+	public Integer getIsLeader() {
+		return isLeader;
+	}
+
+	public void setIsLeader(Integer isLeader) {
+		this.isLeader = isLeader;
 	}
 
 	public Integer getStatus() {
@@ -150,6 +228,14 @@ public class SysUser extends BaseEntity {
 
 	public void setRoleNames(String roleNames) {
 		this.roleNames = roleNames;
+	}
+
+	public String getLeaderName() {
+		return leaderName;
+	}
+
+	public void setLeaderName(String leaderName) {
+		this.leaderName = leaderName;
 	}
 
 	public java.util.List<Long> getRoleIds() {

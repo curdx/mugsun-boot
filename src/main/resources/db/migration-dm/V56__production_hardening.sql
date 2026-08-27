@@ -19,7 +19,7 @@ CREATE UNIQUE INDEX  uk_dict_code_key ON sys_dict (code, dict_key);
 CREATE UNIQUE INDEX  uk_user_role ON sys_user_role (user_id, role_id);
 CREATE UNIQUE INDEX  uk_role_menu ON sys_role_menu (role_id, menu_id);
 CREATE UNIQUE INDEX  uk_role_dept ON sys_role_dept (role_id, dept_id);
-CREATE UNIQUE INDEX  uk_user_tenant_phone ON sys_user (tenant_id, phone);
+CREATE INDEX  uk_user_tenant_phone ON sys_user (tenant_id, phone);
 
 -- ④ uk_serial_record 改部分唯一：原全量唯一使逻辑删除的旧记录永久阻塞同 code+date 新记录
 DROP INDEX  uk_serial_record;

@@ -274,6 +274,7 @@ public class AuthController {
 		user.setPassword(passwordEncoder.encode(rawPassword));
 		user.setPhone(dto.getPhone());
 		user.setStatus(1);
+		user.setIsLeader(0);
 		user.setTenantId(tenantId);
 		TenantContext.ignore(() -> userMapper.insert(user));
 		securityPolicyService.logPassword(user.getId(), user.getPassword());

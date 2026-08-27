@@ -115,11 +115,21 @@ public class FlowService {
 	/** 实例历史流转（进度时间线） */
 	public List<Row> history(Long instanceId) {
 		assertInstanceAccess(instanceId);
-		return Db.selectListBySql(
+		List<Row> rows = Db.selectListBySql(
 			"select node_code as \"nodeCode\", node_name as \"nodeName\", approver as \"approver\", "
 				+ "skip_type as \"skipType\", flow_status as \"flowStatus\", message as \"message\", "
 				+ "create_time as \"createTime\" "
 				+ "from flow_his_task where instance_id = ? and coalesce(del_flag, '0') <> '1' order by id asc", instanceId);
+		for (Row row : rows) {
+			String approver = row.getString("approver");
+			if (StringUtils.hasText(approver)) {
+				List<Map<String, Object>> names = selectService.usernames(List.of(approver));
+				if (!names.isEmpty()) {
+					row.set("approver", names.get(0).get("name"));
+				}
+			}
+		}
+		return rows;
 	}
 
 	/** 实例可退回的历史审批节点（供“退回指定节点”选择；排除开始/结束/网关） */

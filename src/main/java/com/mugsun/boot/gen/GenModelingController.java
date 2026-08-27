@@ -50,8 +50,7 @@ public class GenModelingController {
 	@PostMapping("/ddl/sync")
 	public R<Void> syncDdl(@RequestParam Long tableId,
 						   @RequestParam(defaultValue = "false") boolean force) {
-		ddlService.syncTable(tableId, force);
-		return R.success(force ? "重建成功" : "同步成功");
+		return R.success(ddlService.syncTable(tableId, force));
 	}
 
 	/** 规则建模：按格式描述 → 候选可编辑元数据（仅产出候选，不落库/不建表；基于规则解析，不支持自由中文描述） */

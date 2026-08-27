@@ -58,7 +58,7 @@ public class GenMetaService {
 		table.setTableComment(meta.getComment());
 		table.setEntityName(GenNaming.toCamel(stripped, true));
 		table.setModuleName(moduleName == null || moduleName.isBlank() ? "system" : moduleName.trim());
-		table.setBusinessName(GenNaming.toCamel(stripped, false));
+		table.setBusinessName(GenNaming.toBusinessName(stripped));
 		table.setFunctionName(meta.getComment() == null || meta.getComment().isBlank()
 			? GenNaming.toCamel(stripped, true) : meta.getComment());
 		table.setFunctionAuthor(author == null || author.isBlank() ? "mugsun" : author.trim());

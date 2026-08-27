@@ -40,7 +40,7 @@ public class GisDemoCatalog {
 		out.add(meta(FENCE, "电子围栏", "多边形围栏，可算面积、做进出判断", "motion", "overlay", GisConstants.KIND_VECTOR, 1));
 		out.add(meta(BUFFER, "缓冲分析", "服务端 JTS 按米缓冲出面", "motion", "buffer", GisConstants.KIND_VECTOR, 1));
 		out.add(meta(RADIUS, "圈选查询", "点一下定圆心，列出半径内的点", "query", "radius", GisConstants.KIND_VECTOR, 48));
-		out.add(meta(GEOCODE, "点选抬取", "单击地图逆地理，得到地址", "query", "geocode", GisConstants.KIND_VECTOR, 0));
+		out.add(meta(GEOCODE, "点选拾取", "单击地图逆地理，得到地址", "query", "geocode", GisConstants.KIND_VECTOR, 0));
 		out.add(meta(MEASURE, "测距测面", "折线长度、多边形面积，工单勘察常用", "query", "measure", GisConstants.KIND_VECTOR, 0));
 		return out;
 	}

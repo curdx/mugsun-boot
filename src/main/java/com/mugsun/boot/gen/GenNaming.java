@@ -48,4 +48,12 @@ public final class GenNaming {
 	public static String toKebab(String name) {
 		return name == null ? null : name.replace('_', '-');
 	}
+
+	/** 业务名：全小写、无下划线（gen_product → genproduct），对齐 validateTableMeta 白名单 */
+	public static String toBusinessName(String stripped) {
+		if (stripped == null || stripped.isBlank()) {
+			return stripped;
+		}
+		return stripped.replace("_", "").toLowerCase();
+	}
 }

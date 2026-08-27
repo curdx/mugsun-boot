@@ -128,26 +128,34 @@ public class OAuthController {
 	public R<Map<String, Object>> authorizeInfo(
 		@RequestParam("client_id") String clientId,
 		@RequestParam(value = "scope", required = false) String scope) {
-		SysOauthClient client = oauthService.loadEnabledClient(clientId);
-		Map<String, Object> resp = new LinkedHashMap<>();
-		resp.put("clientId", client.getClientId());
-		resp.put("clientName", client.getName());
-		resp.put("scopes", oauthService.clientScopes(client));
-		return R.data(resp);
+		try {
+			SysOauthClient client = oauthService.loadEnabledClient(clientId);
+			Map<String, Object> resp = new LinkedHashMap<>();
+			resp.put("clientId", client.getClientId());
+			resp.put("clientName", client.getName());
+			resp.put("scopes", oauthService.clientScopes(client));
+			return R.data(resp);
+		} catch (OAuth2Exception e) {
+			return R.fail(e.getMessage());
+		}
 	}
 
 	/** 同意确认（SPA 内部，R 信封）：登录用户批准后颁发一次性授权码 */
 	@PostMapping("/authorize/confirm")
 	@SaCheckLogin
 	public R<Map<String, Object>> authorizeConfirm(@RequestBody Map<String, String> body) {
-		String code = oauthService.issueCode(StpUtil.getLoginIdAsLong(),
-			body.get("clientId"), body.get("scope"), body.get("redirectUri"),
-			body.get("codeChallenge"), body.get("codeChallengeMethod"));
-		Map<String, Object> resp = new LinkedHashMap<>();
-		resp.put("code", code);
-		resp.put("redirectUri", body.get("redirectUri"));
-		resp.put("state", body.get("state"));
-		return R.data(resp);
+		try {
+			String code = oauthService.issueCode(StpUtil.getLoginIdAsLong(),
+				body.get("clientId"), body.get("scope"), body.get("redirectUri"),
+				body.get("codeChallenge"), body.get("codeChallengeMethod"));
+			Map<String, Object> resp = new LinkedHashMap<>();
+			resp.put("code", code);
+			resp.put("redirectUri", body.get("redirectUri"));
+			resp.put("state", body.get("state"));
+			return R.data(resp);
+		} catch (OAuth2Exception e) {
+			return R.fail(e.getMessage());
+		}
 	}
 
 	/** 客户端认证：优先 HTTP Basic，回退 form 参数 */
