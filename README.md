@@ -8,104 +8,88 @@
 ![Redis](https://img.shields.io/badge/Redis-7-red)
 ![License](https://img.shields.io/badge/License-Apache%202.0-green)
 
-**Mugsun 低代码快速开发平台的单体后端**——把系统管理、工作流、多租户、开放平台、埋点分析装进一个可执行应用，`mvn spring-boot:run` 一键起跑，首启即完整系统。
+Mugsun 的单体后端：系统管理、工作流、多租户、开放平台、埋点分析打在一个 Spring Boot 应用里。`mvn spring-boot:run` 即可本地跑。
 
-基于 JDK 21 虚拟线程与 Spring Boot 3.5 构建，内置国密 SM2/SM3/SM4 加密体系与全链路审计，从第一天就按生产标准设计。
+JDK 21 虚拟线程，Spring Boot 3.5，国密 SM2/SM3/SM4，Flyway 管 schema。
 
-## ✨ 功能特性
+## 功能
 
 | 分组 | 能力 |
 | --- | --- |
-| 🏢 系统管理 | 用户 / 角色 / 菜单 / 部门 / 岗位 / 字典 / 业务字典 / 参数 / 行政区划 |
-| 📨 消息中心 | 站内信 + 邮件 + 短信模板统一调度，WebSocket 实时推送 |
-| 📦 文件存储 | 本地 / MinIO / 云平台多云存储，私有附件授权下载 |
-| 🧩 低代码 | 代码生成器、动态建表、在线表单、表单设计器 |
-| 🔀 工作流 | 可视化流程设计器、条件路由 / 并行会签、待办工作台、审批中心 |
-| 📊 监控运维 | 服务监控、操作 / 登录 / 访问 / 错误日志、在线会话、缓存管理、定时任务 |
-| 🔏 数据变更审计 | SM3 哈希链 + SM2 签名防篡改，diff 时间轴回溯 |
-| 🌐 开放平台 | OAuth2 授权码 + PKCE、API 密钥、HMAC + nonce 防重放、调用日志 |
-| 📈 埋点分析 | 事件采集、概览 / 事件 / 性能 / 错误监控（sourcemap 还原 + 告警）、会话回放、行为细查、漏斗、留存、圈选式可视化埋点 |
-| 🏷 租户运营 | 字段隔离 / 独立数据源三策略、套餐菜单收窄、客户管理 |
-| 🛡 安全 | 国密传输加密、字段级脱敏、数据权限、弱密码策略 + 双因子、接口防重放 |
+| 系统管理 | 用户 / 角色 / 菜单 / 部门 / 岗位 / 字典 / 参数 / 区划 |
+| 消息 | 站内信、邮件、短信模板，WebSocket 推送 |
+| 存储 | 本地 / MinIO / 云存储，私有附件授权下载 |
+| 低代码 | 代码生成、动态建表、在线表单、表单设计 |
+| 工作流 | Warm-Flow 设计器，条件/并行/会签，待办与审批中心 |
+| 运维 | 服务监控、各类日志、在线会话、缓存、PowerJob 定时任务 |
+| 审计 | SM3 哈希链 + SM2 签名，变更 diff 时间轴 |
+| 开放平台 | OAuth2 + PKCE、API Key、HMAC 防重放、调用日志 |
+| 埋点 | 采集入库、概览/事件/性能/错误/回放/漏斗/留存、圈选埋点 |
+| 租户 | 字段隔离 / 独立库 / schema，套餐菜单、客户管理 |
+| 安全 | 传输加密、字段脱敏、数据权限、弱密码与 2FA、防重放 |
 
-## 🧱 技术栈
+## 技术栈
 
-JDK 21（虚拟线程）· Spring Boot 3.5 · MyBatis-Flex · Sa-Token · JetCache · Warm-Flow · PostgreSQL 16（主推）· Redis 7 · PowerJob · springdoc-openapi · x-file-storage · SMS4J · Hutool · LiteFlow · Flyway · 国密 SM2/SM3/SM4
+JDK 21 · Spring Boot 3.5 · MyBatis-Flex · Sa-Token · JetCache · Warm-Flow · PostgreSQL 16 · Redis 7 · PowerJob · Flyway · 国密
 
-## 🗂 仓库全景
-
-Mugsun 由四个仓库组成，本仓是后端主体。四个仓库需**平级 clone**（放在同一目录下）：
+## 仓库关系
 
 ```mermaid
 graph LR
-    subgraph 前端
-        PC["mugsun-pc<br/>Vue3 管理端"]
-        TRACK["mugsun-track<br/>埋点 SDK"]
-    end
-    subgraph 后端
-        BOOT["mugsun-boot<br/>单体后端（本仓）"]
-        CORE["mugsun-core<br/>BOM + Starter"]
-    end
-    CORE -->|Maven 依赖| BOOT
-    PC -->|file: 依赖| TRACK
-    PC -->|HTTP / WebSocket| BOOT
-    TRACK -->|数据上报 /track/collect| BOOT
+    PC[mugsun-pc] --> BOOT[mugsun-boot 本仓]
+    TRACK[mugsun-track] --> BOOT
+    CORE[mugsun-core] --> BOOT
+    PC --> TRACK
 ```
 
-## 🔄 请求处理管线
+四仓平级 clone 在同一目录下。
 
-每个请求都经过统一的治理链路，可观测性与安全性在框架层一次解决：
+## 请求链路
 
 ```mermaid
 flowchart TB
-    REQ["HTTP 请求"] --> TRACE["TraceIdFilter<br/>X-Trace-Id 生成 / 透传 · MDC"]
-    TRACE --> AUTH["Sa-Token 认证拦截"]
-    AUTH --> TENANT["租户守卫<br/>伪造租户头拦截 · 套餐模块门控"]
-    TENANT --> PERM["@SaCheckPermission 按钮级权限"]
-    PERM --> DATA["数据权限织入 · 字段脱敏"]
-    DATA --> CTRL["Controller<br/>统一 R&lt;T&gt; 响应 · 全局异常转 401 / 403 / 400"]
-    CTRL --> MF["MyBatis-Flex"]
-    MF --> PG[("PostgreSQL")]
-    CTRL -.->|"@Async 虚拟线程 · 租户上下文透传"| LOG["访问日志异步落库"]
-    MF -.-> CACHE["JetCache 二级缓存<br/>Caffeine + Redis"]
+    REQ[HTTP] --> TRACE[TraceId]
+    TRACE --> AUTH[Sa-Token]
+    AUTH --> TENANT[租户守卫]
+    TENANT --> PERM[权限]
+    PERM --> DATA[数据权限 / 脱敏]
+    DATA --> CTRL[Controller R&lt;T&gt;]
+    CTRL --> MF[MyBatis-Flex]
+    MF --> PG[(PostgreSQL)]
 ```
 
-## 🚀 快速开始
+## 快速开始
 
-### 环境要求
+### 环境
 
-- JDK 21+
-- Maven 3.9+
-- PostgreSQL 16
-- Redis 7
+JDK 21+、Maven 3.9+、PostgreSQL 16、Redis 7
 
-### 1. 基础设施（Docker Compose）
+### 1. Docker 起库
 
 ```bash
-# 在 mugsun-boot 目录：拉起 Postgres 16（mugsun-pg）与 Redis 7（blade-redis）
 docker compose up -d
 ```
 
-脚本会创建 `mugsun` 账号、主库 `mugsun` 与埋点库 `mugsun_track`，并授予 CREATEDB 权限。本机已有 PostgreSQL 时也可：`psql -U postgres -f scripts/init-db.sql`。
+会建 `mugsun-pg`、`blade-redis`，库 `mugsun` 与 `mugsun_track`。已有 Postgres 也可：`psql -U postgres -f scripts/init-db.sql`。
 
-### 2. 构建内核
+### 2. 构建 core
 
 ```bash
 cd ../mugsun-core && mvn clean install -DskipTests && cd ../mugsun-boot
 ```
 
-### 3. 本地配置（强烈建议）
+### 3. 本地配置
 
 ```bash
 cp config/application-local.yml.example config/application-local.yml
-# 写入固定 SM2 密钥对（留空则每次启动临时生成，登录会 flake）
+# 写入固定 SM2 密钥；留空则每次启动临时生成，登录会不稳定
 ```
 
-`application-local.yml` 已被 gitignore。`mvn spring-boot:run` **会自动 import** `./config/application-local.yml`（工作目录须为 `mugsun-boot`），用于固定密钥并 `show-code: true` 回显验证码。
+`application-local.yml` 已 gitignore。`mvn spring-boot:run` 会自动 import 它（工作目录须在 `mugsun-boot`）。
 
-OAuth 同意页跳转地址取自 `mugsun.web.front-url`（环境变量 `MUGSUN_FRONT_URL`）。日常前端 `:3006` 用默认值；e2e `:3007` 须设 `MUGSUN_FRONT_URL=http://localhost:3007`。
+OAuth 同意页跳转看 `mugsun.web.front-url`（`MUGSUN_FRONT_URL`）。前端 e2e 用 3007 时要设 `http://localhost:3007`。
 
-PowerJob Worker **默认关闭**。定时任务页依赖独立 PowerJob Server（`127.0.0.1:7700`）；未启动时接口返回业务错误而非 500。需要 Worker 时设 `POWERJOB_ENABLED=true` 并保证 Server 已起。
+PowerJob Worker 默认关。要定时任务页正常工作需另起 PowerJob Server（`:7700`）。
 
 ### 4. 启动
 
@@ -113,49 +97,46 @@ PowerJob Worker **默认关闭**。定时任务页依赖独立 PowerJob Server�
 mvn spring-boot:run
 ```
 
-Flyway 自动完成 70+ 个迁移脚本与菜单种子数据，首次启动即是完整系统。API 文档见 `http://localhost:8080/swagger-ui/index.html`（prod 环境自动关闭）。
+Flyway 跑迁移和菜单种子。Swagger：`http://localhost:8080/swagger-ui/index.html`（prod 关）。
 
 ### 5. 登录
 
-默认账号 **只有** `admin / 123456`，可通过环境变量 `MUGSUN_INIT_PASSWORD` 覆盖——**生产部署必须修改**。冷启动不播种 `fronttest`（该账号仅 `mugsun.lab.seed-fronttest` 打开时生成，默认关闭）。
+默认 `admin / 123456`，可用 `MUGSUN_INIT_PASSWORD` 覆盖。**上线务必改密码。**
 
 ### 6. 前端
 
-管理端见 [mugsun-pc](https://github.com/mugsun/mugsun-pc) 仓，按其四仓平级 clone 说明启动即可对接本服务。
+见 [mugsun-pc](https://github.com/mugsun/mugsun-pc)。
 
-## 🛡 生产部署
+## 生产
 
-启用 prod profile：`--spring.profiles.active=prod`。
+`--spring.profiles.active=prod`：
 
-- `application-prod.yml` 全量环境变量注入（数据源 / Redis / SMTP / 短信 / 存储 / 密钥 / `MUGSUN_FRONT_URL`），仓库内不落任何明文
-- `mugsun.crypto.strict-keys=true`：SM4 / SM2 / 审计签名密钥缺失即拒绝启动
-- Actuator 默认 fail-closed，仅放行 `health`，指标端点需登录授权
-- API 文档（springdoc）prod 环境自动关闭
-- 生产禁用本地文件匿名直出，私有附件全走授权流式下载
+- 配置走环境变量，仓库无明文
+- `mugsun.crypto.strict-keys=true`，密钥缺失拒绝启动
+- Actuator 默认只开 health
+- springdoc 关闭
+- 私有附件走授权下载
 
-## 🧪 测试与质量
+## 测试
 
-- **后端集成测试**：基于 Testcontainers，自动拉起 PostgreSQL 16 / Redis 7 容器隔离运行，`mvn test` 零外部依赖，覆盖真实登录 / 权限 / 租户 / 工作流 / 报表 / 帮助反馈链路（30 个测试类）
-- **前端 e2e**：Playwright 端到端 140+ 用例（含流程 / 租户 / OAuth 专属 spec）
-- **api-probe 探针**：性能探针在 10w 行日志表上实测 p95 ≤ 69ms；50 项安全探针全部通过
+- 集成测试：Testcontainers 起 PG/Redis，`mvn test`，约 30 个测试类
+- 前端 e2e：见 mugsun-pc，140+ 用例
+- api-probe：性能与安全探针（见仓库脚本）
 
-## 🗺 路线图（规划中）
+## 规划
 
-- 微服务形态
-- AI 增强能力（模型接入 / 对话 / 知识库）
+微服务拆分、AI 相关能力（未排期）
 
-## 🤝 贡献
+## 贡献
 
-欢迎 Issue 与 Pull Request。提交前请确保 `mvn test` 全绿，新增功能请附带测试。
+Issue / PR 欢迎。提交前 `mvn test` 通过；新功能尽量带测试。
 
-## ⭐ Star History
+提交信息写法见 [.github/COMMIT_CONVENTION.md](.github/COMMIT_CONVENTION.md)。
+
+## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=mugsun/mugsun-boot&type=Date)](https://star-history.com/#mugsun/mugsun-boot&Date)
 
-## 📄 许可证
+## 许可证
 
 [Apache License 2.0](LICENSE)
-
----
-
-如果这个项目对你有帮助，欢迎 Star ⭐ 支持一下！
